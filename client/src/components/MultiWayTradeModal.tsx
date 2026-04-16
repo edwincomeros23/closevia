@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Modal,
   ModalOverlay,
@@ -28,6 +28,10 @@ import {
   Tab,
   TabPanels,
   TabPanel,
+  Spinner,
+  Textarea,
+  InputGroup,
+  InputRightElement,
 } from '@chakra-ui/react'
 import {
   FaArrowRight,
@@ -39,11 +43,15 @@ import {
   FaChevronDown,
   FaTruck,
   FaHandshake,
+  FaPaperPlane,
+  FaSmile,
+  FaExclamationTriangle,
 } from 'react-icons/fa'
-import { FiMessageCircle } from 'react-icons/fi'
 import { useNavigate } from 'react-router-dom'
 import { MultiWayTrade, MultiWayTradeParticipant } from '../types'
 import { getProductUrl } from '../utils/productUtils'
+import { api } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 import {
   acceptMultiWayTrade,
   declineMultiWayTrade,
@@ -67,6 +75,15 @@ interface MultiWayTradeModalProps {
   onTradeCompleted?: () => void
   canManage?: boolean
   currentUserId?: number
+}
+
+interface TradeMessage {
+  id: number
+  trade_id: number
+  sender_id: number
+  content: string
+  created_at: string
+  sender_name?: string
 }
 
 /** Format ms remaining as "Xh Ym" or "Expired" */
@@ -127,6 +144,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   canManage = false,
   currentUserId,
 }) => {
+  const { user } = useAuth()
   const isActiveChain =
     multiWayTrade.status === 'active' || multiWayTrade.status === 'user3_accepted'
 
@@ -143,6 +161,14 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const [sharedForm, setSharedForm] = useState<{ method: 'meetup' | 'delivery'; location: string; time: string }>({ method: 'meetup', location: '', time: '' })
   const [savingLeg, setSavingLeg] = useState<number | null>(null)
   const [completingLeg, setCompletingLeg] = useState<number | null>(null)
+
+  // Chat state
+  const [messages, setMessages] = useState<TradeMessage[]>([])
+  const [newMessage, setNewMessage] = useState('')
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [sendingMessage, setSendingMessage] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
   const { isOpen: isLegsOpen, onToggle: onLegsToggle } = useDisclosure({
     defaultIsOpen: isActiveChain,
   })
@@ -194,6 +220,31 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       })
       .catch(() => {})
   }, [isOpen, multiWayTrade.loop_id, multiWayTrade.status])
+
+  // Fetch chat messages - use first participant's trade_id
+  useEffect(() => {
+    if (!isOpen || !multiWayTrade.participants || multiWayTrade.participants.length === 0) return
+    const fetchMessages = async () => {
+      setLoadingMessages(true)
+      try {
+        const firstParticipant = multiWayTrade.participants[0]
+        if (firstParticipant && firstParticipant.trade_id) {
+          const res = await api.get(`/api/trades/${firstParticipant.trade_id}/messages`)
+          setMessages(Array.isArray(res.data?.data) ? res.data.data : [])
+        }
+      } catch (error) {
+        setMessages([])
+      } finally {
+        setLoadingMessages(false)
+      }
+    }
+    fetchMessages()
+  }, [isOpen, multiWayTrade.participants])
+
+  // Auto-scroll to latest message
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const sortedParticipants = useMemo(
     () =>
@@ -382,45 +433,97 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     }
   }
 
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} size="2xl" isCentered scrollBehavior="inside">
-      <ModalOverlay backdropFilter="blur(4px)" />
-      <ModalContent bg={cardBg} maxH="90vh" overflowY="auto">
-        <ModalHeader borderBottomWidth="1px" borderColor={borderColor}>
-          <VStack align="start" spacing={2} w="full">
-            <HStack justify="space-between" w="full">
-              <Heading size="md">{sortedParticipants.length}-Way Trade Loop</Heading>
-            </HStack>
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !multiWayTrade.participants || multiWayTrade.participants.length === 0) return
+    setSendingMessage(true)
+    try {
+      const firstParticipant = multiWayTrade.participants[0]
+      if (firstParticipant && firstParticipant.trade_id) {
+        await api.post(`/api/trades/${firstParticipant.trade_id}/messages`, {
+          content: newMessage.trim(),
+        })
+        setNewMessage('')
+        // Refresh messages
+        const res = await api.get(`/api/trades/${firstParticipant.trade_id}/messages`)
+        setMessages(Array.isArray(res.data?.data) ? res.data.data : [])
+      }
+    } catch (error: any) {
+      toast({
+        id: 'mwt-msg-err',
+        title: 'Failed to send message',
+        description: error?.response?.data?.error || 'Please try again',
+        status: 'error',
+      })
+    } finally {
+      setSendingMessage(false)
+    }
+  }
 
-            {/* Expiration countdown */}
-            {timeLeft && (
-              <HStack spacing={2}>
-                <Icon
-                  as={FaClock}
-                  color={timeLeft === 'Expired' ? 'red.500' : 'orange.400'}
-                  boxSize={4}
-                />
-                <Text fontSize="sm" fontWeight="medium" color={timeLeft === 'Expired' ? 'red.500' : 'orange.600'}>
-                  {timeLeft}
-                </Text>
-                <Badge colorScheme={statusColorScheme(multiWayTrade.status)} px={2} py={0.5} borderRadius="full">
-                  {statusLabel(multiWayTrade.status)}
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} size="4xl" isCentered scrollBehavior="inside">
+      <ModalOverlay backdropFilter="blur(4px)" />
+      <ModalContent bg={cardBg} maxH="95vh" overflowY="auto">
+        <ModalHeader borderBottomWidth="1px" borderColor={borderColor} py={4}>
+          <VStack align="start" spacing={3} w="full">
+            {/* Title Row with Status Badge and Action Buttons */}
+            <HStack justify="space-between" w="full" align="flex-start">
+              <VStack align="start" spacing={1} flex={1}>
+                <Heading size="lg">{sortedParticipants.length}-Way Trade Loop</Heading>
+                {timeLeft && (
+                  <HStack spacing={2}>
+                    <Icon
+                      as={FaClock}
+                      color={timeLeft === 'Expired' ? 'red.500' : 'orange.400'}
+                      boxSize={4}
+                    />
+                    <Text fontSize="sm" color={timeLeft === 'Expired' ? 'red.500' : 'orange.600'}>
+                      {timeLeft}
+                    </Text>
+                  </HStack>
+                )}
+              </VStack>
+
+              {/* Top Right: Status Badge + Action Buttons */}
+              <HStack spacing={3} align="flex-start">
+                <Badge colorScheme={statusColorScheme(multiWayTrade.status)} px={3} py={1.5} borderRadius="md" fontSize="sm" fontWeight="semibold">
+                  {statusLabel(multiWayTrade.status).toUpperCase()}
                 </Badge>
+                <HStack spacing={2}>
+                  <Button
+                    size="sm"
+                    colorScheme="orange"
+                    variant="outline"
+                    leftIcon={<FaExclamationTriangle />}
+                  >
+                    Dispute
+                  </Button>
+                  <Button
+                    size="sm"
+                    colorScheme="red"
+                    variant="outline"
+                    leftIcon={<FaTimes />}
+                  >
+                    Cancel
+                  </Button>
+                </HStack>
               </HStack>
-            )}
+            </HStack>
 
             {/* Progress for handoffs (if applicable) */}
             {isActiveChain && totalLegs > 0 && (
-              <Box pt={3} w="full">
-                <HStack justify="space-between" mb={1}>
-                  <Text fontSize="xs" color="gray.500">Handoffs confirmed: {completedLegs} / {totalLegs}</Text>
-                  <Text fontSize="xs" fontWeight="bold" color={healthPct === 100 ? 'green.500' : 'blue.500'}>{healthPct}%</Text>
+              <Box pt={2} w="full" bg={useColorModeValue('blue.50', 'blue.900')} p={3} borderRadius="md" borderLeftWidth="4px" borderColor="blue.500">
+                <HStack justify="space-between" mb={2}>
+                  <Text fontSize="sm" fontWeight="semibold" color={useColorModeValue('blue.900', 'blue.100')}>Handoffs Confirmed</Text>
+                  <Text fontSize="sm" fontWeight="bold" color={healthPct === 100 ? 'green.500' : 'blue.500'}>{healthPct}%</Text>
+                </HStack>
+                <HStack justify="space-between" mb={2}>
+                  <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')}>{completedLegs} of {totalLegs} items received</Text>
                 </HStack>
                 <Progress value={healthPct} size="sm" colorScheme={healthPct === 100 ? 'green' : 'blue'} borderRadius="full" />
               </Box>
             )}
           </VStack>
-          <ModalCloseButton position="relative" top={0} right={0} />
+          <ModalCloseButton mt={2} />
         </ModalHeader>
 
         <ModalBody py={0}>
@@ -435,6 +538,41 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
               {/* Overview Tab */}
               <TabPanel py={6}>
                 <VStack spacing={6} align="stretch">
+                  {/* Trade Option Details Box - Similar to Meetup Modal */}
+                  <Box bg={useColorModeValue('brand.50', 'brand.900')} borderLeftWidth="4px" borderColor="brand.500" p={4} borderRadius="md">
+                    <HStack justify="space-between" mb={3}>
+                      <HStack spacing={2}>
+                        <Icon as={FaHandshake} boxSize={5} color="brand.500" />
+                        <Heading size="sm" color={useColorModeValue('brand.900', 'brand.100')}>Trade Option: Multi-Way Exchange</Heading>
+                      </HStack>
+                      <Badge colorScheme={statusColorScheme(multiWayTrade.status)} borderRadius="md" fontSize="sm">
+                        {statusLabel(multiWayTrade.status)}
+                      </Badge>
+                    </HStack>
+                    <Text fontSize="sm" color={useColorModeValue('brand.800', 'brand.200')} mb={3}>
+                      Exchange items at a mutually agreed location between all {sortedParticipants.length} participants
+                    </Text>
+                    {legs.length > 0 && sharedForm && (
+                      <VStack spacing={2} align="start" fontSize="sm" color={useColorModeValue('brand.700', 'brand.300')}>
+                        <HStack spacing={2}>
+                          <Icon as={sharedForm.method === 'delivery' ? FaTruck : FaHandshake} boxSize={4} color="brand.500" />
+                          <Text fontWeight="medium">{sharedForm.method === 'delivery' ? 'Delivery / Shipping' : 'In-Person Meetup'}</Text>
+                        </HStack>
+                        {sharedForm.location && (
+                          <HStack spacing={2} ml={6}>
+                            <Icon as={FaMapMarkerAlt} boxSize={3} color="brand.500" />
+                            <Text>{sharedForm.location}</Text>
+                          </HStack>
+                        )}
+                        {sharedForm.time && (
+                          <HStack spacing={2} ml={6}>
+                            <Icon as={FaClock} boxSize={3} color="brand.500" />
+                            <Text>{sharedForm.time}</Text>
+                          </HStack>
+                        )}
+                      </VStack>
+                    )}
+                  </Box>
                   {/* Visual Chain Flow - Simplified */}
                   <Box w="full">
                     {sortedParticipants.length <= 3 ? (
@@ -604,97 +742,130 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       <Text fontSize="lg" fontWeight="bold" color="green.500">₱{multiWayTrade.total_value.toFixed(2)}</Text>
                     </HStack>
                   )}
-
-            {/* Status Info Box */}
-            <Box bg={useColorModeValue('blue.50', 'blue.900')} borderLeftWidth="4px" borderColor="blue.500" p={3} borderRadius="md">
-              <HStack justify="space-between" mb={2}>
-                <Text fontSize="sm" fontWeight="semibold" color="blue.900">
-                  {sortedParticipants.length}-Way Trade Loop
-                </Text>
-                <Badge colorScheme={statusColorScheme(multiWayTrade.status)} borderRadius="full">
-                  {statusLabel(multiWayTrade.status)}
-                </Badge>
-              </HStack>
-              <Text fontSize="xs" color="blue.800">
-                <strong>✓ = Accepted</strong> • <strong>● = Pending</strong>
-              </Text>
-            </Box>
-
-            {/* Handoff Progress */}
-            {isActiveChain && totalLegs > 0 && (
-              <Box borderWidth="1px" borderColor={borderColor} borderRadius="lg" p={3} bg={legCardBg}>
-                <HStack justify="space-between" mb={2}>
-                  <Text fontSize="sm" fontWeight="semibold" color="gray.700">Handoffs Confirmed</Text>
-                  <Text fontSize="sm" fontWeight="bold" color={healthPct === 100 ? 'green.500' : 'blue.500'}>{healthPct}%</Text>
-                </HStack>
-                <HStack justify="space-between" mb={2}>
-                  <Text fontSize="xs" color="gray.600">{completedLegs} of {totalLegs} items received</Text>
-                </HStack>
-                <Progress value={healthPct} size="sm" colorScheme={healthPct === 100 ? 'green' : 'blue'} borderRadius="full" />
-              </Box>
-            )}
-
-            {/* Shared Coordination Section */}
-            {legs.length > 0 && (
-              <Box borderWidth="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={legCardBg}>
-                <Box px={4} py={3} bg={useColorModeValue('purple.50', 'purple.900')} borderBottomWidth="1px" borderColor={borderColor}>
-                  <HStack justify="space-between">
-                    <Text fontSize="sm" fontWeight="semibold" color="purple.700">Shared Coordination</Text>
-                    <Badge colorScheme="purple" fontSize="xs">{legs.length} items</Badge>
-                  </HStack>
-                </Box>
-                <Box px={4} py={3}>
-                  <VStack spacing={3} align="stretch">
-                    <Box bg={useColorModeValue('purple.50', 'purple.900')} p={2} borderRadius="md" borderLeftWidth="3px" borderColor="purple.400">
-                      <Text fontSize="xs" color={useColorModeValue('purple.700', 'purple.200')}>All participants will meet at the same location and time to execute the multi-way trade.</Text>
-                    </Box>
-
-                    {sharedForm.method && (
-                      <VStack spacing={2} align="stretch" fontSize="xs" color="gray.600">
-                        <HStack>
-                          <Icon as={sharedForm.method === 'delivery' ? FaTruck : FaHandshake} boxSize={3} color="purple.500" />
-                          <Text fontWeight="medium">{sharedForm.method === 'delivery' ? 'Delivery / Shipping' : 'Meetup In Person'}</Text>
-                        </HStack>
-                        {sharedForm.location && (
-                          <HStack>
-                            <Icon as={FaMapMarkerAlt} boxSize={3} color="purple.500" />
-                            <Text>{sharedForm.location}</Text>
-                          </HStack>
-                        )}
-                        {sharedForm.time && (
-                          <HStack>
-                            <Icon as={FaClock} boxSize={3} color="purple.500" />
-                            <Text>{sharedForm.time}</Text>
-                          </HStack>
-                        )}
-                      </VStack>
-                    )}
-                  </VStack>
-                </Box>
-              </Box>
-            )}
-
-            {/* Estimated Value */}
-            {multiWayTrade.total_value && (
-              <HStack justify="space-between" bg={sectionBg} p={3} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
-                <Text fontWeight="semibold" fontSize="sm">Estimated Total Value</Text>
-                <Text fontSize="lg" fontWeight="bold" color="green.500">₱{multiWayTrade.total_value.toFixed(2)}</Text>
-              </HStack>
-            )}
-          </VStack>
-        </TabPanel>
+                </VStack>
+              </TabPanel>
 
         {/* Chat Tab */}
-        <TabPanel py={6}>
-          <VStack spacing={6} align="stretch">
-            <Box textAlign="center" py={12} bg={useColorModeValue('blue.50', 'blue.900')} borderRadius="lg" border="2px dashed" borderColor="blue.200">
-              <Icon as={FiMessageCircle} boxSize={16} color="blue.300" mb={4} />
-              <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
-                Chat coming soon
-              </Text>
-              <Text color="gray.500" fontSize="sm">
-                View and manage your multi-way trade conversations here
-              </Text>
+        <TabPanel px={[0, 2]} py={6}>
+          <VStack spacing={3} align="stretch" h={["350px", "450px"]} display="flex" flexDirection="column">
+            {/* Messages Area */}
+            <Box
+              flex={1}
+              overflowY="auto"
+              p={[2, 3]}
+              bg={sectionBg}
+              borderRadius="md"
+              borderWidth="1px"
+              borderColor={borderColor}
+            >
+              {loadingMessages ? (
+                <Flex justify="center" align="center" h="full">
+                  <Spinner />
+                </Flex>
+              ) : messages.length === 0 ? (
+                <Flex justify="center" align="center" h="full" direction="column">
+                  <Icon as={FaPaperPlane} boxSize={8} color="gray.400" mb={2} />
+                  <Text color="gray.500" fontSize="sm" textAlign="center">No messages yet. Start the conversation!</Text>
+                </Flex>
+              ) : (
+                <VStack spacing={3} align="stretch">
+                  {messages.map((msg) => {
+                    const isOwnMessage = msg.sender_id === user?.id
+                    return (
+                      <HStack
+                        key={`msg-${msg.id}`}
+                        justify={isOwnMessage ? 'flex-end' : 'flex-start'}
+                        align="flex-start"
+                        spacing={2}
+                      >
+                        {!isOwnMessage && (
+                          <Avatar
+                            name={msg.sender_name || 'User'}
+                            size="sm"
+                            bg="brand.500"
+                            color="white"
+                          />
+                        )}
+                        <Box
+                          maxW="70%"
+                          p={3}
+                          borderRadius="lg"
+                          bg={isOwnMessage ? 'brand.500' : 'white'}
+                          color={isOwnMessage ? 'white' : 'gray.800'}
+                          borderWidth={isOwnMessage ? 0 : '1px'}
+                          borderColor={borderColor}
+                          shadow="sm"
+                        >
+                          {!isOwnMessage && (
+                            <Text fontSize="xs" fontWeight="bold" color={isOwnMessage ? 'white' : 'gray.700'} mb={1}>
+                              {msg.sender_name}
+                            </Text>
+                          )}
+                          <Text fontSize="sm" whiteSpace="pre-wrap" wordBreak="break-word">
+                            {msg.content}
+                          </Text>
+                          <Text
+                            fontSize="xs"
+                            opacity={0.7}
+                            mt={1}
+                            textAlign={isOwnMessage ? 'right' : 'left'}
+                          >
+                            {new Date(msg.created_at).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </Text>
+                        </Box>
+                        {isOwnMessage && (
+                          <Avatar
+                            name={user?.name || 'You'}
+                            size="sm"
+                            bg="brand.500"
+                            color="white"
+                            src={user?.profile_picture}
+                          />
+                        )}
+                      </HStack>
+                    )
+                  })}
+                  <div ref={messagesEndRef} />
+                </VStack>
+              )}
+            </Box>
+
+            {/* Message Input */}
+            <Box borderTopWidth="1px" borderColor={borderColor} pt={3}>
+              <InputGroup size="sm">
+                <Textarea
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSendMessage()
+                    }
+                  }}
+                  placeholder="Type a message... (Shift+Enter for new line)"
+                  minH="60px"
+                  maxH="120px"
+                  resize="none"
+                  isDisabled={sendingMessage}
+                  fontSize="sm"
+                  borderRadius="md"
+                />
+                <InputRightElement h="60px" pr={2}>
+                  <Button
+                    colorScheme="brand"
+                    size="sm"
+                    onClick={handleSendMessage}
+                    isLoading={sendingMessage}
+                    isDisabled={!newMessage.trim()}
+                    leftIcon={<FaPaperPlane />}
+                  >
+                    Send
+                  </Button>
+                </InputRightElement>
+              </InputGroup>
             </Box>
           </VStack>
         </TabPanel>
@@ -744,34 +915,87 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       </Tabs>
     </ModalBody>
 
-    <ModalFooter borderTopWidth="1px" borderColor={borderColor} pt={4}>
-      <Stack direction={{ base: 'column', sm: 'row' }} w="full" spacing={2}>
-        {isActiveChain ? (
-          <>
-            <Box flex={1} bg={useColorModeValue('green.50', 'green.900')} borderWidth="1px" borderColor="green.200" borderRadius="md" px={4} py={2} display="flex" alignItems="center">
-              <HStack spacing={2}>
-                <Icon as={FaCheck} color="green.500" boxSize={3} />
-                <Text fontSize="sm" color={useColorModeValue('green.800', 'green.200')} fontWeight="medium">All participants accepted — coordinate handoffs above</Text>
-              </HStack>
-            </Box>
-            <Button colorScheme="red" variant="outline" size="sm" isDisabled={loading} isLoading={selectedAction === 'cancel' && loading} onClick={handleCancelLoop}>Cancel Loop</Button>
-          </>
-        ) : (
-          <>
-            <Button flex={1} variant="ghost" isDisabled={loading} onClick={handleDecline} isLoading={selectedAction === 'decline' && loading} leftIcon={<FaTimes />}>Decline</Button>
-            <Button flex={1} colorScheme="green" isDisabled={loading || multiWayTrade.status !== 'active'} isLoading={selectedAction === 'accept' && loading} onClick={handleAccept} leftIcon={<FaCheck />}>Accept Trade</Button>
-            {canExecute && (
-              <Button flex={1} colorScheme="brand" isDisabled={loading} isLoading={selectedAction === 'execute' && loading} onClick={handleExecute}>Execute Trade</Button>
-            )}
-            {canManage && (
-              <>
-                <Button colorScheme="gray" variant="outline" isDisabled={loading} isLoading={selectedAction === 'cancel' && loading} onClick={handleCancelLoop}>Cancel Loop</Button>
-                <Button colorScheme="purple" variant="outline" isDisabled={loading} isLoading={selectedAction === 'reinvite' && loading} onClick={handleReinviteLoop}>Reinvite</Button>
-              </>
-            )}
-          </>
+    <ModalFooter borderTopWidth="1px" borderColor={borderColor} pt={6} pb={4}>
+      <VStack w="full" spacing={3} align="stretch">
+        {/* Info Message for Active Chain */}
+        {isActiveChain && (
+          <Box bg={useColorModeValue('green.50', 'green.900')} borderWidth="1px" borderColor="green.200" borderRadius="md" px={4} py={3} display="flex" alignItems="center">
+            <HStack spacing={3} w="full">
+              <Icon as={FaCheck} color="green.500" boxSize={5} flexShrink={0} />
+              <VStack align="start" spacing={0}>
+                <Text fontSize="sm" color={useColorModeValue('green.900', 'green.100')} fontWeight="semibold">All participants accepted</Text>
+                <Text fontSize="xs" color={useColorModeValue('green.800', 'green.200')}>Coordinate handoffs and execute the trade above</Text>
+              </VStack>
+            </HStack>
+          </Box>
         )}
-      </Stack>
+
+        {/* Action Buttons */}
+        <HStack w="full" spacing={3} justify="flex-end">
+          {!isActiveChain ? (
+            <>
+              <Button
+                flex={1}
+                variant="ghost"
+                isDisabled={loading}
+                onClick={handleDecline}
+                isLoading={selectedAction === 'decline' && loading}
+                leftIcon={<FaTimes />}
+                colorScheme="red"
+              >
+                Decline
+              </Button>
+              <Button
+                flex={1}
+                colorScheme="green"
+                isDisabled={loading || multiWayTrade.status !== 'active'}
+                isLoading={selectedAction === 'accept' && loading}
+                onClick={handleAccept}
+                leftIcon={<FaCheck />}
+              >
+                Accept Trade
+              </Button>
+            </>
+          ) : (
+            <>
+              {canExecute && (
+                <Button
+                  flex={1}
+                  colorScheme="brand"
+                  isDisabled={loading}
+                  isLoading={selectedAction === 'execute' && loading}
+                  onClick={handleExecute}
+                  leftIcon={<FaHandshake />}
+                >
+                  Execute Trade
+                </Button>
+              )}
+              {canManage && (
+                <>
+                  <Button
+                    colorScheme="gray"
+                    variant="outline"
+                    isDisabled={loading}
+                    isLoading={selectedAction === 'cancel' && loading}
+                    onClick={handleCancelLoop}
+                  >
+                    Cancel Loop
+                  </Button>
+                  <Button
+                    colorScheme="purple"
+                    variant="outline"
+                    isDisabled={loading}
+                    isLoading={selectedAction === 'reinvite' && loading}
+                    onClick={handleReinviteLoop}
+                  >
+                    Reinvite
+                  </Button>
+                </>
+              )}
+            </>
+          )}
+        </HStack>
+      </VStack>
     </ModalFooter>
       </ModalContent>
     </Modal>

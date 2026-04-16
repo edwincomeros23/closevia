@@ -430,12 +430,14 @@ const AddProduct: React.FC = () => {
     const fetchApprovedOrganizations = async () => {
       try {
         setIsLoadingOrganizations(true)
+        console.log('📦 [AddProduct] Fetching approved organizations...')
         const response = await api.get('/api/organizations/my-approved')
+        console.log('✅ [AddProduct] Approved organizations loaded:', response.data.data)
         if (response.data.success && response.data.data) {
           setApprovedOrganizations(response.data.data)
         }
       } catch (err) {
-        console.error('Failed to fetch approved organizations:', err)
+        console.error('❌ [AddProduct] Failed to fetch approved organizations:', err)
         setApprovedOrganizations([])
       } finally {
         setIsLoadingOrganizations(false)
@@ -787,8 +789,7 @@ const AddProduct: React.FC = () => {
           !!formData.wanted_categories && 
           formData.wanted_categories.length > 0 &&
           !!formData.price &&
-          formData.price > 0 &&
-          !!formData.wants?.trim()
+          formData.price > 0
         )
       case 3:
         return true
@@ -826,7 +827,6 @@ const AddProduct: React.FC = () => {
         if (!formData.location?.trim()) issues.push('Add a location')
         if (!formData.wanted_categories || formData.wanted_categories.length === 0) issues.push('Select desired categories')
         if (!formData.price || formData.price <= 0) issues.push('Enter a desired price')
-        if (!formData.wants?.trim()) issues.push('Enter preferred item')
         return issues.length > 0 ? issues.join(' • ') : 'Complete all required fields'
       case 3:
         return 'Ready to post'
@@ -856,11 +856,6 @@ const AddProduct: React.FC = () => {
     if (!formData.price || formData.price <= 0) {
       toast({
         id: "addproduct-missing-price", title: 'Price required!', description: 'Please enter your desired price.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
-      return
-    }
-    if (!formData.wants?.trim()) {
-      toast({
-        id: "addproduct-missing-wants", title: 'Preferred item required!', description: 'Please specify what item you would like to receive.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
 
@@ -899,17 +894,22 @@ const AddProduct: React.FC = () => {
       // Add organization IDs for tagging
       if (selectedOrganizationIds.length > 0) {
         fd.append('organization_ids', JSON.stringify(selectedOrganizationIds))
+        console.log('📦 [AddProduct] Tagging organizations:', selectedOrganizationIds)
       }
 
       uploadedImages.forEach(f => fd.append('images', f))
       if (uploadedVideo) fd.append('video', uploadedVideo)
 
+      console.log('📤 [AddProduct] Submitting product with organizations:', selectedOrganizationIds.length > 0 ? selectedOrganizationIds : 'none')
       await createProduct(fd)
       await queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
       toast({
         id: "addproduct-product-posted", title: 'All set! 🎉', description: 'Your item is now live and visible to others.', status: 'success', position: 'top', duration: 3000, isClosable: true })
       navigate('/dashboard')
     } catch (err: any) {
+      console.error('❌ [AddProduct] Error creating product:', err)
+      console.error('❌ [AddProduct] Response data:', err.response?.data)
+      console.error('❌ [AddProduct] Response status:', err.response?.status)
       let friendlyMsg = 'Something went wrong while saving your item. Please try again.'
       if (err.response?.status === 413) {
         friendlyMsg = 'One or more of your files are too large. Try uploading a smaller image.'
@@ -1778,6 +1778,7 @@ const AddProduct: React.FC = () => {
                         longitude: loc.longitude,
                       } as any))
                       setCustomPickupLocationSet(true)
+                      setShowCustomPickupMap(true)
                     }}
                     onAddLocation={(name, address, lat, lng) => {
                       addLocation({ name, address, latitude: lat, longitude: lng })
@@ -1900,52 +1901,10 @@ const AddProduct: React.FC = () => {
               )}
             </Box>
 
-            {/* Option 3: No Fixed Location */}
-            <Box 
-              p={2} 
-              borderWidth="1px" 
-              borderRadius="md"
-              bg={formData.location_type === 'no_location' ? 'blue.100' : 'white'}
-              borderColor={formData.location_type === 'no_location' ? 'blue.500' : 'gray.200'}
-              transition="all 0.2s"
-            >
-              <HStack align="start" mb={formData.location_type === 'no_location' ? 1.5 : 0} spacing={2}>
-                <Radio 
-                  isChecked={formData.location_type === 'no_location'}
-                  onChange={() => {
-                    setFormData(prev => ({ ...prev, location_type: 'no_location' }))
-                    setCustomPickupLocationSet(false)
-                  }}
-                  colorScheme="blue"
-                  flex="0 0 auto"
-                  mt={0.5}
-                  cursor="pointer"
-                />
-                <VStack align="start" spacing={0} flex={1} cursor="pointer" onClick={() => {
-                  setFormData(prev => ({ ...prev, location_type: 'no_location' }))
-                  setCustomPickupLocationSet(false)
-                }}>
-                  <Text fontWeight="600" fontSize="xs">🤝 No Fixed Location</Text>
-                  <Text fontSize="10px" color="gray.600">Buyers will negotiate location with you directly</Text>
-                </VStack>
-              </HStack>
-              {formData.location_type === 'no_location' && (
-                <Box pl={6} pt={1} borderTopWidth="1px" borderTopColor="blue.200">
-                  <Alert status="info" variant="subtle" borderRadius="md" py={1} px={2}>
-                    <AlertIcon boxSize={3} />
-                    <Box>
-                      <AlertTitle fontSize="9px">Negotiation Required</AlertTitle>
-                      <AlertDescription fontSize="8px" mt={0.5}>
-                        Buyers will propose a meeting location. You can accept or propose an alternative. Both must agree before confirming.
-                      </AlertDescription>
-                    </Box>
-                  </Alert>
-                </Box>
-              )}
-            </Box>
+
           </VStack>
           <FormHelperText fontSize="8px" mt={1.5} color="blue.700">
-            💡 Fixed location = "Pickup" is primary. No location = buyers must negotiate meeting place.
+            💡 Choose how buyers will collect your product
           </FormHelperText>
         </FormControl>
       </Box>
@@ -2008,109 +1967,41 @@ const AddProduct: React.FC = () => {
           </FormControl>
           
           <FormControl isRequired>
-            <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-              <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Desired Price</FormLabel>
-                <Input
-                  placeholder="e.g. 500"
-                  type="number"
-                  value={formData.price ?? ''}
-                  onChange={e => handleField('price', e.target.value ? Number(e.target.value) : undefined)}
-                  size="sm"
-                  bg="white"
-                  h="36px"
-                  onClick={e => e.stopPropagation()}
-                  min={0}
-                />
-                <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
-              </Box>
-
-              <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={2} fontWeight="600">Preferred Item *</FormLabel>
-                <Input
-                  placeholder="e.g. Any smartphone, mechanical keyboard, etc."
-                  value={formData.wants}
-                  onChange={e => handleField('wants', e.target.value)}
-                  size="sm"
-                  bg="white"
-                  maxLength={80}
-                  h="36px"
-                  onClick={e => e.stopPropagation()}
-                  borderColor={
-                    formData.wants && formData.desired_product && 
-                    formData.wants.toLowerCase().trim() === formData.desired_product.toLowerCase().trim() 
-                      ? 'orange.300' 
-                      : 'gray.200'
-                  }
-                  borderWidth="1px"
-                />
-                {/* Duplicate Detection - Minimal */}
-                {formData.wants && formData.desired_product && 
-                 formData.wants.toLowerCase().trim() === formData.desired_product.toLowerCase().trim() && (
-                  <Text fontSize="8px" color="orange.600" mt={1}>⚠ Same as Ideal Product</Text>
-                )}
-                {/* Quick Suggestions - Minimal */}
-                {formData.wants === '' && (
-                  <HStack spacing={1} mt={1.5}>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      colorScheme="gray"
-                      fontSize="10px"
-                      h="20px"
-                      px={2}
-                      fontWeight="500"
-                      onClick={() => handleField('wants', 'Any')}
-                      _hover={{ color: 'brand.600' }}
-                    >
-                      Any
-                    </Button>
-                    {formData.title && (
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        colorScheme="gray"
-                        fontSize="10px"
-                        h="20px"
-                        px={2}
-                        fontWeight="500"
-                        onClick={() => handleField('wants', `Other ${formData.category || 'items'}`)}
-                        _hover={{ color: 'brand.600' }}
-                      >
-                        Other {formData.category || 'Items'}
-                      </Button>
-                    )}
-                  </HStack>
-                )}
-              </Box>
-
-              <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={2} fontWeight="600">Ideal Product (Optional)</FormLabel>
-                <Input
-                  placeholder="e.g. Sony WH-1000XM5, iPhone 15 Pro Max"
-                  value={formData.desired_product || ''}
-                  onChange={e => handleField('desired_product', e.target.value)}
-                  size="sm"
-                  bg="white"
-                  maxLength={255}
-                  h="36px"
-                  onClick={e => e.stopPropagation()}
-                  borderColor={
-                    formData.desired_product && formData.wants && 
-                    formData.desired_product.toLowerCase().trim() === formData.wants.toLowerCase().trim() 
-                      ? 'orange.300' 
-                      : 'gray.200'
-                  }
-                  borderWidth="1px"
-                />
-                {/* Duplicate Detection - Minimal */}
-                {formData.desired_product && formData.wants && 
-                 formData.desired_product.toLowerCase().trim() === formData.wants.toLowerCase().trim() && (
-                  <Text fontSize="8px" color="orange.600" mt={1}>⚠ Same as Preferred Item</Text>
-                )}
-              </Box>
-            </SimpleGrid>
+            <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Asking Price</FormLabel>
+            <Input
+              placeholder="e.g. 500"
+              type="number"
+              value={formData.price ?? ''}
+              onChange={e => {
+                let val = e.target.value ? Number(e.target.value) : undefined
+                // Prevent negative numbers
+                if (val !== undefined && val < 0) {
+                  val = undefined
+                }
+                handleField('price', val)
+              }}
+              onKeyPress={(e) => {
+                // Block minus and plus signs
+                if (e.key === '-' || e.key === '+') {
+                  e.preventDefault()
+                }
+              }}
+              onBlur={(e) => {
+                const val = Number(e.target.value)
+                if (val < 0) {
+                  handleField('price', undefined)
+                  e.target.value = ''
+                }
+              }}
+              size="sm"
+              bg="white"
+              h="40px"
+              onClick={e => e.stopPropagation()}
+              min={0}
+              step={1}
+              inputMode="numeric"
+            />
+            <FormHelperText fontSize="10px" color="gray.500">Your asking price in ₱</FormHelperText>
           </FormControl>
         </VStack>
       </Box>

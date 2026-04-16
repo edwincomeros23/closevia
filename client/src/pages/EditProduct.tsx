@@ -689,6 +689,7 @@ const EditProduct: React.FC = () => {
                                   longitude: loc.longitude,
                                 } as any))
                                 setLocationSet(true)
+                                setShowLocationMap(true)
                               }}
                               onAddLocation={(name, address, lat, lng) => {
                                 addLocation({ name, address, latitude: lat, longitude: lng })

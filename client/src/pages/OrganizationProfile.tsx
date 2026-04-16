@@ -49,6 +49,8 @@ const OrganizationProfile: React.FC = () => {
   const [adminLoading, setAdminLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [tradeFeedProducts, setTradeFeedProducts] = useState<any[]>([])
+  const [tradeFeedLoading, setTradeFeedLoading] = useState(false)
 
   const fetchOrganization = useCallback(async () => {
     if (!handle) return
@@ -83,6 +85,19 @@ const OrganizationProfile: React.FC = () => {
     }
   }, [handle, communityOrg])
 
+  const fetchTradeFeed = useCallback(async () => {
+    if (!handle || !communityOrg) return
+    setTradeFeedLoading(true)
+    try {
+      const res = await api.get(`/api/organizations/${handle}/trade-feed`)
+      setTradeFeedProducts(Array.isArray(res.data?.data) ? res.data.data : [])
+    } catch {
+      setTradeFeedProducts([])
+    } finally {
+      setTradeFeedLoading(false)
+    }
+  }, [handle, communityOrg])
+
   const fetchAdminData = useCallback(async () => {
     if (!handle || !communityOrg || !user || communityOrg.creator_user_id !== user.id) return
     setAdminLoading(true)
@@ -109,8 +124,9 @@ const OrganizationProfile: React.FC = () => {
     if (!communityOrg) return
     setPostCategoryTag(communityOrg.category || '')
     fetchFeed()
+    fetchTradeFeed()
     fetchAdminData()
-  }, [communityOrg, fetchFeed, fetchAdminData])
+  }, [communityOrg, fetchFeed, fetchTradeFeed, fetchAdminData])
 
   const isCreator = useMemo(() => Boolean(user && communityOrg && Number(user.id) === Number(communityOrg.creator_user_id)), [user, communityOrg])
   const membershipStatus = communityOrg?.membership_status || 'none'
@@ -166,6 +182,9 @@ const OrganizationProfile: React.FC = () => {
       }
       reader.readAsDataURL(file)
     })
+    
+    // Reset input value so same files can be selected again
+    e.target.value = ''
   }
 
   const removeImage = (index: number) => {
@@ -188,7 +207,12 @@ const OrganizationProfile: React.FC = () => {
   }
 
   const handleCreatePost = async () => {
-    if (!handle || !postContent.trim()) return
+    // Allow posting if there's content OR images
+    if (!handle || (!postContent.trim() && postImages.length === 0)) {
+      toast({ title: 'Please add content or images', status: 'warning' })
+      return
+    }
+    
     setPosting(true)
     try {
       const formData = new FormData()
@@ -197,23 +221,31 @@ const OrganizationProfile: React.FC = () => {
       formData.append('is_looking_for', postType === 'looking_for' ? 'true' : 'false')
       
       // Append images
-      postImages.forEach(file => {
-        formData.append('images', file)
-      })
+      if (postImages.length > 0) {
+        postImages.forEach(file => {
+          formData.append('images', file)
+        })
+      }
 
-      await api.post(`/api/organizations/${handle}/posts`, formData, {
+      const res = await api.post(`/api/organizations/${handle}/posts`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       
-      setPostContent('')
-      setPostType('regular')
-      setPostImages([])
-      setImagePreviewUrls([])
-      setPostCategoryTag('')
-      toast({ title: 'Post published', status: 'success' })
-      fetchFeed()
+      if (res.data?.success) {
+        setPostContent('')
+        setPostType('regular')
+        setPostImages([])
+        setImagePreviewUrls([])
+        setPostCategoryTag('')
+        toast({ title: 'Post published successfully!', status: 'success' })
+        fetchFeed()
+      } else {
+        toast({ title: 'Failed to publish post', description: res.data?.error || 'Unknown error', status: 'error' })
+      }
     } catch (err: any) {
-      toast({ title: 'Failed to publish post', description: err?.response?.data?.error || 'Please try again', status: 'error' })
+      console.error('Post creation error:', err)
+      const errorMsg = err?.response?.data?.error || err?.message || 'Please try again'
+      toast({ title: 'Failed to publish post', description: errorMsg, status: 'error' })
     } finally {
       setPosting(false)
     }
@@ -348,18 +380,17 @@ const OrganizationProfile: React.FC = () => {
 
                     {/* File Input - Mobile: Side by side buttons */}
                     <HStack spacing={2} w="full" display={{ base: 'flex', md: 'none' }}>
-                      <Box flex={1}>
+                      <Box as="label" htmlFor="org-post-images-mobile" flex={1} cursor="pointer">
                         <Input
                           type="file"
                           multiple
                           accept="image/*"
                           onChange={handleImageSelect}
                           display="none"
-                          id="org-post-images"
+                          id="org-post-images-mobile"
                         />
                         <Button
-                          as="label"
-                          htmlFor="org-post-images"
+                          as="div"
                           size="sm"
                           variant="outline"
                           leftIcon={<AddIcon />}
@@ -374,18 +405,17 @@ const OrganizationProfile: React.FC = () => {
 
                     {/* File Input - Desktop: Enhanced layout */}
                     <VStack spacing={3} w="full" display={{ base: 'none', md: 'flex' }}>
-                      <Box w="full">
+                      <Box as="label" htmlFor="org-post-images-desktop" w="full" cursor="pointer">
                         <Input
                           type="file"
                           multiple
                           accept="image/*"
                           onChange={handleImageSelect}
                           display="none"
-                          id="org-post-images"
+                          id="org-post-images-desktop"
                         />
                         <Button
-                          as="label"
-                          htmlFor="org-post-images"
+                          as="div"
                           size="sm"
                           variant="outline"
                           leftIcon={<AddIcon />}
@@ -476,6 +506,49 @@ const OrganizationProfile: React.FC = () => {
               </VStack>
             ) : (
               <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }}>Only approved members can view and interact with this feed.</Text>
+            )}
+          </Box>
+        ) : null}
+
+        {communityOrg && isCreator ? (
+          <Box bg="white" borderWidth={{ base: 0, md: '1px' }} borderColor="gray.200" borderRadius={{ base: 0, md: 'xl' }} p={{ base: 3, md: 6 }} boxShadow={{ base: 'none', md: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <Heading size={{ base: 'sm', md: 'lg' }} mb={{ base: 4, md: 6 }} color="gray.900">📦 Trade Feed</Heading>
+            {tradeFeedLoading ? (
+              <Spinner size="sm" />
+            ) : tradeFeedProducts.length === 0 ? (
+              <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }}>No products in trade feed yet.</Text>
+            ) : (
+              <Box display="grid" gridTemplateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }} gap={{ base: 3, md: 4 }}>
+                {tradeFeedProducts.map((product: any) => {
+                  const imageUrls = typeof product.image_urls === 'string' ? 
+                    (product.image_urls.startsWith('[') ? JSON.parse(product.image_urls) : [product.image_urls]) 
+                    : product.image_urls || []
+                  const firstImage = Array.isArray(imageUrls) ? imageUrls[0] : imageUrls
+                  return (
+                    <Box key={product.product_id} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" transition="all 0.2s" _hover={{ boxShadow: '0 4px 12px rgba(0,0,0,0.1)', borderColor: 'teal.300' }}>
+                      <Link as={RouterLink} to={`/products/${product.product_id}`} _hover={{ textDecoration: 'none' }}>
+                        <Box h="160px" bg="gray.100" overflow="hidden" cursor="pointer">
+                          {firstImage ? (
+                            <Image src={getImageUrl(firstImage)} alt={product.title} w="full" h="full" objectFit="cover" _hover={{ transform: 'scale(1.05)', transition: 'transform 0.2s' }} />
+                          ) : (
+                            <Box w="full" h="full" display="flex" alignItems="center" justifyContent="center" bg="gray.200">
+                              <Text fontSize="xs" color="gray.500">No Image</Text>
+                            </Box>
+                          )}
+                        </Box>
+                        <Box p={3}>
+                          <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="600" noOfLines={2} mb={1} _hover={{ color: 'teal.600' }}>{product.title}</Text>
+                          <Text fontSize={{ base: '10px', md: 'xs' }} color="gray.500" noOfLines={1} mb={2}>{product.category}</Text>
+                          <HStack justify="space-between">
+                            <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="700" color="teal.600">₱{product.price}</Text>
+                            <Badge colorScheme="blue" fontSize={{ base: '10px', md: 'xs' }}>{product.status}</Badge>
+                          </HStack>
+                        </Box>
+                      </Link>
+                    </Box>
+                  )
+                })}
+              </Box>
             )}
           </Box>
         ) : null}

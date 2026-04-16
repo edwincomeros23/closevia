@@ -478,7 +478,9 @@ func main() {
 	organizations.Get("/quota", middleware.AuthMiddleware(), organizationHandler.GetQuota)
 	organizations.Get("/my-approved", middleware.AuthMiddleware(), organizationHandler.GetUserApprovedOrganizations)
 	organizations.Post("", middleware.AuthMiddleware(), organizationHandler.CreateOrganization)
-	organizations.Get("/:slug", middleware.OptionalAuthMiddleware(), organizationHandler.GetOrganization)
+
+	// IMPORTANT: Specific routes MUST come before :slug generic route
+	// Otherwise, :slug will match everything and these routes will never execute
 	organizations.Post("/:slug/join-request", middleware.AuthMiddleware(), organizationHandler.RequestJoin)
 	organizations.Get("/:slug/join-requests", middleware.AuthMiddleware(), organizationHandler.ListJoinRequests)
 	organizations.Get("/:slug/members", middleware.AuthMiddleware(), organizationHandler.ListMembers)
@@ -486,11 +488,13 @@ func main() {
 	organizations.Post("/:slug/members/:userId/remove", middleware.AuthMiddleware(), organizationHandler.RemoveMember)
 	organizations.Get("/:slug/feed", middleware.AuthMiddleware(), organizationHandler.GetFeed)
 	organizations.Post("/:slug/posts", middleware.AuthMiddleware(), organizationHandler.CreatePost)
-	organizations.Delete("/:slug", middleware.AuthMiddleware(), organizationHandler.DeleteOrganization)
-
-	// Organization trade posts
 	organizations.Post("/:slug/trade-posts", middleware.AuthMiddleware(), organizationHandler.PostProductForTrade)
 	organizations.Get("/:slug/trade-feed", middleware.AuthMiddleware(), organizationHandler.GetTradeFeed)
+	organizations.Get("/:slug/debug-trade-feed", organizationHandler.DebugGetTradeFeed) // Debug endpoint - no auth
+	organizations.Delete("/:slug", middleware.AuthMiddleware(), organizationHandler.DeleteOrganization)
+
+	// Generic :slug route LAST
+	organizations.Get("/:slug", middleware.OptionalAuthMiddleware(), organizationHandler.GetOrganization)
 
 	// Order routes (authentication required)
 	orders := api.Group("/orders")
