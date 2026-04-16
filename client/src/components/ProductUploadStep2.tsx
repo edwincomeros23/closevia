@@ -124,7 +124,7 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
           const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
           const city = addr.city || addr.town || addr.municipality || ''
           const parts = [barangay, city].filter(Boolean)
-          const address = parts.join(', ') || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+          const address = parts.join(', ') || 'Current location detected'
           setDetails((prev) => ({ ...prev, location: address }))
           toast({
             id: 'location-detected',
@@ -134,11 +134,11 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
             duration: 2000,
           })
         } catch {
-          const fallback = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+          const fallback = 'Current location detected'
           setDetails((prev) => ({ ...prev, location: fallback }))
           toast({
             id: 'location-fallback',
-            title: 'Location detected (coordinates)',
+            title: 'Location detected',
             description: fallback,
             status: 'success',
             duration: 2000,

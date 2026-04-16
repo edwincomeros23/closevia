@@ -156,10 +156,10 @@ const DeliveryUI: React.FC = () => {
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
       )
       const data = await response.json()
-      return data.address?.road || data.address?.street || data.display_name || `${latitude}, ${longitude}`
+      return data.address?.road || data.address?.street || data.display_name || 'Current location detected'
     } catch (error) {
       console.error('Reverse geocoding error:', error)
-      return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+      return 'Current location detected'
     }
   }
 
