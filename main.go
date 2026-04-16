@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -400,6 +401,7 @@ func main() {
 	users := api.Group("/users")
 	users.Get("/profile", middleware.AuthMiddleware(), userHandler.GetProfile)
 	users.Put("/profile", middleware.AuthMiddleware(), userHandler.UpdateProfile)
+	users.Put("/location", middleware.AuthMiddleware(), userHandler.UpdateLocation)
 	users.Post("/profile-picture", middleware.AuthMiddleware(), userHandler.UploadProfilePicture)
 	// School ID verification (optional)
 	users.Post("/verification/start", middleware.AuthMiddleware(), verificationHandler.StartVerification)
@@ -459,6 +461,7 @@ func main() {
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
+	products.Post("/:id/view", productHandler.IncrementViewCount)                              // Track view count (public)
 	products.Post("/boost/:id", middleware.AuthMiddleware(), productHandler.BoostProduct)      // Boost a listing
 	products.Post("/:id/relist", middleware.AuthMiddleware(), productHandler.DuplicateProduct) // Relist (Plus/Pro)
 	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
@@ -473,8 +476,11 @@ func main() {
 	organizations := api.Group("/organizations")
 	organizations.Get("", organizationHandler.ListOrganizations)
 	organizations.Get("/quota", middleware.AuthMiddleware(), organizationHandler.GetQuota)
+	organizations.Get("/my-approved", middleware.AuthMiddleware(), organizationHandler.GetUserApprovedOrganizations)
 	organizations.Post("", middleware.AuthMiddleware(), organizationHandler.CreateOrganization)
-	organizations.Get("/:slug", middleware.OptionalAuthMiddleware(), organizationHandler.GetOrganization)
+
+	// IMPORTANT: Specific routes MUST come before :slug generic route
+	// Otherwise, :slug will match everything and these routes will never execute
 	organizations.Post("/:slug/join-request", middleware.AuthMiddleware(), organizationHandler.RequestJoin)
 	organizations.Get("/:slug/join-requests", middleware.AuthMiddleware(), organizationHandler.ListJoinRequests)
 	organizations.Get("/:slug/members", middleware.AuthMiddleware(), organizationHandler.ListMembers)
@@ -482,11 +488,13 @@ func main() {
 	organizations.Post("/:slug/members/:userId/remove", middleware.AuthMiddleware(), organizationHandler.RemoveMember)
 	organizations.Get("/:slug/feed", middleware.AuthMiddleware(), organizationHandler.GetFeed)
 	organizations.Post("/:slug/posts", middleware.AuthMiddleware(), organizationHandler.CreatePost)
-	organizations.Delete("/:slug", middleware.AuthMiddleware(), organizationHandler.DeleteOrganization)
-
-	// Organization trade posts
 	organizations.Post("/:slug/trade-posts", middleware.AuthMiddleware(), organizationHandler.PostProductForTrade)
 	organizations.Get("/:slug/trade-feed", middleware.AuthMiddleware(), organizationHandler.GetTradeFeed)
+	organizations.Get("/:slug/debug-trade-feed", organizationHandler.DebugGetTradeFeed) // Debug endpoint - no auth
+	organizations.Delete("/:slug", middleware.AuthMiddleware(), organizationHandler.DeleteOrganization)
+
+	// Generic :slug route LAST
+	organizations.Get("/:slug", middleware.OptionalAuthMiddleware(), organizationHandler.GetOrganization)
 
 	// Order routes (authentication required)
 	orders := api.Group("/orders")
@@ -511,6 +519,7 @@ func main() {
 	trades.Post("", middleware.AuthMiddleware(), tradeHandler.CreateTrade) // Support no trailing slash
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
 	trades.Get("", middleware.AuthMiddleware(), tradeHandler.GetTrades) // Support no trailing slash
+	trades.Post("/likes", middleware.AuthMiddleware(), tradeHandler.AddTradeLike)
 	// Loops endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
 	trades.Get("/loops/debug/match", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.DebugMultiwayMatch)
@@ -548,6 +557,30 @@ func main() {
 	// Phase 4: Per-leg disputes & upstream collapse
 	trades.Post("/multiway/legs/:legId/dispute", middleware.AuthMiddleware(), tradeHandler.FileLegDispute)
 
+	// Place search (Google Places / Nominatim) for meetup location autocomplete
+	app.Get("/api/places/search", middleware.OptionalAuthMiddleware(), func(c *fiber.Ctx) error {
+		q := strings.TrimSpace(c.Query("q"))
+		if len(q) < 2 {
+			return c.JSON(fiber.Map{"results": []services.PlaceSuggestion{}})
+		}
+		var biasLat, biasLng *float64
+		if s := c.Query("lat"); s != "" {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				biasLat = &v
+			}
+		}
+		if s := c.Query("lng"); s != "" {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				biasLng = &v
+			}
+		}
+		results, err := services.SearchPlaces(q, biasLat, biasLng)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.JSON(fiber.Map{"results": results})
+	})
+
 	// Counts endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)
@@ -559,6 +592,11 @@ func main() {
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 	trades.Get("/:id/deliveries", middleware.AuthMiddleware(), deliveryHandler.GetTradeDeliveries)
 	trades.Get("/:id/delivery", middleware.AuthMiddleware(), deliveryHandler.GetTradeDelivery)
+
+	// Review routes (initial + follow-up reviews with auto-completion)
+	trades.Post("/:id/reviews", middleware.AuthMiddleware(), tradeHandler.SubmitTradeReview)
+	trades.Get("/:id/reviews", middleware.AuthMiddleware(), tradeHandler.GetTradeReviewHistory)
+	trades.Get("/:id/review-summary", middleware.AuthMiddleware(), tradeHandler.GetReviewSummary)
 
 	// Meetup routes (stage-aware meeting coordination)
 	trades.Post("/:id/meetup/propose", middleware.AuthMiddleware(), meetupHandler.ProposeMeetupTime)

@@ -273,6 +273,7 @@ func CreateTables() error {
 		"authenticity_risks":  "VARCHAR(50) NULL",
 		"tags":                "JSON NULL",
 		"boosted_at":          "TIMESTAMP NULL",
+		"view_count":          "INT DEFAULT 0",
 	}
 
 	for col, def := range productCols {
@@ -381,6 +382,7 @@ func CreateTables() error {
 			longitude FLOAT,
 			video_url VARCHAR(500) NULL,
 			bidding_type ENUM('none', 'blind', 'open') DEFAULT 'none',
+			view_count INT DEFAULT 0,
 			boosted_at TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -565,6 +567,17 @@ func CreateTables() error {
 			INDEX idx_org_trade_posts_org (organization_id, created_at),
 			INDEX idx_org_trade_posts_user (user_id, created_at)
 		)`,
+		`CREATE TABLE IF NOT EXISTS product_organization_tags (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			product_id INT NOT NULL,
+			organization_id INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+			UNIQUE KEY uniq_product_org_tag (product_id, organization_id),
+			INDEX idx_product_id (product_id),
+			INDEX idx_organization_id (organization_id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS comments (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			product_id INT NOT NULL,
@@ -583,6 +596,48 @@ func CreateTables() error {
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
 			UNIQUE KEY uniq_wishlist_item (user_id, product_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_likes (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			liker_id INT NOT NULL,
+			liked_product_id INT NOT NULL,
+			offered_product_id INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (liker_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (liked_product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (offered_product_id) REFERENCES products(id) ON DELETE CASCADE,
+			UNIQUE KEY uniq_trade_like (liker_id, liked_product_id, offered_product_id),
+			INDEX idx_trade_likes_liker (liker_id),
+			INDEX idx_trade_likes_liked_product (liked_product_id),
+			INDEX idx_trade_likes_offered_product (offered_product_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_like_loops (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_key VARCHAR(255) NOT NULL,
+			status ENUM('pending', 'confirmed', 'cancelled') DEFAULT 'pending',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			confirmed_at TIMESTAMP NULL,
+			UNIQUE KEY uniq_trade_like_loop_key (loop_key),
+			INDEX idx_trade_like_loops_status (status)
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_like_loop_participants (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id INT NOT NULL,
+			user_id INT NOT NULL,
+			offered_product_id INT NOT NULL,
+			wanted_product_id INT NOT NULL,
+			position_in_loop INT NOT NULL,
+			status ENUM('pending', 'confirmed', 'declined') DEFAULT 'pending',
+			confirmed_at TIMESTAMP NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (loop_id) REFERENCES trade_like_loops(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (offered_product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (wanted_product_id) REFERENCES products(id) ON DELETE CASCADE,
+			UNIQUE KEY uniq_trade_like_loop_user (loop_id, user_id),
+			INDEX idx_trade_like_loop_user (user_id),
+			INDEX idx_trade_like_loop_loop (loop_id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS saved_products (
 			id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1353,6 +1408,7 @@ func ensureProductColumns() {
 		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
 		{"boosted_at", "TIMESTAMP NULL"},
 		{"max_items_per_offer", "INT DEFAULT 0"},
+		{"view_count", "INT DEFAULT 0"},
 	}
 
 	for _, col := range columns {
@@ -1462,6 +1518,10 @@ func ensureTradeColumns() {
 		{"seller_met", "BOOLEAN DEFAULT FALSE"},
 		{"buyer_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
 		{"seller_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
+		{"cancellation_reason", "VARCHAR(255) NULL"},
+		{"cancelled_by", "INT NULL"},
+		{"cancelled_at", "TIMESTAMP NULL"},
+		{"cancelled_while_active", "BOOLEAN DEFAULT FALSE"},
 		{"dispute_id", "INT NULL COMMENT 'Reference to active dispute'"},
 		{"is_dispute_frozen", "BOOLEAN DEFAULT FALSE COMMENT 'Trade is frozen due to dispute'"},
 		{"archive_timer_paused", "BOOLEAN DEFAULT FALSE COMMENT 'Archive timer paused due to dispute'"},

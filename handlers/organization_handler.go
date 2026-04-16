@@ -5,16 +5,21 @@ package handlers
 // ...existing code...
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
+	"github.com/xashathebest/clovia/services"
 )
 
 // PostProductForTrade allows a member to post a product for trade in the organization
@@ -23,7 +28,10 @@ func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
-	slug := c.Params("slug")
+	slug := normalizeOrgSlug(c.Params("slug"))
+	if slug == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization slug is required"})
+	}
 	var payload struct {
 		ProductID int `json:"product_id"`
 	}
@@ -60,23 +68,27 @@ func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
 
 // GetTradeFeed returns products posted for trade in the org, grouped by product
 func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
-	slug := c.Params("slug")
+	slug := normalizeOrgSlug(c.Params("slug"))
+	if slug == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization slug is required"})
+	}
 	// Get org ID
 	var orgID int
 	err := h.db.QueryRow("SELECT id FROM organizations WHERE slug = ?", slug).Scan(&orgID)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Organization not found"})
 	}
-	// Query all trade posts for this org
+	// Query all trade posts for this org (manually posted) + products tagged with this org
 	rows, err := h.db.Query(`
-		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.status, p.category, p.seller_id,
-			   u.id, u.name, u.profile_picture
-		FROM organization_trade_posts otp
-		JOIN products p ON otp.product_id = p.id
-		JOIN users u ON otp.user_id = u.id
-		WHERE otp.organization_id = ?
-		ORDER BY p.id, otp.created_at DESC
-	`, orgID)
+		SELECT DISTINCT p.id, p.title, p.description, p.price, p.image_urls, p.status, p.category, p.seller_id,
+			   u.id, u.name, u.profile_picture, COALESCE(otp.created_at, NOW()) as post_time
+		FROM products p
+		JOIN users u ON u.id = p.seller_id
+		LEFT JOIN organization_trade_posts otp ON otp.product_id = p.id AND otp.organization_id = ?
+		LEFT JOIN product_organization_tags pot ON pot.product_id = p.id AND pot.organization_id = ?
+		WHERE (otp.organization_id = ? OR pot.organization_id = ?) AND p.status = 'available'
+		ORDER BY post_time DESC, p.id DESC
+	`, orgID, orgID, orgID, orgID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch trade feed"})
 	}
@@ -104,7 +116,8 @@ func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
 		var price float64
 		var sellerID, userID int
 		var userName, userPic string
-		if err := rows.Scan(&pid, &title, &desc, &price, &imageURLs, &status, &category, &sellerID, &userID, &userName, &userPic); err != nil {
+		var postTime interface{} // from COALESCE(otp.created_at, NOW())
+		if err := rows.Scan(&pid, &title, &desc, &price, &imageURLs, &status, &category, &sellerID, &userID, &userName, &userPic, &postTime); err != nil {
 			continue
 		}
 		g, ok := groups[pid]
@@ -122,6 +135,53 @@ func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
 		out = append(out, *g)
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: out})
+}
+
+// DebugGetTradeFeed returns detailed debug info about tagged products
+func (h *OrganizationHandler) DebugGetTradeFeed(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	// Get org ID
+	var orgID int
+	err := h.db.QueryRow("SELECT id FROM organizations WHERE slug = ?", slug).Scan(&orgID)
+	if err != nil {
+		return c.JSON(fiber.Map{"error": "Organization not found"})
+	}
+
+	// Check what products are actually tagged in the database
+	rows, err := h.db.Query(`
+		SELECT pot.product_id, p.title, p.status, p.seller_id, u.name
+		FROM product_organization_tags pot
+		JOIN products p ON p.id = pot.product_id
+		JOIN users u ON u.id = p.seller_id
+		WHERE pot.organization_id = ?
+	`, orgID)
+
+	if err != nil {
+		return c.JSON(fiber.Map{"error": err.Error()})
+	}
+	defer rows.Close()
+
+	var tags []fiber.Map
+	for rows.Next() {
+		var productID, sellerID int
+		var title, status, sellerName string
+		if err := rows.Scan(&productID, &title, &status, &sellerID, &sellerName); err != nil {
+			continue
+		}
+		tags = append(tags, fiber.Map{
+			"product_id":  productID,
+			"title":       title,
+			"status":      status,
+			"seller_id":   sellerID,
+			"seller_name": sellerName,
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"organization_id": orgID,
+		"tagged_products": tags,
+		"total_count":     len(tags),
+	})
 }
 
 type OrganizationHandler struct {
@@ -756,29 +816,69 @@ func (h *OrganizationHandler) CreatePost(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You must be an approved member to post"})
 	}
 
-	var req struct {
-		Content     string `json:"content"`
-		CategoryTag string `json:"category_tag"`
+	// Get form fields
+	content := strings.TrimSpace(c.FormValue("content", ""))
+	categoryTag := strings.TrimSpace(c.FormValue("category_tag", ""))
+	isLookingFor := c.FormValue("is_looking_for", "false") == "true"
+
+	// Validate content or images exist
+	if content == "" {
+		// Check if there are any image files
+		form, _ := c.MultipartForm()
+		hasImages := form != nil && len(form.File["images"]) > 0
+		if !hasImages {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Post content or images are required"})
+		}
 	}
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
-	}
-	req.Content = strings.TrimSpace(req.Content)
-	req.CategoryTag = strings.TrimSpace(req.CategoryTag)
-	if req.Content == "" {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Post content is required"})
-	}
-	if req.CategoryTag == "" {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Category tag is required"})
-	}
-	if !strings.EqualFold(req.CategoryTag, orgCategory) {
+
+	// Category tag is optional - only validate if provided
+	if categoryTag != "" && !strings.EqualFold(categoryTag, orgCategory) {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Post category tag must match organization category"})
 	}
 
+	// Handle image uploads
+	var imageURLs []string
+	form, _ := c.MultipartForm()
+	if form != nil && len(form.File["images"]) > 0 {
+		for _, file := range form.File["images"] {
+			// Validate image
+			if !strings.HasPrefix(file.Header.Get("Content-Type"), "image/") {
+				continue
+			}
+			if file.Size > 10*1024*1024 { // 10MB max
+				continue
+			}
+
+			// Upload to Cloudinary or local
+			url, err := services.UploadFileToCloudinary(file, "organization-posts")
+			if err == nil && url != "" {
+				imageURLs = append(imageURLs, url)
+				continue
+			}
+
+			// Fallback to local storage
+			uploadsDir := filepath.Join(".", "uploads", "organization-posts")
+			os.MkdirAll(uploadsDir, 0755)
+			filename := fmt.Sprintf("%d_%s%s", time.Now().UnixMilli(), uuid.New().String()[:8], filepath.Ext(file.Filename))
+			savePath := filepath.Join(uploadsDir, filename)
+			if saveErr := c.SaveFile(file, savePath); saveErr == nil {
+				imageURLs = append(imageURLs, fmt.Sprintf("/uploads/organization-posts/%s", filename))
+			}
+		}
+	}
+
+	// Convert image URLs to JSON
+	imageURLsJSON := "[]"
+	if len(imageURLs) > 0 {
+		jsonBytes, _ := json.Marshal(imageURLs)
+		imageURLsJSON = string(jsonBytes)
+	}
+
+	// Insert post with images
 	res, err := h.db.Exec(`
-		INSERT INTO organization_posts (organization_id, author_user_id, content, category_tag, is_visible_in_org_feed)
-		VALUES (?, ?, ?, ?, TRUE)
-	`, orgID, userID, req.Content, req.CategoryTag)
+		INSERT INTO organization_posts (organization_id, author_user_id, content, category_tag, image_urls, is_looking_for, is_visible_in_org_feed)
+		VALUES (?, ?, ?, ?, ?, ?, TRUE)
+	`, orgID, userID, content, categoryTag, imageURLsJSON, isLookingFor)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create organization post"})
 	}
@@ -808,7 +908,7 @@ func (h *OrganizationHandler) GetFeed(c *fiber.Ctx) error {
 
 	rows, err := h.db.Query(`
 		SELECT p.id, p.author_user_id, COALESCE(u.slug, ''), COALESCE(u.name, ''), COALESCE(u.profile_picture, ''),
-		       COALESCE(p.content, ''), COALESCE(p.category_tag, ''), p.created_at
+		       COALESCE(p.content, ''), COALESCE(p.category_tag, ''), COALESCE(p.image_urls, '[]'), COALESCE(p.is_looking_for, FALSE), p.created_at
 		FROM organization_posts p
 		JOIN users u ON u.id = p.author_user_id
 		WHERE p.organization_id = ? AND p.is_visible_in_org_feed = TRUE
@@ -823,13 +923,16 @@ func (h *OrganizationHandler) GetFeed(c *fiber.Ctx) error {
 	items := make([]fiber.Map, 0)
 	for rows.Next() {
 		var (
-			id, authorID                                             int
-			authorSlug, authorName, authorPicture, content, category string
-			createdAt                                                time.Time
+			id, authorID                                                      int
+			authorSlug, authorName, authorPicture, content, category, imgJSON string
+			isLookingFor                                                      bool
+			createdAt                                                         time.Time
 		)
-		if err := rows.Scan(&id, &authorID, &authorSlug, &authorName, &authorPicture, &content, &category, &createdAt); err != nil {
+		if err := rows.Scan(&id, &authorID, &authorSlug, &authorName, &authorPicture, &content, &category, &imgJSON, &isLookingFor, &createdAt); err != nil {
 			continue
 		}
+		var imageURLs []string
+		json.Unmarshal([]byte(imgJSON), &imageURLs)
 		items = append(items, fiber.Map{
 			"id":                     id,
 			"author_user_id":         authorID,
@@ -838,7 +941,60 @@ func (h *OrganizationHandler) GetFeed(c *fiber.Ctx) error {
 			"author_profile_picture": authorPicture,
 			"content":                content,
 			"category_tag":           category,
+			"image_urls":             imageURLs,
+			"is_looking_for":         isLookingFor,
 			"created_at":             createdAt,
+		})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: items})
+}
+
+// GetUserApprovedOrganizations returns all organizations where the user is an approved member or creator.
+// Used during product creation to allow tagging organizations.
+func (h *OrganizationHandler) GetUserApprovedOrganizations(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	// Include both: organizations where user is approved member OR organizations where user is creator
+	rows, err := h.db.Query(`
+		SELECT DISTINCT o.id, o.name, o.slug,
+		       COALESCE(o.logo_url, '') as logo_url,
+		       COALESCE(o.description, '') as description
+		FROM organizations o
+		WHERE (
+			-- User is the creator
+			o.creator_user_id = ?
+			-- OR user is an approved member
+			OR EXISTS (
+				SELECT 1 FROM organization_memberships m
+				WHERE m.organization_id = o.id AND m.user_id = ? AND m.status = 'approved'
+			)
+		) AND o.is_deleted = FALSE
+		ORDER BY o.name ASC
+	`, userID, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load organizations"})
+	}
+	defer rows.Close()
+
+	items := make([]fiber.Map, 0)
+	for rows.Next() {
+		var (
+			id                               int
+			name, slug, logoURL, description string
+		)
+		if err := rows.Scan(&id, &name, &slug, &logoURL, &description); err != nil {
+			continue
+		}
+		items = append(items, fiber.Map{
+			"id":          id,
+			"name":        name,
+			"slug":        slug,
+			"logo_url":    logoURL,
+			"description": description,
 		})
 	}
 

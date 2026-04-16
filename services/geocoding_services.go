@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"time"
 )
@@ -127,6 +128,203 @@ func CalculateDistanceBetweenUsers(user1Lat, user1Lon, user2Lat, user2Lon *float
 	}
 	result := CalculateDistance(*user1Lat, *user1Lon, *user2Lat, *user2Lon)
 	return &result, nil
+}
+
+// PlaceSuggestion represents a single place returned by the search API.
+type PlaceSuggestion struct {
+	Name      string  `json:"name"`
+	Address   string  `json:"address"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	PlaceID   string  `json:"place_id,omitempty"`
+}
+
+// googlePlacesTextSearchResponse models Google Places Text Search API response.
+type googlePlacesTextSearchResponse struct {
+	Status  string `json:"status"`
+	Results []struct {
+		Name             string `json:"name"`
+		FormattedAddress string `json:"formatted_address"`
+		Geometry         struct {
+			Location struct {
+				Lat float64 `json:"lat"`
+				Lng float64 `json:"lng"`
+			} `json:"location"`
+		} `json:"geometry"`
+		PlaceID string `json:"place_id"`
+	} `json:"results"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}
+
+// Zamboanga City service area: viewbox + center for strict bias.
+// The app primarily serves WMSU students and nearby residents, so we
+// filter out any place results that land outside this region.
+const (
+	zamboCenterLat   = 6.9214
+	zamboCenterLng   = 122.0790
+	zamboMaxRadiusKm = 50.0
+	// Viewbox covers Zamboanga Peninsula (minLon, minLat, maxLon, maxLat).
+	zamboMinLat = 6.75
+	zamboMaxLat = 7.10
+	zamboMinLng = 121.85
+	zamboMaxLng = 122.25
+)
+
+// SearchPlaces performs a text search for places biased to Zamboanga City.
+// Uses Google Places Text Search when GOOGLE_MAPS_API_KEY is set,
+// otherwise falls back to Nominatim search. Results further than
+// zamboMaxRadiusKm from Zamboanga center are dropped.
+func SearchPlaces(query string, biasLat, biasLng *float64) ([]PlaceSuggestion, error) {
+	query = trimmed(query)
+	if query == "" {
+		return nil, errors.New("query cannot be empty")
+	}
+
+	// Force bias to Zamboanga center when no user coords are provided,
+	// so free-text searches like "jollibee" don't return Manila results.
+	if biasLat == nil || biasLng == nil {
+		lat, lng := zamboCenterLat, zamboCenterLng
+		biasLat = &lat
+		biasLng = &lng
+	}
+
+	var (
+		results []PlaceSuggestion
+		err     error
+	)
+	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
+	if apiKey != "" && apiKey != "your-google-maps-api-key-here" {
+		results, err = searchPlacesGoogle(query, apiKey, biasLat, biasLng)
+	} else {
+		results, err = searchPlacesNominatim(query)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return filterToZamboanga(results), nil
+}
+
+// filterToZamboanga drops results outside the Zamboanga service radius.
+func filterToZamboanga(in []PlaceSuggestion) []PlaceSuggestion {
+	out := make([]PlaceSuggestion, 0, len(in))
+	for _, p := range in {
+		d := CalculateDistance(zamboCenterLat, zamboCenterLng, p.Latitude, p.Longitude)
+		if d.DistanceKm <= zamboMaxRadiusKm {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func searchPlacesGoogle(query, apiKey string, biasLat, biasLng *float64) ([]PlaceSuggestion, error) {
+	params := url.Values{}
+	params.Set("query", query+" Philippines")
+	params.Set("region", "ph")
+	params.Set("key", apiKey)
+	if biasLat != nil && biasLng != nil {
+		params.Set("location", fmt.Sprintf("%f,%f", *biasLat, *biasLng))
+		params.Set("radius", "50000")
+	}
+
+	reqURL := "https://maps.googleapis.com/maps/api/place/textsearch/json?" + params.Encode()
+	resp, err := geocodeHTTPClient.Get(reqURL)
+	if err != nil {
+		return nil, fmt.Errorf("places request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var data googlePlacesTextSearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("decode places: %w", err)
+	}
+	if data.Status != "OK" && data.Status != "ZERO_RESULTS" {
+		return nil, fmt.Errorf("google places status=%s: %s", data.Status, data.ErrorMessage)
+	}
+
+	out := make([]PlaceSuggestion, 0, len(data.Results))
+	for i, r := range data.Results {
+		if i >= 8 {
+			break
+		}
+		out = append(out, PlaceSuggestion{
+			Name:      r.Name,
+			Address:   r.FormattedAddress,
+			Latitude:  r.Geometry.Location.Lat,
+			Longitude: r.Geometry.Location.Lng,
+			PlaceID:   r.PlaceID,
+		})
+	}
+	return out, nil
+}
+
+type nominatimSearchResult struct {
+	DisplayName string `json:"display_name"`
+	Name        string `json:"name"`
+	Lat         string `json:"lat"`
+	Lon         string `json:"lon"`
+}
+
+func searchPlacesNominatim(query string) ([]PlaceSuggestion, error) {
+	reqURL := fmt.Sprintf(
+		"https://nominatim.openstreetmap.org/search?q=%s&format=json&limit=8&countrycodes=ph&addressdetails=0&bounded=1&viewbox=%f,%f,%f,%f",
+		url.QueryEscape(query),
+		zamboMinLng, zamboMaxLat, zamboMaxLng, zamboMinLat,
+	)
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Clovia/1.0 (closevia)")
+
+	resp, err := geocodeHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var results []nominatimSearchResult
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		return nil, err
+	}
+
+	out := make([]PlaceSuggestion, 0, len(results))
+	for _, r := range results {
+		lat, err1 := strconv.ParseFloat(r.Lat, 64)
+		lng, err2 := strconv.ParseFloat(r.Lon, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		name := r.Name
+		if name == "" {
+			name = firstSegment(r.DisplayName)
+		}
+		out = append(out, PlaceSuggestion{
+			Name:      name,
+			Address:   r.DisplayName,
+			Latitude:  lat,
+			Longitude: lng,
+		})
+	}
+	return out, nil
+}
+
+func trimmed(s string) string {
+	for len(s) > 0 && (s[0] == ' ' || s[0] == '\t' || s[0] == '\n') {
+		s = s[1:]
+	}
+	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '\t' || s[len(s)-1] == '\n') {
+		s = s[:len(s)-1]
+	}
+	return s
+}
+
+func firstSegment(s string) string {
+	for i, c := range s {
+		if c == ',' {
+			return s[:i]
+		}
+	}
+	return s
 }
 
 // CalculateDistanceToProduct calculates distance between a user and a product location.

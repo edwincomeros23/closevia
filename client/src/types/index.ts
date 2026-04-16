@@ -55,6 +55,7 @@ export interface Product {
   allow_buying: boolean
   barter_only: boolean
   location?: string
+  location_type?: 'current_location' | 'pickup_location' | 'no_location'
   condition?: string
   suggested_value?: number
   category?: string
@@ -80,6 +81,14 @@ export interface Product {
   wants?: string;
   brand?: string;
   max_items_per_offer?: number;
+  view_count?: number;
+  organization_tags?: Array<{
+    id: number;
+    slug: string;
+    name: string;
+    logo_url?: string;
+    description?: string;
+  }>;
 }
 
 export interface Order {
@@ -125,6 +134,9 @@ export interface ProductUpdate {
   max_items_per_offer?: number
   wants?: string
   wanted_categories?: string[]
+  latitude?: number
+  longitude?: number
+  location_type?: 'current_location' | 'pickup_location' | 'no_location'
 }
 
 export interface OrderCreate {
@@ -216,6 +228,7 @@ export interface Trade {
   seller_met?: boolean
   transaction_proof_url?: string
   trade_option?: TradeOption // 'meetup' or 'delivery'
+  meeting_type?: 'meetup' | 'pickup' // Type of meeting flow: 'meetup' (mutual agreement) or 'pickup' (seller-set location)
   option_change_requested?: TradeOption // Requested option change (pending approval)
   option_change_requested_by?: number // User ID who requested the change
   delivery_address?: string // Delivery address if option is 'delivery'
@@ -233,6 +246,9 @@ export interface Trade {
   // Counter offer fields
   counter_offered_product_ids?: number[] // Product IDs offered in counter
   counter_offered_cash_amount?: number | null // Cash amount offered in counter
+  // Review rating fields
+  buyer_rating?: number // Rating given by buyer (1-5)
+  seller_rating?: number // Rating given by seller (1-5)
 }
 
 // Multi-way/Three-way Trading Types
@@ -270,7 +286,7 @@ export interface MultiWayTrade {
   participants: MultiWayTradeParticipant[]
   edges: TradeEdge[]
   total_value?: number
-  status: 'active' | 'completed' | 'cancelled' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
+  status: 'pending' | 'confirmed' | 'cancelled' | 'active' | 'completed' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
   created_at?: string
   expires_at?: string
 }
@@ -288,6 +304,7 @@ export interface TradeCreate {
   message?: string
   offered_cash_amount?: number
   trade_option: TradeOption // Required: 'meetup' or 'delivery'
+  meeting_type?: 'meetup' | 'pickup' // Type of meeting flow for trades
   delivery_address?: string // Required if trade_option is 'delivery'
   payment_method?: 'cod' | 'upfront' // Payment method preference for buyout offers
 }

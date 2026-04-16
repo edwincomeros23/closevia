@@ -148,15 +148,19 @@ const Premium: React.FC = () => {
   const handleBoostProduct = async (productId: number) => {
     try {
       setBoostingProduct(productId)
+      const product = userProducts.find(p => p.id === productId)
+      const productName = product?.title || 'Product'
+      
       const response = await api.post(`/api/products/${productId}/boost`)
       
       if (response.data?.success) {
         toast({
           id: 'boost-success',
-          title: 'Success',
-          description: 'Product boosted! It will appear higher in the feed.',
+          title: '🚀 Boost Successful!',
+          description: `"${productName}" is now boosted and will appear at the top of the feed for the next 3 hours!`,
           status: 'success',
-          duration: 3000,
+          duration: 4000,
+          isClosable: true,
         })
         // Refresh products list to show updated boost status
         fetchUserProducts()
@@ -168,7 +172,8 @@ const Premium: React.FC = () => {
         title: 'Boost Failed',
         description: errorMsg,
         status: 'error',
-        duration: 3000,
+        duration: 4000,
+        isClosable: true,
       })
     } finally {
       setBoostingProduct(null)
@@ -610,15 +615,16 @@ const Premium: React.FC = () => {
                       {currentTier !== 'free' && (
                         <Button
                           size="sm"
-                          colorScheme={product.boosted_at ? 'brand' : 'gray'}
+                          colorScheme={product.boosted_at ? 'orange' : 'brand'}
                           variant={product.boosted_at ? 'solid' : 'outline'}
                           w="full"
                           leftIcon={<FaRocket />}
                           isLoading={boostingProduct === product.id}
                           isDisabled={product.status !== 'available' || boostingProduct === product.id}
                           onClick={() => handleBoostProduct(product.id)}
+                          title={product.boosted_at ? 'Product is currently boosted' : 'Boost for 3 hours to top of feed'}
                         >
-                          {product.boosted_at ? 'Boosted' : 'Boost'}
+                          {product.boosted_at ? '⭐ Boosted Now' : '🚀 Boost for 3h'}
                         </Button>
                       )}
                       {currentTier === 'free' && (

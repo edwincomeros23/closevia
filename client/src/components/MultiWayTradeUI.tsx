@@ -295,9 +295,9 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
               loadingText={viewMode === 'initiator' ? 'Opening...' : 'Joining...'}
               w="full"
               fontWeight="bold"
-              isDisabled={viewMode === 'initiator' ? false : (!canJoin && loopStatus !== 'active' && loopStatus !== 'user3_accepted')}
+              isDisabled={viewMode === 'initiator' ? false : (!canJoin && loopStatus !== 'active' && loopStatus !== 'user3_accepted' && loopStatus !== 'confirmed')}
             >
-              {viewMode === 'initiator' ? 'View Loop Details' : (loopStatus === 'user3_accepted' || loopStatus === 'active' ? 'View Loop Details' : 'Hop In')}
+              {viewMode === 'initiator' ? 'View Loop Details' : (loopStatus === 'user3_accepted' || loopStatus === 'active' || loopStatus === 'confirmed' ? 'View Loop Details' : 'Hop In')}
             </Button>
 
             {viewMode === 'participant' && loopType === 'detected_loop' && !canCreate && (

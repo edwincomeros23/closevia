@@ -1449,8 +1449,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       const trade = activity
                       const isBuyer = currentUser && trade.buyer_id === currentUser?.id
                       const counterpartName = isBuyer ? trade.seller_name : trade.buyer_name
-                      const completedDate = trade.completed_at
-                        ? new Date(trade.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                      
+                      // Format completion datetime
+                      const completedDateTime = trade.completed_at 
+                        ? new Date(trade.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                         : new Date(trade.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
                       const buyerRating = trade.buyer_rating as number | null | undefined
@@ -1468,148 +1470,127 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       const offeredImage = firstOffered?.product_image_url || '/placeholder-item.jpg'
                       const offeredTitle = firstOffered?.product_title || 'Offered item'
 
-                      const tradeTitle = `${offeredTitle} ⇌ ${targetTitle}`
                       const tradeAction = isBuyer ? 'Received' : 'Sent'
 
                       return (
                         <Box
                           key={trade.id}
-                          p={4}
+                          p={2.5}
                           borderWidth="1px"
                           borderColor="gray.200"
-                          borderRadius="lg"
+                          borderRadius="md"
                           bg="linear-gradient(135deg, #FFFCF0 0%, #FFFDF1 100%)"
-                          mb={3}
+                          mb={2}
                           _hover={{ shadow: 'md', borderColor: 'blue.300' }}
                           transition="all 0.2s"
                         >
-                          {/* HEADER ROW: Two thumbnails, trade title, date */}
-                          <VStack spacing={3} align="stretch">
-                            {/* Thumbnails row with date */}
-                            <HStack spacing={2} align="center" justify="space-between">
-                              <HStack spacing={2} align="center" flexShrink={0}>
-                                <Box w="56px" h="56px" bg="white" border="2px" borderColor="gray.200" borderRadius="lg" overflow="hidden" flexShrink={0}>
+                          {/* COMPACT HEADER: Images, details, date */}
+                          <VStack spacing={1.5} align="stretch">
+                            {/* Top row: images and info */}
+                            <HStack spacing={2} align="flex-start" justify="space-between">
+                              <HStack spacing={1.5} align="center" flexShrink={0}>
+                                {/* Offered item thumbnail */}
+                                <Box w="40px" h="40px" bg="white" border="1px" borderColor="gray.300" borderRadius="md" overflow="hidden" flexShrink={0}>
                                   <Image src={offeredImage} alt={offeredTitle} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
                                 </Box>
-                                <VStack spacing={0.5} align="center" flexShrink={0}>
-                                  <Text fontSize="10px" color="gray.500" fontWeight="bold">TRADED</Text>
-                                  <Text fontSize="lg" color="brand.400" fontWeight="bold">⇌</Text>
-                                </VStack>
-                                <Box w="56px" h="56px" bg="white" border="2px" borderColor="gray.200" borderRadius="lg" overflow="hidden" flexShrink={0}>
+                                {/* Exchange arrow */}
+                                <Text fontSize="xs" color="brand.400" fontWeight="bold">↔</Text>
+                                {/* Target item thumbnail */}
+                                <Box w="40px" h="40px" bg="white" border="1px" borderColor="gray.300" borderRadius="md" overflow="hidden" flexShrink={0}>
                                   <Image src={targetImage} alt={targetTitle} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
                                 </Box>
                               </HStack>
-                              <Text fontSize="xs" color="gray.500" fontWeight="semibold" flexShrink={0} textAlign="right">
-                                {completedDate}
-                              </Text>
+                              
+                              {/* Right side: date and details */}
+                              <VStack spacing={0} align="end" flex={1}>
+                                <Text fontSize="10px" color="gray.500" fontWeight="semibold">
+                                  {completedDateTime}
+                                </Text>
+                                <Text fontSize="10px" color="gray.600">
+                                  with {counterpartName || 'Trader'}
+                                </Text>
+                              </VStack>
                             </HStack>
 
-                            {/* Trade title */}
+                            {/* Product titles row */}
                             <Box>
-                              <Text fontWeight="bold" fontSize="sm" color="gray.900" noOfLines={2}>
-                                {tradeTitle}
+                              <Text fontWeight="600" fontSize="11px" color="gray.900" noOfLines={1} title={offeredTitle}>
+                                {offeredTitle}
                               </Text>
-                              <Text fontSize="xs" color="gray.600" mt={1}>
-                                You {tradeAction.toLowerCase()} • with {counterpartName || 'Trader'}
+                              <Text fontWeight="600" fontSize="11px" color="gray.900" noOfLines={1} title={targetTitle}>
+                                {targetTitle}
                               </Text>
                             </Box>
+
+                            {/* Ratings row (compact inline) */}
+                            {((buyerRating && buyerRating > 0) || (sellerRating && sellerRating > 0)) && (
+                              <HStack spacing={2} fontSize="10px">
+                                {buyerRating && buyerRating > 0 && (
+                                  <HStack spacing={0.5} flexShrink={0}>
+                                    <HStack spacing={0.25}>
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <Icon
+                                          key={`buyer-star-${star}`}
+                                          as={FiStar}
+                                          boxSize={3}
+                                          color={star <= buyerRating ? 'yellow.400' : 'gray.300'}
+                                          fill={star <= buyerRating ? 'currentColor' : 'none'}
+                                        />
+                                      ))}
+                                    </HStack>
+                                    <Text fontSize="9px" color="gray.600" fontWeight="bold">{buyerRating}</Text>
+                                  </HStack>
+                                )}
+                                {sellerRating && sellerRating > 0 && (
+                                  <HStack spacing={0.5} flexShrink={0}>
+                                    <HStack spacing={0.25}>
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <Icon
+                                          key={`seller-star-${star}`}
+                                          as={FiStar}
+                                          boxSize={3}
+                                          color={star <= sellerRating ? 'yellow.400' : 'gray.300'}
+                                          fill={star <= sellerRating ? 'currentColor' : 'none'}
+                                        />
+                                      ))}
+                                    </HStack>
+                                    <Text fontSize="9px" color="gray.600" fontWeight="bold">{sellerRating}</Text>
+                                  </HStack>
+                                )}
+                              </HStack>
+                            )}
+
+                            {/* Feedback (compact inline) */}
+                            {(buyerFeedback?.trim() || sellerFeedback?.trim()) && (
+                              <Box fontSize="9px" color="gray.700" bg="blue.50" p={1.5} borderRadius="sm">
+                                {buyerFeedback?.trim() && (
+                                  <Text noOfLines={1} fontStyle="italic">
+                                    "{buyerFeedback.trim()}"
+                                  </Text>
+                                )}
+                                {sellerFeedback?.trim() && (
+                                  <Text noOfLines={1} fontStyle="italic">
+                                    "{sellerFeedback.trim()}"
+                                  </Text>
+                                )}
+                              </Box>
+                            )}
                           </VStack>
 
-                          {/* REVIEWS SECTION */}
-                          {((buyerRating && buyerRating > 0) || buyerFeedback?.trim()) || ((sellerRating && sellerRating > 0) || sellerFeedback?.trim()) ? (
-                            <>
-                              <Divider my={3} borderColor="gray.300" />
-                              <VStack spacing={3} align="stretch">
-                                {/* RECEIVER RATING  */}
-                                {((buyerRating && buyerRating > 0) || buyerFeedback?.trim()) && (
-                                  <Box bg="white" p={3} borderRadius="md" border="1px" borderColor="gray.100">
-                                    <VStack align="start" spacing={2}>
-                                      <HStack spacing={2}>
-                                        <Badge colorScheme="blue" fontSize="xs" fontWeight="bold">
-                                          {isBuyer ? 'Your rating' : 'Their rating'}
-                                        </Badge>
-                                        <Text fontSize="xs" color="gray.600" fontWeight="medium">
-                                          {trade.buyer_name || 'Trader'}
-                                        </Text>
-                                      </HStack>
-                                      {buyerRating && buyerRating > 0 && (
-                                        <HStack spacing={1} align="center">
-                                          <HStack spacing={0.5}>
-                                            {[1, 2, 3, 4, 5].map((star) => (
-                                              <Icon
-                                                key={`buyer-star-${star}`}
-                                                as={FiStar}
-                                                boxSize={4}
-                                                color={star <= buyerRating ? 'yellow.400' : 'gray.300'}
-                                                fill={star <= buyerRating ? 'currentColor' : 'none'}
-                                              />
-                                            ))}
-                                          </HStack>
-                                          <Text fontSize="sm" color="gray.700" fontWeight="bold">{buyerRating}/5</Text>
-                                        </HStack>
-                                      )}
-                                      {buyerFeedback?.trim() && (
-                                        <Text fontSize="xs" color="gray.700" fontStyle="italic" noOfLines={2}>
-                                          "{buyerFeedback.trim()}"
-                                        </Text>
-                                      )}
-                                    </VStack>
-                                  </Box>
-                                )}
-
-                                {/* SENDER RATING */}
-                                {((sellerRating && sellerRating > 0) || sellerFeedback?.trim()) && (
-                                  <Box bg="white" p={3} borderRadius="md" border="1px" borderColor="gray.100">
-                                    <VStack align="start" spacing={2}>
-                                      <HStack spacing={2}>
-                                        <Badge colorScheme="green" fontSize="xs" fontWeight="bold">
-                                          {isBuyer ? 'Their rating' : 'Your rating'}
-                                        </Badge>
-                                        <Text fontSize="xs" color="gray.600" fontWeight="medium">
-                                          {trade.seller_name || 'Trader'}
-                                        </Text>
-                                      </HStack>
-                                      {sellerRating && sellerRating > 0 && (
-                                        <HStack spacing={1} align="center">
-                                          <HStack spacing={0.5}>
-                                            {[1, 2, 3, 4, 5].map((star) => (
-                                              <Icon
-                                                key={`seller-star-${star}`}
-                                                as={FiStar}
-                                                boxSize={4}
-                                                color={star <= sellerRating ? 'yellow.400' : 'gray.300'}
-                                                fill={star <= sellerRating ? 'currentColor' : 'none'}
-                                              />
-                                            ))}
-                                          </HStack>
-                                          <Text fontSize="sm" color="gray.700" fontWeight="bold">{sellerRating}/5</Text>
-                                        </HStack>
-                                      )}
-                                      {sellerFeedback?.trim() && (
-                                        <Text fontSize="xs" color="gray.700" fontStyle="italic" noOfLines={2}>
-                                          "{sellerFeedback.trim()}"
-                                        </Text>
-                                      )}
-                                    </VStack>
-                                  </Box>
-                                )}
-                              </VStack>
-                            </>
-                          ) : null}
-
-                          {/* Action buttons if needed */}
+                          {/* Action buttons if needed - compact */}
                           {trade.status === 'completed' && !activity.review && currentUser && completedTradesNeedingReview.has(trade.id) && (
-                            <HStack justify="flex-end" mt={3} pt={2} borderTop="1px solid" borderColor="gray.200">
-                              <Text fontSize="xs" color="amber.600">
-                                ⭐ Share your feedback
+                            <HStack justify="center" mt={1.5} pt={1.5} borderTop="1px solid" borderColor="gray.200" spacing={2}>
+                              <Text fontSize="9px" color="amber.600" fontWeight="bold">
+                                ⭐ Review needed
                               </Text>
                               <Button
                                 size="xs"
                                 colorScheme="brand"
-                                leftIcon={<Icon as={FiStar} />}
+                                height="20px"
+                                fontSize="9px"
                                 onClick={() => handleOpenReviewModal(trade.id)}
                               >
-                                Review
+                                Rate
                               </Button>
                             </HStack>
                           )}

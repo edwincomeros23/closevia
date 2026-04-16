@@ -35,8 +35,19 @@ import {
   ModalBody,
   ModalCloseButton,
   Circle,
+  Checkbox,
+  Wrap,
+  WrapItem,
+  Radio,
+  RadioGroup,
+  Stack,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon, InfoOutlineIcon } from '@chakra-ui/icons'
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import { useCustomLocations } from '../hooks/useCustomLocations'
+import { SavedLocationsUI } from '../components/SavedLocationsUI'
 
 export interface ProductFormData {
   title: string
@@ -52,6 +63,7 @@ export interface ProductFormData {
   bidding_type: string
   max_items_per_offer: number
   location: string
+  location_type?: 'current_location' | 'pickup_location' | 'no_location'
   latitude?: number
   longitude?: number
 
@@ -112,6 +124,39 @@ const canMakeAIRequest = (): boolean => {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
+// Fix leaflet icon issues
+// @ts-ignore
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+})
+
+const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
+  const map = useMap()
+  useEffect(() => {
+    map.setView([lat, lng], 16, { animate: true })
+    map.invalidateSize()
+  }, [lat, lng, map])
+  return null
+}
+
+const MapClickHandler = ({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) => {
+  const map = useMap()
+  useEffect(() => {
+    const handleClick = (e: any) => {
+      const { lat, lng } = e.latlng
+      onLocationSelect(lat, lng)
+    }
+    map.on('click', handleClick)
+    return () => {
+      map.off('click', handleClick)
+    }
+  }, [map, onLocationSelect])
+  return null
+}
+
 const AddProduct: React.FC = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -119,6 +164,9 @@ const AddProduct: React.FC = () => {
   const { createProduct } = useProducts()
   const toast = useToast()
   const aiTriggeredRef = useRef(false)
+
+  // Custom locations
+  const { locations, addLocation, deleteLocation, updateLocation } = useCustomLocations()
 
   // Webcam state for desktop camera capture
   const [isCameraOpen, setIsCameraOpen] = useState(false)
@@ -179,6 +227,7 @@ const AddProduct: React.FC = () => {
     allow_buying: false,
     barter_only: true,
     location: '',
+    location_type: 'no_location',
     condition: '',
     category: '',
     bidding_type: 'none',
@@ -227,9 +276,29 @@ const AddProduct: React.FC = () => {
   const [isGettingLocation, setIsGettingLocation] = useState(false)
   const [useMockLocation, setUseMockLocation] = useState(false)
   const [mockLocationText, setMockLocationText] = useState('Makati City')
+  const [showCustomPickupMap, setShowCustomPickupMap] = useState(false)
+  const [customPickupLocationSet, setCustomPickupLocationSet] = useState(false)
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
+
+  // Pickup location search state
+  const [pickupSearchQuery, setPickupSearchQuery] = useState('')
+  const [pickupSearchResults, setPickupSearchResults] = useState<Array<{ name: string; address: string; lat: number; lng: number }>>([])
+  const [isSearchingPickupLocation, setIsSearchingPickupLocation] = useState(false)
+  const [showPickupSearchDropdown, setShowPickupSearchDropdown] = useState(false)
+
+  // Organization tagging state
+  interface Organization {
+    id: number
+    name: string
+    slug: string
+    logo_url?: string
+    description?: string
+  }
+  const [approvedOrganizations, setApprovedOrganizations] = useState<Organization[]>([])
+  const [selectedOrganizationIds, setSelectedOrganizationIds] = useState<number[]>([])
+  const [isLoadingOrganizations, setIsLoadingOrganizations] = useState(false)
   
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -244,16 +313,19 @@ const AddProduct: React.FC = () => {
       async (pos) => {
         const { latitude, longitude } = pos.coords
         setFormData(prev => ({ ...prev, latitude, longitude }))
+        // Persist user's coords so distance from other users stays fresh.
+        api.put('/api/users/location', { latitude, longitude }).catch(() => {})
         try {
           const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+            `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${latitude}&lon=${longitude}`
           )
           const data = await res.json()
           const addr = data.address || {}
-          // Format: "Barangay Name, City"
-          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || ''
-          const city = addr.city || addr.town || ''
-          const parts = [barangay, city].filter(Boolean)
+          // Build most specific address we can: street + barangay + city.
+          const street = [addr.house_number, addr.road || addr.street].filter(Boolean).join(' ')
+          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
+          const city = addr.city || addr.town || addr.municipality || ''
+          const parts = [street, barangay, city].filter(Boolean)
           const address = parts.join(', ') || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
           setLocationText(address)
           setFormData(prev => ({ ...prev, location: address }))
@@ -273,9 +345,110 @@ const AddProduct: React.FC = () => {
     )
   }, [])
 
+  // Manual-entry fallback: user types an address, we forward-geocode it and
+  // save both the text and resolved coords so distance is still accurate.
+  const [manualLocationOpen, setManualLocationOpen] = useState(false)
+  const [manualLocationInput, setManualLocationInput] = useState('')
+  const [manualLocationSaving, setManualLocationSaving] = useState(false)
+  const saveManualLocation = useCallback(async () => {
+    const q = manualLocationInput.trim()
+    if (!q) return
+    setManualLocationSaving(true)
+    try {
+      const res = await api.put('/api/users/location', { location: q })
+      const coords = res.data?.data || res.data
+      const lat = Number(coords?.latitude)
+      const lng = Number(coords?.longitude)
+      if (!isNaN(lat) && !isNaN(lng)) {
+        setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: q }))
+      } else {
+        setFormData(prev => ({ ...prev, location: q }))
+      }
+      setLocationText(q)
+      setLocationDetected(true)
+      setManualLocationOpen(false)
+      setManualLocationInput('')
+    } catch (err: any) {
+      toast({
+        title: 'Could not find that place',
+        description: err?.response?.data?.error || 'Try a more specific address.',
+        status: 'warning',
+        duration: 3000,
+      })
+    } finally {
+      setManualLocationSaving(false)
+    }
+  }, [manualLocationInput, toast])
+
+  // Search for pickup locations
+  const searchPickupLocations = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setPickupSearchResults([])
+      return
+    }
+    setIsSearchingPickupLocation(true)
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`
+      )
+      const results = await response.json()
+      const formatted = results.map((r: any) => ({
+        name: r.name || r.display_name.split(',')[0],
+        address: r.display_name,
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon),
+      }))
+      setPickupSearchResults(formatted)
+      setShowPickupSearchDropdown(true)
+    } catch (err) {
+      console.error('Error searching locations:', err)
+      setPickupSearchResults([])
+    } finally {
+      setIsSearchingPickupLocation(false)
+    }
+  }, [])
+
+  // Handle pickup location selection from search
+  const selectPickupLocation = useCallback((result: { name: string; address: string; lat: number; lng: number }) => {
+    setFormData(prev => ({
+      ...prev,
+      latitude: result.lat,
+      longitude: result.lng,
+      location: result.address,
+    }))
+    setCustomPickupLocationSet(true)
+    setPickupSearchQuery('')
+    setPickupSearchResults([])
+    setShowPickupSearchDropdown(false)
+  }, [])
+
   useEffect(() => {
     detectLocation()
   }, [detectLocation])
+
+  // Fetch user's approved organizations
+  useEffect(() => {
+    const fetchApprovedOrganizations = async () => {
+      try {
+        setIsLoadingOrganizations(true)
+        console.log('📦 [AddProduct] Fetching approved organizations...')
+        const response = await api.get('/api/organizations/my-approved')
+        console.log('✅ [AddProduct] Approved organizations loaded:', response.data.data)
+        if (response.data.success && response.data.data) {
+          setApprovedOrganizations(response.data.data)
+        }
+      } catch (err) {
+        console.error('❌ [AddProduct] Failed to fetch approved organizations:', err)
+        setApprovedOrganizations([])
+      } finally {
+        setIsLoadingOrganizations(false)
+      }
+    }
+
+    if (user) {
+      fetchApprovedOrganizations()
+    }
+  }, [user])
 
   // ── AI Generation ─────────────────────────────────────────────────────────
 
@@ -617,8 +790,7 @@ const AddProduct: React.FC = () => {
           !!formData.wanted_categories && 
           formData.wanted_categories.length > 0 &&
           !!formData.price &&
-          formData.price > 0 &&
-          !!formData.wants?.trim()
+          formData.price > 0
         )
       case 3:
         return true
@@ -656,7 +828,6 @@ const AddProduct: React.FC = () => {
         if (!formData.location?.trim()) issues.push('Add a location')
         if (!formData.wanted_categories || formData.wanted_categories.length === 0) issues.push('Select desired categories')
         if (!formData.price || formData.price <= 0) issues.push('Enter a desired price')
-        if (!formData.wants?.trim()) issues.push('Enter preferred item')
         return issues.length > 0 ? issues.join(' • ') : 'Complete all required fields'
       case 3:
         return 'Ready to post'
@@ -686,11 +857,6 @@ const AddProduct: React.FC = () => {
     if (!formData.price || formData.price <= 0) {
       toast({
         id: "addproduct-missing-price", title: 'Price required!', description: 'Please enter your desired price.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
-      return
-    }
-    if (!formData.wants?.trim()) {
-      toast({
-        id: "addproduct-missing-wants", title: 'Preferred item required!', description: 'Please specify what item you would like to receive.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
 
@@ -725,10 +891,17 @@ const AddProduct: React.FC = () => {
       }
       if (formData.wants) fd.append('wants', formData.wants)
       if (formData.desired_product) fd.append('desired_product', formData.desired_product)
+      
+      // Add organization IDs for tagging
+      if (selectedOrganizationIds.length > 0) {
+        fd.append('organization_ids', JSON.stringify(selectedOrganizationIds))
+        console.log('📦 [AddProduct] Tagging organizations:', selectedOrganizationIds)
+      }
 
       uploadedImages.forEach(f => fd.append('images', f))
       if (uploadedVideo) fd.append('video', uploadedVideo)
 
+      console.log('📤 [AddProduct] Submitting product with organizations:', selectedOrganizationIds.length > 0 ? selectedOrganizationIds : 'none')
       await createProduct(fd)
 
       // Ensure the dashboard shows the new listing immediately after redirect.
@@ -752,6 +925,9 @@ const AddProduct: React.FC = () => {
         id: "addproduct-product-posted", title: 'All set! 🎉', description: 'Your item is now live and visible to others.', status: 'success', position: 'top', duration: 3000, isClosable: true })
       navigate('/dashboard')
     } catch (err: any) {
+      console.error('❌ [AddProduct] Error creating product:', err)
+      console.error('❌ [AddProduct] Response data:', err.response?.data)
+      console.error('❌ [AddProduct] Response status:', err.response?.status)
       let friendlyMsg = 'Something went wrong while saving your item. Please try again.'
       if (err.response?.status === 413) {
         friendlyMsg = 'One or more of your files are too large. Try uploading a smaller image.'
@@ -1395,23 +1571,57 @@ const AddProduct: React.FC = () => {
               <Text fontSize="xs" color="gray.600">Detecting location...</Text>
             </HStack>
           ) : locationDetected && locationText ? (
-            <HStack justify="space-between" align="center" spacing={2}>
-              <Text fontSize="sm" fontWeight="medium" color="gray.800">
-                📍 {locationText}
-              </Text>
-              <Button
-                size="xs"
-                variant="outline"
-                fontSize="9px"
-                h="auto"
-                py={1}
-                onClick={detectLocation}
-                isLoading={isGettingLocation}
-                _hover={{ bg: "gray.200" }}
-              >
-                Change
-              </Button>
-            </HStack>
+            <VStack align="stretch" spacing={2}>
+              <HStack justify="space-between" align="center" spacing={2}>
+                <Text fontSize="sm" fontWeight="medium" color="gray.800">
+                  📍 {locationText}
+                </Text>
+                <HStack spacing={1}>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    fontSize="9px"
+                    h="auto"
+                    py={1}
+                    onClick={detectLocation}
+                    isLoading={isGettingLocation}
+                    _hover={{ bg: "gray.200" }}
+                  >
+                    Retry
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    fontSize="9px"
+                    h="auto"
+                    py={1}
+                    onClick={() => {
+                      setManualLocationInput(locationText)
+                      setManualLocationOpen(true)
+                    }}
+                  >
+                    Enter manually
+                  </Button>
+                </HStack>
+              </HStack>
+              {manualLocationOpen && (
+                <HStack spacing={2}>
+                  <Input
+                    size="sm"
+                    placeholder="e.g., Barangay Mercedes, Zamboanga City"
+                    value={manualLocationInput}
+                    onChange={(e) => setManualLocationInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveManualLocation() } }}
+                  />
+                  <Button size="sm" colorScheme="brand" onClick={saveManualLocation} isLoading={manualLocationSaving}>
+                    Save
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setManualLocationOpen(false)}>
+                    Cancel
+                  </Button>
+                </HStack>
+              )}
+            </VStack>
           ) : (
             <VStack align="stretch" spacing={2}>
               <Button
@@ -1425,15 +1635,297 @@ const AddProduct: React.FC = () => {
               >
                 Auto-Detect My Location
               </Button>
+              <Button
+                size="xs"
+                variant="link"
+                onClick={() => setManualLocationOpen(true)}
+              >
+                Or enter manually
+              </Button>
+              {manualLocationOpen && (
+                <HStack spacing={2}>
+                  <Input
+                    size="sm"
+                    placeholder="e.g., Barangay Mercedes, Zamboanga City"
+                    value={manualLocationInput}
+                    onChange={(e) => setManualLocationInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveManualLocation() } }}
+                  />
+                  <Button size="sm" colorScheme="brand" onClick={saveManualLocation} isLoading={manualLocationSaving}>
+                    Save
+                  </Button>
+                </HStack>
+              )}
               <Text fontSize="9px" color="gray.500">This helps match you with nearby trades</Text>
             </VStack>
           )}
         </VStack>
       </Box>
 
-      {/* Manual value field removed as per user request to use AI instead */}
+      {/* ──────── LOCATION TYPE SELECTOR ──────── */}
+      <Box bg="blue.50" p={2} borderRadius="md" borderWidth="1px" borderColor="blue.200">
+        <FormControl>
+          <FormLabel fontSize="xs" fontWeight="bold" color="blue.800" mb={1.5}>
+            📦 How would you like buyers to collect this item?
+          </FormLabel>
+          <VStack align="stretch" spacing={1.5}>
+            {/* Option 1: Use Current Location */}
+            <Box 
+              p={2} 
+              borderWidth="1px" 
+              borderRadius="md"
+              bg={formData.location_type === 'current_location' ? 'blue.100' : 'white'}
+              borderColor={formData.location_type === 'current_location' ? 'blue.500' : 'gray.200'}
+              transition="all 0.2s"
+            >
+              <HStack align="start" mb={formData.location_type === 'current_location' && locationText ? 1.5 : 0} spacing={2}>
+                <Radio 
+                  isChecked={formData.location_type === 'current_location'}
+                  onChange={() => {
+                    setFormData(prev => ({ ...prev, location_type: 'current_location' }))
+                    setCustomPickupLocationSet(false)
+                  }}
+                  colorScheme="blue"
+                  flex="0 0 auto"
+                  mt={0.5}
+                  cursor="pointer"
+                />
+                <VStack align="start" spacing={0} flex={1} cursor="pointer" onClick={() => {
+                  setFormData(prev => ({ ...prev, location_type: 'current_location' }))
+                  setCustomPickupLocationSet(false)
+                }}>
+                  <Text fontWeight="600" fontSize="xs">✓ Use My Current Location</Text>
+                  <Text fontSize="10px" color="gray.600">Buyers pick up from your detected location</Text>
+                </VStack>
+              </HStack>
+              {formData.location_type === 'current_location' && locationText && (
+                <Box pl={6} pt={1} borderTopWidth="1px" borderTopColor="blue.200">
+                  <HStack spacing={1.5} align="start">
+                    <Text fontSize="10px" fontWeight="600" color="green.700" flex="0 0 auto">✓</Text>
+                    <VStack align="start" spacing={0}>
+                      <Text fontSize="10px" color="gray.800" fontWeight="500">{locationText}</Text>
+                      {formData.latitude && formData.longitude && (
+                        <Text fontSize="8px" color="gray.500">{formData.latitude.toFixed(4)}, {formData.longitude.toFixed(4)}</Text>
+                      )}
+                    </VStack>
+                  </HStack>
+                </Box>
+              )}
+            </Box>
 
-      {/* ──────── WHAT ARE YOU LOOKING FOR? (MANDATORY) ──────── */}
+            {/* Option 2: Custom Pickup Location */}
+            <Box 
+              p={2} 
+              borderWidth="1px" 
+              borderRadius="md"
+              bg={formData.location_type === 'pickup_location' ? 'blue.100' : 'white'}
+              borderColor={formData.location_type === 'pickup_location' ? 'blue.500' : 'gray.200'}
+              transition="all 0.2s"
+            >
+              <HStack align="start" mb={formData.location_type === 'pickup_location' ? 1.5 : 0} spacing={2}>
+                <Radio 
+                  isChecked={formData.location_type === 'pickup_location'}
+                  onChange={() => {
+                    setFormData(prev => ({ ...prev, location_type: 'pickup_location' }))
+                    setShowCustomPickupMap(true)
+                  }}
+                  colorScheme="blue"
+                  flex="0 0 auto"
+                  mt={0.5}
+                  cursor="pointer"
+                />
+                <VStack align="start" spacing={0} flex={1} cursor="pointer" onClick={() => {
+                  setFormData(prev => ({ ...prev, location_type: 'pickup_location' }))
+                  setShowCustomPickupMap(true)
+                }}>
+                  <Text fontWeight="600" fontSize="xs">📍 Set a Custom Pickup Location</Text>
+                  <Text fontSize="10px" color="gray.600">Click on map to pinpoint your pickup location</Text>
+                </VStack>
+              </HStack>
+              {formData.location_type === 'pickup_location' && (
+                <Box pl={{ base: 4, md: 6 }} pt={1}>
+                  {customPickupLocationSet && formData.latitude && formData.longitude ? (
+                    <VStack align="start" spacing={1} mb={1.5}>
+                      <HStack spacing={1.5} align="start" w="full">
+                        <Text fontSize={{ base: '8px', md: '9px' }} fontWeight="600" color="green.700" flex="0 0 auto" mt={0.5}>✓</Text>
+                        <VStack align="start" spacing={0} flex={1} minW={0}>
+                          <Text 
+                            fontSize={{ base: '8px', md: '9px' }} 
+                            color="gray.800" 
+                            fontWeight="500"
+                            noOfLines={2}
+                            cursor="pointer"
+                            _hover={{ textDecoration: 'underline', color: 'blue.600' }}
+                            onClick={() => {
+                              setPickupSearchQuery('')
+                              setShowCustomPickupMap(false)
+                              setShowPickupSearchDropdown(false)
+                            }}
+                          >
+                            {formData.location}
+                          </Text>
+                        </VStack>
+                        <Button 
+                          size="xs"
+                          variant="ghost"
+                          fontSize={{ base: '7px', md: '8px' }}
+                          h="20px"
+                          px={1.5}
+                          onClick={() => {
+                            setPickupSearchQuery('')
+                            setShowPickupSearchDropdown(false)
+                            setShowCustomPickupMap(!showCustomPickupMap)
+                          }}
+                        >
+                          {showCustomPickupMap ? 'Hide' : 'Edit'}
+                        </Button>
+                      </HStack>
+                    </VStack>
+                  ) : (
+                    <Text fontSize={{ base: '8px', md: '9px' }} color="gray.500" mb={1}>Pick a location or search below</Text>
+                  )}
+                  
+                  {/* Saved Locations */}
+                  <SavedLocationsUI
+                    locations={locations}
+                    onSelectLocation={(loc) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        location: loc.address,
+                        latitude: loc.latitude,
+                        longitude: loc.longitude,
+                      } as any))
+                      setCustomPickupLocationSet(true)
+                      setShowCustomPickupMap(true)
+                    }}
+                    onAddLocation={(name, address, lat, lng) => {
+                      addLocation({ name, address, latitude: lat, longitude: lng })
+                    }}
+                    onDeleteLocation={deleteLocation}
+                    onRenameLocation={updateLocation}
+                    currentLocation={
+                      formData.location && formData.latitude && formData.longitude
+                        ? {
+                            address: formData.location,
+                            lat: formData.latitude,
+                            lng: formData.longitude,
+                          }
+                        : undefined
+                    }
+                    onAddNew={() => {}}
+                  />
+                  
+                  {/* Search Location Section - Compact */}
+                  <Box mb={1} position="relative">
+                    <Text fontSize={{ base: '8px', md: '9px' }} fontWeight="600" color="blue.700" mb={0.5}>Search</Text>
+                    <Box position="relative">
+                      <Input
+                        placeholder="Search location..."
+                        value={pickupSearchQuery}
+                        onChange={(e) => {
+                          setPickupSearchQuery(e.target.value)
+                          searchPickupLocations(e.target.value)
+                        }}
+                        onFocus={() => pickupSearchQuery && setShowPickupSearchDropdown(true)}
+                        size="sm"
+                        fontSize={{ base: '8px', md: '9px' }}
+                        h={{ base: '24px', md: '28px' }}
+                        py={1}
+                      />
+                      {isSearchingPickupLocation && (
+                        <Spinner 
+                          size="xs" 
+                          position="absolute" 
+                          right={1.5} 
+                          top={1}
+                        />
+                      )}
+                      {/* Search Results Dropdown */}
+                      {showPickupSearchDropdown && pickupSearchResults.length > 0 && (
+                        <Box
+                          position="absolute"
+                          top="100%"
+                          left={0}
+                          right={0}
+                          bg="white"
+                          borderWidth="1px"
+                          borderColor="blue.300"
+                          borderTop="none"
+                          borderRadius="0 0 md md"
+                          zIndex={10}
+                          maxH={{ base: '120px', md: '150px' }}
+                          overflowY="auto"
+                          boxShadow="md"
+                        >
+                          {pickupSearchResults.map((result, idx) => (
+                            <Box
+                              key={idx}
+                              p={{ base: 1, md: 1.5 }}
+                              fontSize={{ base: '8px', md: '9px' }}
+                              borderBottom={idx < pickupSearchResults.length - 1 ? "1px" : "none"}
+                              borderColor="gray.200"
+                              cursor="pointer"
+                              _hover={{ bg: 'blue.50' }}
+                              onClick={() => selectPickupLocation(result)}
+                            >
+                              <Text fontWeight="500" color="gray.800">{result.name}</Text>
+                              <Text fontSize={{ base: '7px', md: '8px' }} color="gray.600" noOfLines={1}>{result.address}</Text>
+                            </Box>
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+                  
+                  {/* Map Section - Compact & Responsive */}
+                  {showCustomPickupMap && formData.latitude && formData.longitude && (
+                    <Box mt={1}>
+                      <Text fontSize={{ base: '8px', md: '9px' }} color="blue.700" mb={0.5} fontWeight="500">Click map to adjust</Text>
+                      <Box 
+                        h={{ base: '150px', sm: '180px', md: '200px' }} 
+                        borderRadius="md" 
+                        overflow="hidden" 
+                        borderWidth="1px" 
+                        borderColor="blue.300"
+                      >
+                        <MapContainer center={[formData.latitude, formData.longitude]} zoom={16} style={{ height: '100%', width: '100%' }}>
+                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' />
+                          <Marker position={[formData.latitude, formData.longitude]} />
+                          <MapUpdater lat={formData.latitude} lng={formData.longitude} />
+                          <MapClickHandler onLocationSelect={async (lat, lng) => {
+                            try {
+                              const res = await fetch(
+                                `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${lat}&lon=${lng}`
+                              )
+                              const data = await res.json()
+                              const addr = data.address || {}
+                              const street = [addr.house_number, addr.road || addr.street].filter(Boolean).join(' ')
+                              const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
+                              const city = addr.city || addr.town || addr.municipality || ''
+                              const parts = [street, barangay, city].filter(Boolean)
+                              const address = parts.join(', ') || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+                              setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: address }))
+                              setCustomPickupLocationSet(true)
+                            } catch {
+                              setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }))
+                              setCustomPickupLocationSet(true)
+                            }
+                          }} />
+                        </MapContainer>
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </Box>
+
+
+          </VStack>
+          <FormHelperText fontSize="8px" mt={1.5} color="blue.700">
+            💡 Choose how buyers will collect your product
+          </FormHelperText>
+        </FormControl>
+      </Box>
       <Box p={4} bg="brand.50" borderRadius="lg" border="1px dashed" borderColor="brand.200">
         <HStack mb={1}>
           <Text fontSize="sm" fontWeight="bold" color="brand.700">
@@ -1493,53 +1985,41 @@ const AddProduct: React.FC = () => {
           </FormControl>
           
           <FormControl isRequired>
-            <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-              <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Desired Price</FormLabel>
-                <Input
-                  placeholder="e.g. 500"
-                  type="number"
-                  value={formData.price ?? ''}
-                  onChange={e => handleField('price', e.target.value ? Number(e.target.value) : undefined)}
-                  size="sm"
-                  bg="white"
-                  h="36px"
-                  onClick={e => e.stopPropagation()}
-                />
-                <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
-              </Box>
-
-              <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Preferred Item</FormLabel>
-                <Input
-                  placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
-                  value={formData.wants}
-                  onChange={e => handleField('wants', e.target.value)}
-                  size="sm"
-                  bg="white"
-                  maxLength={80}
-                  h="36px"
-                  onClick={e => e.stopPropagation()}
-                />
-                <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
-              </Box>
-
-              <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Ideal Product</FormLabel>
-                <Input
-                  placeholder="e.g. Sony WH-1000XM5, iPhone 15 Pro"
-                  value={formData.desired_product || ''}
-                  onChange={e => handleField('desired_product', e.target.value)}
-                  size="sm"
-                  bg="white"
-                  maxLength={255}
-                  h="36px"
-                  onClick={e => e.stopPropagation()}
-                />
-                <FormHelperText fontSize="10px">The exact product you're looking for (optional).</FormHelperText>
-              </Box>
-            </SimpleGrid>
+            <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Asking Price</FormLabel>
+            <Input
+              placeholder="e.g. 500"
+              type="number"
+              value={formData.price ?? ''}
+              onChange={e => {
+                let val = e.target.value ? Number(e.target.value) : undefined
+                // Prevent negative numbers
+                if (val !== undefined && val < 0) {
+                  val = undefined
+                }
+                handleField('price', val)
+              }}
+              onKeyPress={(e) => {
+                // Block minus and plus signs
+                if (e.key === '-' || e.key === '+') {
+                  e.preventDefault()
+                }
+              }}
+              onBlur={(e) => {
+                const val = Number(e.target.value)
+                if (val < 0) {
+                  handleField('price', undefined)
+                  e.target.value = ''
+                }
+              }}
+              size="sm"
+              bg="white"
+              h="40px"
+              onClick={e => e.stopPropagation()}
+              min={0}
+              step={1}
+              inputMode="numeric"
+            />
+            <FormHelperText fontSize="10px" color="gray.500">Your asking price in ₱</FormHelperText>
           </FormControl>
         </VStack>
       </Box>
@@ -1769,6 +2249,91 @@ const AddProduct: React.FC = () => {
           </Box>
         )}
 
+        {/* ──────── ORGANIZATION TAGGING ──────── */}
+        {approvedOrganizations.length > 0 && (
+          <Box p={4} bg="orange.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="orange.400">
+            <VStack align="stretch" spacing={3}>
+              <Box>
+                <Text fontSize="sm" fontWeight="bold" color="orange.900">🏢 Tag Organizations</Text>
+                <Text fontSize="xs" color="orange.700" mt={1}>
+                  Tag one or more organizations to also display your product in their marketplace. This is optional.
+                </Text>
+              </Box>
+
+              {isLoadingOrganizations ? (
+                <Box display="flex" justifyContent="center" py={4}>
+                  <Spinner size="sm" color="orange.500" />
+                </Box>
+              ) : approvedOrganizations.length === 0 ? (
+                <Text fontSize="sm" color="orange.700" fontStyle="italic">
+                  You don't have any approved organizations yet.
+                </Text>
+              ) : (
+                <VStack align="stretch" spacing={2}>
+                  {approvedOrganizations.map(org => (
+                    <HStack
+                      key={org.id}
+                      p={3}
+                      bg="white"
+                      borderRadius="md"
+                      borderWidth="1px"
+                      borderColor={selectedOrganizationIds.includes(org.id) ? 'orange.400' : 'gray.200'}
+                      cursor="pointer"
+                      onClick={() => {
+                        setSelectedOrganizationIds(prev =>
+                          prev.includes(org.id)
+                            ? prev.filter(id => id !== org.id)
+                            : [...prev, org.id]
+                        )
+                      }}
+                      _hover={{ borderColor: 'orange.300', bg: 'orange.50' }}
+                      transition="all 0.2s"
+                    >
+                      <Checkbox
+                        isChecked={selectedOrganizationIds.includes(org.id)}
+                        onChange={() => {}}
+                        pointerEvents="none"
+                        cursor="pointer"
+                      />
+                      <VStack align="start" spacing={0} flex={1}>
+                        <Text fontSize="sm" fontWeight="semibold" color="gray.900">
+                          {org.name}
+                        </Text>
+                        {org.description && (
+                          <Text fontSize="xs" color="gray.600">
+                            {org.description}
+                          </Text>
+                        )}
+                      </VStack>
+                    </HStack>
+                  ))}
+                </VStack>
+              )}
+
+              {selectedOrganizationIds.length > 0 && (
+                <HStack spacing={1} flexWrap="wrap">
+                  {selectedOrganizationIds.map(orgId => {
+                    const org = approvedOrganizations.find(o => o.id === orgId)
+                    return org ? (
+                      <Badge
+                        key={orgId}
+                        colorScheme="orange"
+                        variant="solid"
+                        fontSize="xs"
+                        borderRadius="full"
+                        px={2}
+                        py={1}
+                      >
+                        {org.name}
+                      </Badge>
+                    ) : null
+                  })}
+                </HStack>
+              )}
+            </VStack>
+          </Box>
+        )}
+
         {/* ──────── READY INDICATOR ──────── */}
         <Box p={3} bg="green.50" borderRadius="lg" textAlign="center" borderLeft="3px solid" borderLeftColor="green.400">
           <HStack justify="center" spacing={2}>
@@ -1867,7 +2432,7 @@ const AddProduct: React.FC = () => {
             {currentStep < TOTAL_STEPS ? (
               <Tooltip 
                 label={!canProceed() ? getDisabledReason() : 'Proceed to next step'}
-                isDisabled={canProceed()}
+                isDisabled={!canProceed()}
                 placement="top"
                 hasArrow
               >
