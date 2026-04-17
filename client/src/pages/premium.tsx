@@ -930,6 +930,7 @@ const Premium: React.FC = () => {
               <Button
                 colorScheme="blue" size="lg" leftIcon={<FaStar />}
                 isLoading={upgrading === 'plus'} onClick={() => handleUpgrade('plus')}
+                isDisabled={isPremiumUser}
                 w="full"
                 _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }} transition="all 0.2s"
               >
@@ -993,6 +994,7 @@ const Premium: React.FC = () => {
               <Button
                 colorScheme="purple" size="lg" leftIcon={<FaCrown />}
                 isLoading={upgrading === 'pro'} onClick={() => handleUpgrade('pro')}
+                isDisabled={isPremiumUser}
                 w="full"
                 _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }} transition="all 0.2s"
               >
@@ -1069,6 +1071,7 @@ const Premium: React.FC = () => {
                 colorScheme="whiteAlpha" size="lg" variant="solid"
                 onClick={() => handleUpgrade('plus')}
                 isLoading={upgrading === 'plus'}
+                isDisabled={isPremiumUser}
               >
                 Start with Plus
               </Button>
@@ -1076,6 +1079,7 @@ const Premium: React.FC = () => {
                 colorScheme="whiteAlpha" size="lg" variant="outline"
                 onClick={() => handleUpgrade('pro')}
                 isLoading={upgrading === 'pro'}
+                isDisabled={isPremiumUser}
               >
                 Go Pro
               </Button>
@@ -1117,6 +1121,7 @@ const Premium: React.FC = () => {
           </VStack>
 
           {isPremiumUser ? renderPremiumActive() : renderLockedContent()}
+          {isPremiumUser && renderLockedContent()}
         </VStack>
       </Container>
 
