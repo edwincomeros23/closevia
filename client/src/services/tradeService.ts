@@ -121,6 +121,63 @@ export const executeMultiWayTrade = async (loopId: string): Promise<void> => {
   }
 }
 
+export type TradeLoopMeetupAction =
+  | 'confirm_meetup'
+  | 'reset_meetup_selection'
+  | 'confirm_meetup_done'
+
+export type TradeLoopMeetupStatus = {
+  loop_id: string
+  participants: Array<{
+    user_id: number
+    meetup_location: string
+    meetup_date: string
+    meetup_time: string
+    meetup_confirmed: boolean
+    met_confirmed: boolean
+  }>
+}
+
+/**
+ * Fetch per-participant meetup state for a trade loop.
+ */
+export const fetchTradeLoopMeetup = async (loopId: string): Promise<TradeLoopMeetupStatus> => {
+  try {
+    const response = await api.get<APIResponse<TradeLoopMeetupStatus>>(
+      `/api/trades/loops/${loopId}/meetup`
+    )
+    return response.data?.data as any
+  } catch (error) {
+    console.error(`Failed to fetch trade loop meetup ${loopId}:`, error)
+    throw error
+  }
+}
+
+/**
+ * Update meetup state for current user inside a trade loop.
+ */
+export const updateTradeLoopMeetup = async (
+  loopId: string,
+  action: TradeLoopMeetupAction,
+  payload?: { meetup_location?: string; meetup_date?: string; meetup_time?: string }
+): Promise<TradeLoopMeetupStatus> => {
+  try {
+    const response = await api.put<APIResponse<TradeLoopMeetupStatus>>(
+      `/api/trades/loops/${loopId}/meetup`,
+      {
+        action,
+        meetup_location: payload?.meetup_location,
+        meetup_date: payload?.meetup_date,
+        meetup_time: payload?.meetup_time,
+      }
+    )
+    return response.data?.data as any
+  } catch (error) {
+    console.error(`Failed to update trade loop meetup ${loopId}:`, error)
+    throw error
+  }
+}
+
 /**
  * Fetch the free-tier monthly loop quota for the current user.
  */
