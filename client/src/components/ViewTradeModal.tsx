@@ -130,13 +130,13 @@ interface ViewTradeModalProps {
 // Dynamic pricing calculation based on distance
 const calculateDeliveryFee = (distance: number, type: 'standard' | 'express'): number => {
   const baseFees = {
-    standard: 35, // Base fee cheaper than typical shipping (₱50-70)
-    express: 80   // Base fee cheaper than typical express (₱150-200)
+    standard: 35, // Base fee cheaper than typical shipping (G�50-70)
+    express: 80   // Base fee cheaper than typical express (G�150-200)
   }
 
   const distanceSurcharge = {
-    standard: 3, // ₱3 per km for standard
-    express: 5   // ₱5 per km for express
+    standard: 3, // G�3 per km for standard
+    express: 5   // G�5 per km for express
   }
 
   const baseFee = baseFees[type]
@@ -442,7 +442,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   linkedDelivery,
   linkedDeliveries,
 }) => {
-  const isSwapTrade = !!trade && Array.isArray(trade.items) && trade.items.some(i => i.offered_by === 'buyer')
   const bothConfirmed = deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery
   const allLegsDelivered = linkedDeliveries.length > 0
     ? linkedDeliveries.every(d => d.status === 'delivered')
@@ -496,8 +495,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
             <Progress value={deliveryProgress} size="sm" borderRadius="full" colorScheme={deliveryStatusColorScheme} />
 
             <Text fontSize="2xs" color="gray.600">
-              {isSwapTrade ? 'Swap delivery (2 deliveries)' : 'Single delivery (1 delivery)'}
-              {isSwapTrade && linkedDeliveries.length < 2 ? ' • Waiting for return delivery to appear…' : ''}
+              Buyout delivery (1 delivery)
             </Text>
 
             <HStack justify="space-between" align="start" spacing={2}>
@@ -519,34 +517,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               })}
             </HStack>
 
-            {/* Back-to-back swap snapshot */}
-            {linkedDeliveries.length > 1 && trade && (
-              <VStack align="stretch" spacing={1}>
-                {(() => {
-                  const legToBuyer = linkedDeliveries[0]
-                  const legReturnToSeller = linkedDeliveries[1]
-                  const line = (label: string, status: Delivery['status']) => (
-                    <HStack justify="space-between" spacing={3}>
-                      <Text fontSize="2xs" color="gray.600" noOfLines={1}>{label}</Text>
-                      <Text fontSize="2xs" color="gray.600" fontWeight="semibold">
-                        {String(status).replace(/_/g, ' ').toUpperCase()}
-                      </Text>
-                    </HStack>
-                  )
-                  return (
-                    <>
-                      {line('Delivery to Buyer (Seller → Buyer)', legToBuyer.status)}
-                      {line('Return to Seller (Buyer → Seller)', legReturnToSeller.status)}
-                    </>
-                  )
-                })()}
-                {deliveryCompleted && (
-                  <Text fontSize="2xs" color="green.600" fontWeight="semibold">
-                    Both deliveries delivered
-                  </Text>
-                )}
-              </VStack>
-            )}
 
             {linkedDelivery?.rider_name ? (
               <Text fontSize="xs" color="gray.600">
@@ -579,7 +549,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               >
                 <VStack spacing={2} align="stretch">
                   <Text fontWeight="semibold" fontSize="md" color="green.700">
-                    ✓ Your Selection Locked
+                    G�� Your Selection Locked
                   </Text>
                   
                   <HStack spacing={3} justify="space-between" w="100%">
@@ -590,7 +560,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                           {(isUserBuyer ? deliveryState.buyerDeliveryType : deliveryState.sellerDeliveryType) === 'standard' ? 'Standard' : 'Express'} Delivery
                         </Text>
                         <Text fontSize="sm" fontWeight="bold" color="green.600">
-                          ₱{deliveryOptions[isUserBuyer ? deliveryState.buyerDeliveryType || deliveryState.deliveryType : deliveryState.sellerDeliveryType || deliveryState.deliveryType as any]?.fee}
+                          G�{deliveryOptions[isUserBuyer ? deliveryState.buyerDeliveryType || deliveryState.deliveryType : deliveryState.sellerDeliveryType || deliveryState.deliveryType as any]?.fee}
                         </Text>
                       </VStack>
                     </HStack>
@@ -626,7 +596,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                           </Text>
                         </HStack>
                         <Text fontSize={["sm", "md"]} fontWeight="bold" flexShrink={0}>
-                          ₱{option.fee}
+                          G�{option.fee}
                         </Text>
                       </HStack>
                     </Button>
@@ -645,7 +615,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                   _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
                   transition="all 0.2s"
                 >
-                  ✓ Confirm Delivery Option
+                  G�� Confirm Delivery Option
                 </Button>
               </>
             )}
@@ -671,14 +641,14 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
         <CardBody py={[2, 3]} px={[3, 4]}>
           <HStack justify="space-between" align={["start", "center"]} spacing={2} flexDir={["column", "row"]}>
             <HStack spacing={2} align="start">
-              <Text fontSize={["lg", "2xl"]}>💵</Text>
+              <Text fontSize={["lg", "2xl"]}>=�Ʀ</Text>
               <VStack align="start" spacing={0}>
                 <Text fontSize="sm" fontWeight="semibold">Delivery Fee (Cash on Delivery)</Text>
                 <Text fontSize="xs" color="gray.500">This is the rider fee only</Text>
               </VStack>
             </HStack>
             <Text fontSize="sm" fontWeight="bold" color="green.600">
-              ₱{deliveryFee.toFixed(2)}
+              G�{deliveryFee.toFixed(2)}
             </Text>
           </HStack>
         </CardBody>
@@ -1124,7 +1094,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
         <Box p={3} bg="green.50" borderRadius="md" borderWidth="2px" borderColor="green.300" textAlign="center">
           <Icon as={FiCheck} boxSize={6} color="green.500" mb={2} mx="auto" display="block" />
           <Text fontWeight="bold" color="green.700" mb={1} fontSize="sm">
-            Trade Completed Successfully! 🎉
+            Trade Completed Successfully! =���
           </Text>
           <Text fontSize="xs" color="green.600">
             Both parties have submitted their reviews. Thank you for using Clovia!
@@ -1137,7 +1107,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
         <Box p={4} bg="blue.50" borderRadius="lg" borderWidth="2px" borderColor="blue.300" textAlign="center">
           <Icon as={FaCheckCircle} boxSize={6} color="blue.500" mb={2} mx="auto" display="block" />
           <Text fontWeight="semibold" color="blue.700" mb={1}>
-            Your review has been submitted ✓
+            Your review has been submitted G��
           </Text>
           <Text fontSize="sm" color="blue.600">
             Waiting for the other party to complete their review...
@@ -1369,13 +1339,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     standard: {
       time: distance < 10 ? '2-3 business days' : distance < 25 ? '3-4 business days' : '4-6 business days',
       fee: calculateDeliveryFee(distance, 'standard'),
-      icon: '📦',
+      icon: '=���',
       description: `${distance < 5 ? 'Local area' : distance < 15 ? 'Within city' : 'Inter-city'} delivery`
     },
     express: {
       time: distance < 10 ? 'Same day' : distance < 25 ? '1-2 business days' : '2-3 business days',
       fee: calculateDeliveryFee(distance, 'express'),
-      icon: '⚡',
+      icon: 'G��',
       description: `Fast ${distance < 5 ? 'local' : distance < 15 ? 'city-wide' : 'regional'} delivery`
     }
   }), [distance])
@@ -1845,7 +1815,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       setRequestedProduct(requested)
 
       // Only show items offered by the buyer (offered_by === 'buyer') in the "offered" column.
-      // Some trades may store seller counter-offer items with offered_by === 'seller' — keep them separate.
+      // Some trades may store seller counter-offer items with offered_by === 'seller' G�� keep them separate.
       const buyerItems = (trade.items || []).filter((item: any) => {
         const ob = (item?.offered_by ?? item?.offeredBy ?? '').toLowerCase()
         return !ob || ob === 'buyer' || ob === 'from_buyer' || ob === 'sender'
@@ -2046,12 +2016,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         suggestions.push({
           date: next7days[0],
           time: '11:00',
-          label: '📅 Today, 11:00 AM'
+          label: '=��� Today, 11:00 AM'
         })
         suggestions.push({
           date: next7days[0],
           time: '15:00',
-          label: '📅 Today, 3:00 PM'
+          label: '=��� Today, 3:00 PM'
         })
       }
       
@@ -2060,7 +2030,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         suggestions.push({
           date: next7days[1],
           time: '09:00',
-          label: '📅 Tomorrow, 9:00 AM'
+          label: '=��� Tomorrow, 9:00 AM'
         })
       }
 
@@ -2069,7 +2039,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         suggestions.push({
           date: next7days[2],
           time: '14:00',
-          label: '📅 Day after tomorrow, 2:00 PM'
+          label: '=��� Day after tomorrow, 2:00 PM'
         })
       }
 
@@ -2078,7 +2048,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         suggestions.push({
         date: next7days[3],
         time: '17:00',
-        label: '📅 In 3 days, 5:00 PM'
+        label: '=��� In 3 days, 5:00 PM'
       })
     }
 
@@ -2087,7 +2057,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       suggestions.push({
         date: next7days[6],
         time: '10:00',
-        label: '📅 Weekend, 10:00 AM'
+        label: '=��� Weekend, 10:00 AM'
       })
     }
 
@@ -2150,7 +2120,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       }
 
       toast({
-        title: '✓ Schedule Accepted!',
+        title: 'G�� Schedule Accepted!',
         description: 'You have agreed to the proposed date and time.',
         status: 'success',
         duration: 3000,
@@ -2190,7 +2160,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     setDisputeNotes('')
     
     toast({
-      title: '⚠️ Meetup marked as in dispute',
+      title: 'G��n+� Meetup marked as in dispute',
       description: 'The other party has been notified. You can propose alternative times or discuss the issue.',
       status: 'info',
       position: 'top',
@@ -2725,13 +2695,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               px={3}
                               py={1}
                             >
-                              {trade.trade_option === 'meetup' ? '📍 Pickup' : '🚚 Delivery'}
+                              {trade.trade_option === 'meetup' ? '=��� Pickup' : '=��� Delivery'}
                             </Badge>
                           </HStack>
                           {(trade.status === 'accepted' || trade.status === 'active') && (
                             <Box mt={3} pt={3} borderTopWidth="1px" borderColor="gray.200">
                               <Text fontSize="xs" color="gray.500" fontStyle="italic">
-                                🔒 Trade option is locked - no further changes allowed
+                                =��� Trade option is locked - no further changes allowed
                               </Text>
                             </Box>
                           )}
@@ -2750,22 +2720,22 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             </Text>
                             {getMeetupState() === 'proposed' && (
                               <Badge colorScheme="blue" fontSize="xs" px={2} py={1}>
-                                📌 Proposed Schedule
+                                =��� Proposed Schedule
                               </Badge>
                             )}
                             {getMeetupState() === 'dispute' && (
                               <Badge colorScheme="orange" fontSize="xs" px={2} py={1}>
-                                ⚠️ In Dispute
+                                G��n+� In Dispute
                               </Badge>
                             )}
                             {getMeetupState() === 'finalized' && (
                               <Badge colorScheme="green" fontSize="xs" px={2} py={1}>
-                                ✓ Finalized
+                                G�� Finalized
                               </Badge>
                             )}
                             {getMeetupState() === 'none' && (
                               <Badge colorScheme="gray" fontSize="xs" px={2} py={1}>
-                                ⏳ Pending
+                                GŦ Pending
                               </Badge>
                             )}
                           </HStack>
@@ -2792,13 +2762,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               Meetup Policy Reminder
                             </Text>
                             <Text fontSize="xs" color="orange.600">
-                              • Arriving late or not showing up (no-show) may result in strikes on your account.
+                              G�� Arriving late or not showing up (no-show) may result in strikes on your account.
                             </Text>
                             <Text fontSize="xs" color="orange.600">
-                              • Multiple violations can lead to account suspension or permanent ban.
+                              G�� Multiple violations can lead to account suspension or permanent ban.
                             </Text>
                             <Text fontSize="xs" color="orange.600">
-                              • Always communicate with your trading partner if you have delays.
+                              G�� Always communicate with your trading partner if you have delays.
                             </Text>
                           </VStack>
                         </HStack>
@@ -2818,13 +2788,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               Delivery Policy Reminder
                             </Text>
                             <Text fontSize="xs" color="orange.600">
-                              • Sending wrong items or failing to deliver (no-show) may result in strikes.
+                              G�� Sending wrong items or failing to deliver (no-show) may result in strikes.
                             </Text>
                             <Text fontSize="xs" color="orange.600">
-                              • Multiple violations can lead to account suspension or permanent ban.
+                              G�� Multiple violations can lead to account suspension or permanent ban.
                             </Text>
                             <Text fontSize="xs" color="orange.600">
-                              • Ensure items match the trade description before sending.
+                              G�� Ensure items match the trade description before sending.
                             </Text>
                           </VStack>
                         </HStack>
@@ -2985,18 +2955,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           </Text>
                           <VStack spacing={3} align="stretch">
                             {(() => {
-                              // Deliveries are returned ordered by creation time (first delivery, then return delivery).
-                              // Prefer the ordered list for leg selection to avoid relying on legacy user_id semantics.
+                              // Deliveries are returned ordered by creation time.
                               const activeLeg = linkedDelivery
                               const orderedLegs = Array.isArray(linkedDeliveries) ? linkedDeliveries : []
                               const leg1 = orderedLegs[0] || activeLeg || null
-                              const leg2 = orderedLegs[1] || null
-                              const isSwap = Array.isArray(trade?.items) && trade.items.some(i => i.offered_by === 'buyer')
-
                               const leg1Pickup = leg1?.pickup_address || ''
                               const leg1Drop = leg1?.delivery_address || trade?.delivery_address || ''
-                              const leg2Pickup = leg2?.pickup_address || ''
-                              const leg2Drop = leg2?.delivery_address || ''
 
                               const renderAddressPair = (opts: {
                                 senderTitle: string
@@ -3045,102 +3009,76 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 </>
                               )
 
-                              return (
-                                <>
-                                  {isSwap ? (
-                                    <>
-                                      {renderAddressPair({
-                                        senderTitle: 'Delivery to Buyer — Pickup Location (Seller → Buyer)',
-                                        receiverTitle: 'Delivery to Buyer — Drop-off Location (Seller → Buyer)',
-                                        senderAddress: leg1Pickup,
-                                        receiverAddress: leg1Drop,
-                                        showSenderNote: isUserSeller,
-                                        senderNote: '(Your pickup address)',
-                                        showReceiverNote: isUserBuyer,
-                                        receiverNote: '(Your delivery address)',
-                                      })}
+                            return (
+                              <>
+                                {renderAddressPair({
+                                  senderTitle: 'Pickup Location (Seller)',
+                                  receiverTitle: 'Drop-off Location (Buyer)',
+                                  senderAddress: leg1Pickup,
+                                  receiverAddress: leg1Drop,
+                                  showSenderNote: isUserSeller,
+                                  senderNote: '(Your pickup address)',
+                                  showReceiverNote: isUserBuyer,
+                                  receiverNote: '(Your delivery address)',
+                                })}
 
-                                      {renderAddressPair({
-                                        senderTitle: 'Return to Seller — Pickup Location (Buyer → Seller)',
-                                        receiverTitle: 'Return to Seller — Drop-off Location (Buyer → Seller)',
-                                        senderAddress: leg2Pickup,
-                                        receiverAddress: leg2Drop,
-                                        showSenderNote: isUserBuyer,
-                                        senderNote: '(Your pickup address)',
-                                        showReceiverNote: isUserSeller,
-                                        receiverNote: '(Your delivery address)',
-                                      })}
-                                    </>
-                                  ) : (
-                                    renderAddressPair({
-                                      senderTitle: 'Sender Location',
-                                      receiverTitle: 'Receiver Location',
-                                      senderAddress: leg1Pickup,
-                                      receiverAddress: leg1Drop,
-                                      showSenderNote: isUserSeller,
-                                      senderNote: '(Your pickup address)',
-                                      showReceiverNote: isUserBuyer,
-                                      receiverNote: '(Your delivery address)',
-                                    })
-                                  )}
+                                {/* Delivery Instructions */}
+                                {deliveryState.deliveryInstructions && (
+                                  <Card variant="outline" borderColor="purple.300">
+                                    <CardBody p={4}>
+                                      <HStack spacing={3} mb={2}>
+                                        <Icon as={FiMapPin} color="purple.500" boxSize={5} />
+                                        <Text fontWeight="semibold" fontSize="sm">Special Instructions</Text>
+                                      </HStack>
+                                      <Text fontSize="sm" color="gray.700" ml={8} fontStyle="italic">
+                                        "{deliveryState.deliveryInstructions}"
+                                      </Text>
+                                    </CardBody>
+                                  </Card>
+                                )}
 
-                            {/* Delivery Instructions */}
-                            {deliveryState.deliveryInstructions && (
-                              <Card variant="outline" borderColor="purple.300">
-                                <CardBody p={4}>
-                                  <HStack spacing={3} mb={2}>
-                                    <Icon as={FiMapPin} color="purple.500" boxSize={5} />
-                                    <Text fontWeight="semibold" fontSize="sm">Special Instructions</Text>
-                                  </HStack>
-                                  <Text fontSize="sm" color="gray.700" ml={8} fontStyle="italic">
-                                    "{deliveryState.deliveryInstructions}"
-                                  </Text>
-                                </CardBody>
-                              </Card>
-                            )}
-
-                            {/* Assigned Rider */}
-                            <Card variant="outline" borderColor="orange.300" bg="orange.50">
-                              <CardBody p={4}>
-                                <HStack spacing={3} mb={2}>
-                                  <Avatar
-                                    name={linkedDelivery?.rider_name || 'Rider'}
-                                    size="sm"
-                                    bg="orange.500"
-                                    color="white"
-                                  />
-                                  <Box flex={1} minW={0}>
-                                    <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
-                                    <Text fontSize="sm" color="gray.700" noOfLines={1}>
-                                      {linkedDelivery?.rider_name || 'Waiting for a rider to claim this delivery'}
-                                    </Text>
-                                  </Box>
-                                  {linkedDelivery?.rider_rating != null && (
-                                    <HStack spacing={1} flexShrink={0}>
-                                      <Icon as={FaStar} color="yellow.400" boxSize={3} />
-                                      <Text fontSize="xs" color="gray.600">{linkedDelivery.rider_rating.toFixed(1)}</Text>
+                                {/* Assigned Rider */}
+                                <Card variant="outline" borderColor="orange.300" bg="orange.50">
+                                  <CardBody p={4}>
+                                    <HStack spacing={3} mb={2}>
+                                      <Avatar
+                                        name={linkedDelivery?.rider_name || 'Rider'}
+                                        size="sm"
+                                        bg="orange.500"
+                                        color="white"
+                                      />
+                                      <Box flex={1} minW={0}>
+                                        <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
+                                        <Text fontSize="sm" color="gray.700" noOfLines={1}>
+                                          {linkedDelivery?.rider_name || 'Waiting for a rider to claim this delivery'}
+                                        </Text>
+                                      </Box>
+                                      {linkedDelivery?.rider_rating != null && (
+                                        <HStack spacing={1} flexShrink={0}>
+                                          <Icon as={FaStar} color="yellow.400" boxSize={3} />
+                                          <Text fontSize="xs" color="gray.600">{linkedDelivery.rider_rating.toFixed(1)}</Text>
+                                        </HStack>
+                                      )}
                                     </HStack>
-                                  )}
-                                </HStack>
 
-                                {linkedDelivery?.rider_vehicle && (
-                                  <HStack spacing={2} ml={8} mt={2}>
-                                    <Icon as={FiTruck} color="orange.500" boxSize={4} />
-                                    <Text fontSize="sm" color="gray.700" noOfLines={1}>{linkedDelivery.rider_vehicle}</Text>
-                                  </HStack>
-                                )}
+                                    {linkedDelivery?.rider_vehicle && (
+                                      <HStack spacing={2} ml={8} mt={2}>
+                                        <Icon as={FiTruck} color="orange.500" boxSize={4} />
+                                        <Text fontSize="sm" color="gray.700" noOfLines={1}>{linkedDelivery.rider_vehicle}</Text>
+                                      </HStack>
+                                    )}
 
-                                {linkedDelivery?.rider_phone && (
-                                  <HStack spacing={2} ml={8} mt={2}>
-                                    <Icon as={FiPhone} color="orange.500" boxSize={4} />
-                                    <Text fontSize="sm" color="gray.700">{linkedDelivery.rider_phone}</Text>
-                                  </HStack>
-                                )}
-                              </CardBody>
-                            </Card>
-                                </>
-                              )
-                            })()}
+                                    {linkedDelivery?.rider_phone && (
+                                      <HStack spacing={2} ml={8} mt={2}>
+                                        <Icon as={FiPhone} color="orange.500" boxSize={4} />
+                                        <Text fontSize="sm" color="gray.700">{linkedDelivery.rider_phone}</Text>
+                                      </HStack>
+                                    )}
+                                  </CardBody>
+                                </Card>
+                              </>
+                            )
+                          })()}
                           </VStack>
                         </Box>
                       </>
@@ -3550,7 +3488,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                           </Text>
                                           {isPartner && (
                                             <Badge colorScheme="orange" fontSize="2xs" px={0.5} py={0}>
-                                              ⭐
+                                              G��
                                             </Badge>
                                           )}
                                         </HStack>
@@ -3603,14 +3541,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         >
                           <HStack justify="space-between" mb={2}>
                             <Text fontSize="sm" fontWeight="medium" color="blue.700">
-                              💡 Suggested Alternative Times
+                              =��� Suggested Alternative Times
                             </Text>
                             <Button
                               size="xs"
                               variant="ghost"
                               onClick={() => setShowSuggestionsPanel(false)}
                             >
-                              ✕
+                              G��
                             </Button>
                           </HStack>
                           <VStack align="stretch" spacing={2}>
@@ -3663,7 +3601,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 setValidationError(null)
                               }}
                             >
-                              🔄 Change
+                              =��� Change
                             </Button>
                           )}
                         </HStack>
@@ -3679,7 +3617,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           >
                             <VStack spacing={3} align="stretch">
                               <Text fontWeight="semibold" fontSize="md" color="green.700">
-                                ✓ Your Selection Locked
+                                G�� Your Selection Locked
                               </Text>
                               
                               <VStack spacing={2} align="start" fontSize="sm">
@@ -3796,7 +3734,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
                               transition="all 0.2s"
                             >
-                              ✓ Confirm Meetup
+                              G�� Confirm Meetup
                             </Button>
                           </VStack>
                         )}
@@ -3816,14 +3754,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           >
                             <HStack justify="space-between" mb={2}>
                               <Text fontSize="sm" fontWeight="medium" color="blue.700">
-                                💡 Suggested Alternative Times
+                                =��� Suggested Alternative Times
                               </Text>
                               <Button
                                 size="xs"
                                 variant="ghost"
                                 onClick={() => setShowSuggestionsPanel(false)}
                               >
-                                ✕
+                                G��
                               </Button>
                             </HStack>
                             <VStack align="stretch" spacing={2}>
@@ -3878,7 +3816,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                       justifyContent="flex-start"
                                       onClick={() => setMeetupDisputeReason('time')}
                                     >
-                                      ⏰ The time doesn't work for me
+                                      GŦ The time doesn't work for me
                                     </Button>
                                     <Button
                                       variant={meetupDisputeReason === 'date' ? 'solid' : 'outline'}
@@ -3886,7 +3824,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                       justifyContent="flex-start"
                                       onClick={() => setMeetupDisputeReason('date')}
                                     >
-                                      📅 The date is inconvenient
+                                      =��� The date is inconvenient
                                     </Button>
                                     <Button
                                       variant={meetupDisputeReason === 'unresponsive' ? 'solid' : 'outline'}
@@ -3894,7 +3832,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                       justifyContent="flex-start"
                                       onClick={() => setMeetupDisputeReason('unresponsive')}
                                     >
-                                      🔕 Other person is unresponsive
+                                      =��� Other person is unresponsive
                                     </Button>
                                     <Button
                                       variant={meetupDisputeReason === 'conflict' ? 'solid' : 'outline'}
@@ -3902,7 +3840,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                       justifyContent="flex-start"
                                       onClick={() => setMeetupDisputeReason('conflict')}
                                     >
-                                      ⚡ Schedule conflict
+                                      G�� Schedule conflict
                                     </Button>
                                   </VStack>
                                   <FormControl>
@@ -4015,7 +3953,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                       w="full"
                                       isDisabled={userMetConfirmed}
                                     >
-                                      {userMetConfirmed ? 'Confirmed ✓' : 'Confirm You Met'}
+                                      {userMetConfirmed ? 'Confirmed G��' : 'Confirm You Met'}
                                     </Button>
 
                                     {userMetConfirmed && (
@@ -4102,7 +4040,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 textAlign="center"
                               >
                                 <Text fontWeight="medium" color="blue.700" fontSize={["xs", "sm"]}>
-                                  ⏳ Waiting for Agreement
+                                  GŦ Waiting for Agreement
                                 </Text>
                                 <Text fontSize="xs" color="blue.600" mt={0.5}>
                                   {buyerMeetupConfirmed && !sellerMeetupConfirmed
@@ -4118,10 +4056,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     Proposed Schedule:
                                   </Text>
                                   <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
-                                    📍 {buyerMeetupLocation}
+                                    =��� {buyerMeetupLocation}
                                   </Text>
                                   <Text fontSize={["xs", "sm"]} color="gray.600">
-                                    🕐 {formatTimePH(buyerMeetupTime)}
+                                    =��� {formatTimePH(buyerMeetupTime)}
                                   </Text>
                                 </Box>
                               )}
@@ -4132,10 +4070,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     Proposed Schedule:
                                   </Text>
                                   <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
-                                    📍 {sellerMeetupLocation}
+                                    =��� {sellerMeetupLocation}
                                   </Text>
                                   <Text fontSize={["xs", "sm"]} color="gray.600">
-                                    🕐 {formatTimePH(sellerMeetupTime)}
+                                    =��� {formatTimePH(sellerMeetupTime)}
                                   </Text>
                                 </Box>
                               )}
@@ -4178,7 +4116,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     isDisabled={!meetupAgreed}
                                     _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
                                   >
-                                    {meetupAgreed ? 'Leave Review & Complete Trade' : '⏳ Review (after agreement)'}
+                                    {meetupAgreed ? 'Leave Review & Complete Trade' : 'GŦ Review (after agreement)'}
                                   </Button>
                                 </VStack>
                               ) : (
@@ -4197,7 +4135,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     isDisabled={!meetupAgreed}
                                     _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
                                   >
-                                    {meetupAgreed ? 'Leave Review & Complete Trade' : '⏳ Review (after agreement)'}
+                                    {meetupAgreed ? 'Leave Review & Complete Trade' : 'GŦ Review (after agreement)'}
                                   </Button>
                                 </VStack>
                               )}
@@ -4272,7 +4210,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                   borderColor="red.500"
                 >
                   <Text fontSize="sm" fontWeight="medium" color="red.800">
-                    ⚠️ Warning: Cancelling this trade will negatively affect your trust score.
+                    G��n+� Warning: Cancelling this trade will negatively affect your trust score.
                   </Text>
                 </Box>
                 <Text fontSize="sm" color="gray.600">

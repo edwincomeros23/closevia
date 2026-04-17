@@ -374,7 +374,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                           textAlign="center"
                           lineHeight="1.3"
                         >
-                          Rider delivers to you. Prepare the exact amount — no change given.
+                          Rider collects payment and delivery fee from you before picking up the item.
                         </Text>
                       </VStack>
                     </CardBody>
@@ -452,7 +452,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                 borderLeftColor={mutedTextColor}
               >
                 <Text fontSize="10px" color={mutedTextColor} lineHeight="1.4">
-                  Your preference is included in the offer. Trader can accept or propose a different setup in chat.
+                  Delivery is buyout-only. The rider collects your payment first, pays the seller, then delivers the item.
                 </Text>
               </Box>
 

@@ -135,6 +135,7 @@ interface DeliveryCardProps {
 
 const DeliveryCard: React.FC<DeliveryCardProps> = ({ delivery, onViewDetails, onAccept, accepting }) => {
   const isExpress = delivery.delivery_type === 'express'
+  const isBuyoutDelivery = !!delivery.trade_id
   const isBatching = delivery.is_batching && !isExpress
 
   return (
@@ -205,42 +206,100 @@ const DeliveryCard: React.FC<DeliveryCardProps> = ({ delivery, onViewDetails, on
 
           {/* Addresses */}
           <VStack spacing={2} align="stretch">
-            <HStack spacing={2}>
-              <Box w="20px" display="flex" justifyContent="center">
-                <Box w="8px" h="8px" borderRadius="full" bg="blue.500" />
-              </Box>
-              <VStack spacing={0} align="start" flex={1} minW={0}>
-                <Text fontSize="sm" color="gray.700" noOfLines={1} w="full">
-                  {delivery.pickup_address}
-                </Text>
-                {(delivery.user_name || delivery.receiver_name) && (
-                  <Text fontSize="2xs" color="gray.500" noOfLines={1} w="full">
-                    Pickup from {delivery.user_name || 'Sender'}
-                  </Text>
-                )}
-              </VStack>
-            </HStack>
-            <HStack spacing={2}>
-              <Box w="20px" display="flex" justifyContent="center">
-                <Icon as={FaArrowRight} color="gray.400" boxSize={3} />
-              </Box>
-              <Box h="20px" borderLeft="2px dashed" borderColor="gray.300" ml="3px" />
-            </HStack>
-            <HStack spacing={2}>
-              <Box w="20px" display="flex" justifyContent="center">
-                <Box w="8px" h="8px" borderRadius="full" bg="green.500" />
-              </Box>
-              <VStack spacing={0} align="start" flex={1} minW={0}>
-                <Text fontSize="sm" color="gray.700" noOfLines={1} w="full">
-                  {delivery.delivery_address}
-                </Text>
-                {(delivery.user_name || delivery.receiver_name) && (
-                  <Text fontSize="2xs" color="gray.500" noOfLines={1} w="full">
-                    Drop-off to {delivery.receiver_name || 'Receiver'}
-                  </Text>
-                )}
-              </VStack>
-            </HStack>
+            {delivery.trade_id ? (
+              <>
+                <HStack spacing={2}>
+                  <Box w="20px" display="flex" justifyContent="center">
+                    <Box w="8px" h="8px" borderRadius="full" bg="blue.500" />
+                  </Box>
+                  <VStack spacing={0} align="start" flex={1} minW={0}>
+                    <Text fontSize="sm" color="gray.700" noOfLines={1} w="full">
+                      {delivery.delivery_address}
+                    </Text>
+                    <Text fontSize="2xs" color="gray.500" noOfLines={1} w="full">
+                      Buyer payment
+                    </Text>
+                  </VStack>
+                </HStack>
+                <HStack spacing={2}>
+                  <Box w="20px" display="flex" justifyContent="center">
+                    <Icon as={FaArrowRight} color="gray.400" boxSize={3} />
+                  </Box>
+                  <Box h="20px" borderLeft="2px dashed" borderColor="gray.300" ml="3px" />
+                </HStack>
+                <HStack spacing={2}>
+                  <Box w="20px" display="flex" justifyContent="center">
+                    <Box w="8px" h="8px" borderRadius="full" bg="orange.500" />
+                  </Box>
+                  <VStack spacing={0} align="start" flex={1} minW={0}>
+                    <Text fontSize="sm" color="gray.700" noOfLines={1} w="full">
+                      {delivery.pickup_address}
+                    </Text>
+                    <Text fontSize="2xs" color="gray.500" noOfLines={1} w="full">
+                      Seller pickup
+                    </Text>
+                  </VStack>
+                </HStack>
+                <HStack spacing={2}>
+                  <Box w="20px" display="flex" justifyContent="center">
+                    <Icon as={FaArrowRight} color="gray.400" boxSize={3} />
+                  </Box>
+                  <Box h="20px" borderLeft="2px dashed" borderColor="gray.300" ml="3px" />
+                </HStack>
+                <HStack spacing={2}>
+                  <Box w="20px" display="flex" justifyContent="center">
+                    <Box w="8px" h="8px" borderRadius="full" bg="green.500" />
+                  </Box>
+                  <VStack spacing={0} align="start" flex={1} minW={0}>
+                    <Text fontSize="sm" color="gray.700" noOfLines={1} w="full">
+                      {delivery.delivery_address}
+                    </Text>
+                    <Text fontSize="2xs" color="gray.500" noOfLines={1} w="full">
+                      Deliver to buyer
+                    </Text>
+                  </VStack>
+                </HStack>
+              </>
+            ) : (
+              <>
+                <HStack spacing={2}>
+                  <Box w="20px" display="flex" justifyContent="center">
+                    <Box w="8px" h="8px" borderRadius="full" bg="blue.500" />
+                  </Box>
+                  <VStack spacing={0} align="start" flex={1} minW={0}>
+                    <Text fontSize="sm" color="gray.700" noOfLines={1} w="full">
+                      {delivery.pickup_address}
+                    </Text>
+                    {(delivery.user_name || delivery.receiver_name) && (
+                      <Text fontSize="2xs" color="gray.500" noOfLines={1} w="full">
+                        Pickup from {delivery.user_name || 'Sender'}
+                      </Text>
+                    )}
+                  </VStack>
+                </HStack>
+                <HStack spacing={2}>
+                  <Box w="20px" display="flex" justifyContent="center">
+                    <Icon as={FaArrowRight} color="gray.400" boxSize={3} />
+                  </Box>
+                  <Box h="20px" borderLeft="2px dashed" borderColor="gray.300" ml="3px" />
+                </HStack>
+                <HStack spacing={2}>
+                  <Box w="20px" display="flex" justifyContent="center">
+                    <Box w="8px" h="8px" borderRadius="full" bg="green.500" />
+                  </Box>
+                  <VStack spacing={0} align="start" flex={1} minW={0}>
+                    <Text fontSize="sm" color="gray.700" noOfLines={1} w="full">
+                      {delivery.delivery_address}
+                    </Text>
+                    {(delivery.user_name || delivery.receiver_name) && (
+                      <Text fontSize="2xs" color="gray.500" noOfLines={1} w="full">
+                        Drop-off to {delivery.receiver_name || 'Receiver'}
+                      </Text>
+                    )}
+                  </VStack>
+                </HStack>
+              </>
+            )}
           </VStack>
 
           {/* Stats Row */}
@@ -380,24 +439,52 @@ const ViewDetailsModal: React.FC<ViewDetailsModalProps> = ({
             <Box>
               <Text fontWeight="bold" fontSize="sm" mb={2}>Route</Text>
               <VStack spacing={2} align="stretch" bg="gray.50" p={3} borderRadius="md">
-                <HStack spacing={2}>
-                  <Badge colorScheme="blue" fontSize="xs">PICKUP</Badge>
-                  <VStack spacing={0} align="start">
-                    <Text fontSize="sm">{delivery.pickup_address}</Text>
-                    {(delivery.user_name || delivery.receiver_name) && (
-                      <Text fontSize="2xs" color="gray.500">From {delivery.user_name || 'Sender'}</Text>
-                    )}
-                  </VStack>
-                </HStack>
-                <HStack spacing={2}>
-                  <Badge colorScheme="green" fontSize="xs">DROP-OFF</Badge>
-                  <VStack spacing={0} align="start">
-                    <Text fontSize="sm">{delivery.delivery_address}</Text>
-                    {(delivery.user_name || delivery.receiver_name) && (
-                      <Text fontSize="2xs" color="gray.500">To {delivery.receiver_name || 'Receiver'}</Text>
-                    )}
-                  </VStack>
-                </HStack>
+                {isBuyoutDelivery ? (
+                  <>
+                    <HStack spacing={2}>
+                      <Badge colorScheme="blue" fontSize="xs">BUYER PAYMENT</Badge>
+                      <VStack spacing={0} align="start">
+                        <Text fontSize="sm">{delivery.delivery_address}</Text>
+                        <Text fontSize="2xs" color="gray.500">Collect buyer payment + delivery fee</Text>
+                      </VStack>
+                    </HStack>
+                    <HStack spacing={2}>
+                      <Badge colorScheme="orange" fontSize="xs">SELLER PICKUP</Badge>
+                      <VStack spacing={0} align="start">
+                        <Text fontSize="sm">{delivery.pickup_address}</Text>
+                        <Text fontSize="2xs" color="gray.500">Pay seller and pick up item</Text>
+                      </VStack>
+                    </HStack>
+                    <HStack spacing={2}>
+                      <Badge colorScheme="green" fontSize="xs">DELIVER TO BUYER</Badge>
+                      <VStack spacing={0} align="start">
+                        <Text fontSize="sm">{delivery.delivery_address}</Text>
+                        <Text fontSize="2xs" color="gray.500">Deliver item to buyer</Text>
+                      </VStack>
+                    </HStack>
+                  </>
+                ) : (
+                  <>
+                    <HStack spacing={2}>
+                      <Badge colorScheme="blue" fontSize="xs">PICKUP</Badge>
+                      <VStack spacing={0} align="start">
+                        <Text fontSize="sm">{delivery.pickup_address}</Text>
+                        {(delivery.user_name || delivery.receiver_name) && (
+                          <Text fontSize="2xs" color="gray.500">From {delivery.user_name || 'Sender'}</Text>
+                        )}
+                      </VStack>
+                    </HStack>
+                    <HStack spacing={2}>
+                      <Badge colorScheme="green" fontSize="xs">DROP-OFF</Badge>
+                      <VStack spacing={0} align="start">
+                        <Text fontSize="sm">{delivery.delivery_address}</Text>
+                        {(delivery.user_name || delivery.receiver_name) && (
+                          <Text fontSize="2xs" color="gray.500">To {delivery.receiver_name || 'Receiver'}</Text>
+                        )}
+                      </VStack>
+                    </HStack>
+                  </>
+                )}
               </VStack>
             </Box>
 
@@ -448,21 +535,43 @@ const ViewDetailsModal: React.FC<ViewDetailsModalProps> = ({
             <Box>
               <Text fontWeight="bold" fontSize="sm" mb={2}>Fee Breakdown</Text>
               <VStack spacing={2} align="stretch" bg="green.50" p={3} borderRadius="md">
-                <HStack justify="space-between">
-                  <Text fontSize="sm" color="gray.600">Sender pays:</Text>
-                  <Text fontSize="sm" fontWeight="bold">₱{delivery.sender_fee || delivery.total_cost}</Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text fontSize="sm" color="gray.600">Receiver pays:</Text>
-                  <Text fontSize="sm" fontWeight="bold">₱{delivery.receiver_fee || 0}</Text>
-                </HStack>
-                <Divider />
-                <HStack justify="space-between">
-                  <Text fontSize="sm" fontWeight="bold" color="green.700">Your earnings:</Text>
-                  <Text fontSize="lg" fontWeight="bold" color="green.600">
-                    ₱{delivery.rider_cut || delivery.total_cost}
-                  </Text>
-                </HStack>
+                {isBuyoutDelivery ? (
+                  <>
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" color="gray.600">Delivery fee (buyer):</Text>
+                      <Text fontSize="sm" fontWeight="bold">₱{delivery.total_cost}</Text>
+                    </HStack>
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" color="gray.600">Product cash:</Text>
+                      <Text fontSize="sm" fontWeight="bold">Collected from buyer, paid to seller</Text>
+                    </HStack>
+                    <Divider />
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" fontWeight="bold" color="green.700">Your earnings:</Text>
+                      <Text fontSize="lg" fontWeight="bold" color="green.600">
+                        ₱{delivery.rider_cut || delivery.total_cost}
+                      </Text>
+                    </HStack>
+                  </>
+                ) : (
+                  <>
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" color="gray.600">Sender pays:</Text>
+                      <Text fontSize="sm" fontWeight="bold">₱{delivery.sender_fee || delivery.total_cost}</Text>
+                    </HStack>
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" color="gray.600">Receiver pays:</Text>
+                      <Text fontSize="sm" fontWeight="bold">₱{delivery.receiver_fee || 0}</Text>
+                    </HStack>
+                    <Divider />
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" fontWeight="bold" color="green.700">Your earnings:</Text>
+                      <Text fontSize="lg" fontWeight="bold" color="green.600">
+                        ₱{delivery.rider_cut || delivery.total_cost}
+                      </Text>
+                    </HStack>
+                  </>
+                )}
               </VStack>
             </Box>
 
@@ -932,8 +1041,18 @@ const RiderHome: React.FC = () => {
                               </HStack>
                               <Text fontWeight="bold" color="green.600">₱{delivery.total_cost}</Text>
                             </HStack>
-                            <Text fontSize="sm" noOfLines={1}>{delivery.pickup_address}</Text>
-                            <Text fontSize="xs" color="gray.500">→ {delivery.delivery_address}</Text>
+                            {delivery.trade_id ? (
+                              <VStack align="start" spacing={0}>
+                                <Text fontSize="sm" noOfLines={1}>Buyer payment: {delivery.delivery_address}</Text>
+                                <Text fontSize="xs" color="gray.500" noOfLines={1}>Seller pickup: {delivery.pickup_address}</Text>
+                                <Text fontSize="xs" color="gray.500" noOfLines={1}>Deliver to buyer: {delivery.delivery_address}</Text>
+                              </VStack>
+                            ) : (
+                              <>
+                                <Text fontSize="sm" noOfLines={1}>{delivery.pickup_address}</Text>
+                                <Text fontSize="xs" color="gray.500">→ {delivery.delivery_address}</Text>
+                              </>
+                            )}
                             <Text fontSize="2xs" color="gray.400">Claimed {formatDateTime(delivery.claimed_at || delivery.created_at)}</Text>
                             <Button size="sm" colorScheme="brand" onClick={() => navigate(`/task-stepper/${delivery.id}`)}>
                               Continue
@@ -952,7 +1071,7 @@ const RiderHome: React.FC = () => {
                         <VStack spacing={3} align="stretch">
                           <HStack justify="space-between">
                             <HStack spacing={2}>
-                              <Badge colorScheme="green">Swap Order</Badge>
+                              <Badge colorScheme="green">Trade Delivery</Badge>
                               <Badge colorScheme="gray" variant="subtle">{order.deliveries.length} legs</Badge>
                             </HStack>
                             <Text fontWeight="bold" color="green.600">₱{Math.round(totalEarnings)}</Text>
@@ -975,7 +1094,7 @@ const RiderHome: React.FC = () => {
 
                           <Text fontSize="2xs" color="gray.400">Claimed {formatDateTime(firstIncomplete.claimed_at || firstIncomplete.created_at)}</Text>
                           <Button size="sm" colorScheme="brand" onClick={() => navigate(`/task-stepper/${firstIncomplete.id}`)}>
-                            Continue Swap Delivery
+                            Continue Delivery
                           </Button>
                         </VStack>
                       </CardBody>
@@ -1009,9 +1128,23 @@ const RiderHome: React.FC = () => {
                                 <Icon as={FaCheckCircle} color="green.500" />
                                 <Text fontSize="sm" fontWeight="bold">₱{delivery.total_cost}</Text>
                               </HStack>
-                              <Text fontSize="xs" color="gray.500" noOfLines={1}>
-                                {delivery.pickup_address} → {delivery.delivery_address}
-                              </Text>
+                              {delivery.trade_id ? (
+                                <VStack align="start" spacing={0}>
+                                  <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                                    Buyer payment: {delivery.delivery_address}
+                                  </Text>
+                                  <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                                    Seller pickup: {delivery.pickup_address}
+                                  </Text>
+                                  <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                                    Deliver to buyer: {delivery.delivery_address}
+                                  </Text>
+                                </VStack>
+                              ) : (
+                                <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                                  {delivery.pickup_address} → {delivery.delivery_address}
+                                </Text>
+                              )}
                               <Text fontSize="2xs" color="gray.400">
                                 {delivery.delivered_at ? formatDateTime(delivery.delivered_at) : ''}
                               </Text>
@@ -1036,7 +1169,7 @@ const RiderHome: React.FC = () => {
                           <HStack justify="space-between">
                             <HStack spacing={2}>
                               <Icon as={FaCheckCircle} color="green.500" />
-                              <Text fontSize="sm" fontWeight="bold">Swap Order</Text>
+                              <Text fontSize="sm" fontWeight="bold">Trade Delivery</Text>
                               <Badge colorScheme="gray" variant="subtle">{order.deliveries.length} legs</Badge>
                             </HStack>
                             <Text fontSize="sm" fontWeight="bold">₱{total}</Text>
@@ -1098,8 +1231,18 @@ const RiderHome: React.FC = () => {
                         </HStack>
                         <Text fontWeight="bold" color="green.600">₱{delivery.total_cost}</Text>
                       </HStack>
-                      <Text fontSize="sm">{delivery.pickup_address}</Text>
-                      <Text fontSize="sm">→ {delivery.delivery_address}</Text>
+                      {delivery.trade_id ? (
+                        <VStack align="start" spacing={0}>
+                          <Text fontSize="sm">Buyer payment: {delivery.delivery_address}</Text>
+                          <Text fontSize="sm">Seller pickup: {delivery.pickup_address}</Text>
+                          <Text fontSize="sm">Deliver to buyer: {delivery.delivery_address}</Text>
+                        </VStack>
+                      ) : (
+                        <>
+                          <Text fontSize="sm">{delivery.pickup_address}</Text>
+                          <Text fontSize="sm">→ {delivery.delivery_address}</Text>
+                        </>
+                      )}
                       <Text fontSize="2xs" color="gray.400">Claimed {formatDateTime(delivery.claimed_at || delivery.created_at)}</Text>
                       <Button colorScheme="brand" onClick={() => navigate(`/task-stepper/${delivery.id}`)}>
                         Continue Delivery
@@ -1118,7 +1261,7 @@ const RiderHome: React.FC = () => {
                   <VStack spacing={3} align="stretch">
                     <HStack justify="space-between">
                       <HStack spacing={2}>
-                        <Badge colorScheme="green">Swap Order</Badge>
+                        <Badge colorScheme="green">Trade Delivery</Badge>
                         <Badge colorScheme="gray" variant="subtle">{order.deliveries.length} legs</Badge>
                       </HStack>
                       <Text fontWeight="bold" color="green.600">₱{total}</Text>
@@ -1136,7 +1279,7 @@ const RiderHome: React.FC = () => {
 
                     <Text fontSize="2xs" color="gray.400">Claimed {formatDateTime(firstIncomplete.claimed_at || firstIncomplete.created_at)}</Text>
                     <Button colorScheme="brand" onClick={() => navigate(`/task-stepper/${firstIncomplete.id}`)}>
-                      Continue Swap Delivery
+                      Continue Delivery
                     </Button>
                   </VStack>
                 </CardBody>

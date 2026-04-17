@@ -241,7 +241,7 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
                 How Cash Collection Works
               </Text>
               <Text fontSize="xs" color="blue.800">
-                • Each pickup/delivery fee includes a ₱2 platform tax (counts toward Remittance Owed).
+                • Each delivery fee collection includes a ₱2 platform tax (counts toward Remittance Owed).
               </Text>
               <Text fontSize="xs" color="blue.800">
                 • Your ledger updates automatically after completing a job.

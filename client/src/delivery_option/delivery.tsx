@@ -318,6 +318,13 @@ const DeliveryUI: React.FC = () => {
               </Card>
             ))}
           </SimpleGrid>
+            <Alert status="info" borderRadius="md" mt={4}>
+              <AlertIcon />
+              <AlertTitle fontSize="sm">Buyout-only delivery</AlertTitle>
+              <AlertDescription fontSize="sm">
+                Riders collect payment from the buyer first, pay the seller, then deliver the item.
+              </AlertDescription>
+            </Alert>
 
           {/* Selected Details */}
           {selectedOption && (

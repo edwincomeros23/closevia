@@ -2892,10 +2892,11 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 	var sellerAddr sql.NullString
 	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", sellerID).Scan(&sellerLat, &sellerLon, &sellerAddr)
 
-	// Get buyer location (for delivery and for pickup on return leg)
+	// Get buyer location (for delivery)
 	var buyerLat, buyerLon sql.NullFloat64
 	var buyerAddr sql.NullString
 	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", buyerID).Scan(&buyerLat, &buyerLon, &buyerAddr)
+	_ = buyerAddr
 
 	// Determine delivery type
 	delType := "standard"
@@ -2923,10 +2924,13 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 		delAddr = deliveryAddress.String
 	}
 
-	// If there are buyer-offered items, this is a swap and should be handled as 2 legs:
-	//   Leg 1: seller -> buyer (target product)
-	//   Leg 2: buyer -> seller (buyer-offered products)
-	// If there are no offered items (cash-only), only create Leg 1.
+	// Delivery is buyout-only. If there are buyer-offered items, do not create a delivery.
+	if len(buyerOfferedProductIDs) > 0 {
+		log.Printf("Trade %d is not a buyout; skipping delivery creation", tradeID)
+		return
+	}
+
+	// Buyout flow: single delivery for the target product (seller -> buyer).
 	createDelivery := func(ownerUserID int, pickupLat, pickupLon sql.NullFloat64, pickupAddress string, dropLat, dropLon sql.NullFloat64, dropAddress string, itemIDs []int) (int, error) {
 		result, err := h.db.Exec(`
 			INSERT INTO deliveries (
@@ -2974,37 +2978,10 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 	log.Printf("Created leg1 delivery %d for trade %d (seller -> buyer)", leg1ID, tradeID)
 
 	createdIDs := []int{leg1ID}
-	if len(buyerOfferedProductIDs) > 0 {
-		pickupAddr2 := "Buyer location"
-		if buyerAddr.Valid && buyerAddr.String != "" {
-			pickupAddr2 = buyerAddr.String
-		}
-		delAddr2 := "Seller location"
-		if sellerAddr.Valid && sellerAddr.String != "" {
-			delAddr2 = sellerAddr.String
-		}
-
-		leg2ID, err := createDelivery(
-			buyerID,
-			buyerLat, buyerLon, pickupAddr2,
-			sellerLat, sellerLon, delAddr2,
-			buyerOfferedProductIDs,
-		)
-		if err != nil {
-			log.Printf("Failed to create leg2 delivery for trade %d: %v", tradeID, err)
-			return
-		}
-		createdIDs = append(createdIDs, leg2ID)
-		log.Printf("Created leg2 delivery %d for trade %d (buyer -> seller)", leg2ID, tradeID)
-	}
 
 	// Notify both parties
-	msgBuyer := "Your offer has been accepted! A delivery will be arranged shortly."
-	msgSeller := "You accepted the offer. A delivery request is being prepared."
-	if len(createdIDs) > 1 {
-		msgBuyer = "Your offer has been accepted! Swap delivery scheduled (seller → you, then you → seller)."
-		msgSeller = "You accepted the offer. Swap delivery scheduled (you → buyer, then buyer → you)."
-	}
+	msgBuyer := "Your buyout offer was accepted. A rider will collect payment and deliver your item."
+	msgSeller := "You accepted a buyout offer. A rider will collect payment and deliver your item."
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)", buyerID, msgBuyer)
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)", sellerID, msgSeller)
 

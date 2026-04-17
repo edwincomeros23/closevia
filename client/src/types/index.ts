@@ -403,6 +403,28 @@ export interface DeliveryItem {
   created_at: string
 }
 
+export interface DeliveryStop {
+  id: number
+  delivery_id: number
+  stop_number: number
+  stop_type: string
+  contact_name: string
+  contact_phone: string
+  address: string
+  latitude?: number
+  longitude?: number
+  item_qr_code?: string
+  fee_amount: number
+  status: 'pending' | 'arrived' | 'qr_scanned' | 'fee_collected' | 'completed'
+  arrived_at?: string
+  qr_scanned_at?: string
+  fee_collected_at?: string
+  completed_at?: string
+  photo_url?: string
+  created_at: string
+  updated_at: string
+}
+
 export interface Delivery {
   id: number
   user_id: number
@@ -437,6 +459,7 @@ export interface Delivery {
   rider_latitude?: number
   rider_longitude?: number
   items?: DeliveryItem[]
+  stops?: DeliveryStop[]
   // Batch window fields
   batch_id?: string
   batch_countdown?: number

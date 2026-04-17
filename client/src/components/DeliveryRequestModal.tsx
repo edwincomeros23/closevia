@@ -237,6 +237,12 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
         <ModalCloseButton />
         <ModalBody>
           <VStack spacing={4} align="stretch">
+            <Alert status="info" borderRadius="md">
+              <AlertIcon />
+              <AlertDescription fontSize="sm">
+                Delivery is buyout-only. The rider collects payment from the buyer first, then pays the seller and delivers the item.
+              </AlertDescription>
+            </Alert>
             {/* Delivery Type Selection */}
             <FormControl isRequired>
               <FormLabel fontWeight="semibold">Delivery Type</FormLabel>
