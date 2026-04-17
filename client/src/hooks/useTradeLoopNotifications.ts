@@ -11,7 +11,6 @@ export interface TradeLoopNotification {
   created_at: string
   read: boolean
 }
-
 /**
  * Hook to monitor for trade loop notifications
  * Automatically shows toast notifications when a trade loop is detected
@@ -45,12 +44,12 @@ export const useTradeLoopNotifications = () => {
               n.type === 'trade_loop' &&
               !n.read
           )
-
           // Show toast for new trade loop notifications
           newNotifications.forEach((notif) => {
+            const isTradeMatch = Number(notif.participant_count) === 2
             toast({
-        id: "usetradeloopnotifications-multi-way-trade-detected",
-              title: '🔗 Multi-Way Trade Detected!',
+              id: `trade-loop-${notif.id}`,
+              title: isTradeMatch ? 'Trade Match Found!' : 'Multi-Way Trade Detected!',
               description: notif.message,
               status: 'success',
               duration: 8000,
