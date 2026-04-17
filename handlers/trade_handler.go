@@ -3530,6 +3530,97 @@ func (h *TradeHandler) SendTradeMessage(c *fiber.Ctx) error {
 	return c.Status(201).JSON(models.APIResponse{Success: true})
 }
 
+// GetTradeLoopMessages returns messages for a trade loop
+func (h *TradeHandler) GetTradeLoopMessages(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	loopIDStr := c.Params("id")
+	loopID, valid := parseLikeLoopID(loopIDStr)
+	if !valid {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop id"})
+	}
+	// Check if user is a participant in this loop
+	var participantCount int
+	err := h.db.QueryRow("SELECT COUNT(*) FROM trade_like_loop_participants WHERE loop_id = ? AND user_id = ?", loopID, userID).Scan(&participantCount)
+	if err != nil || participantCount == 0 {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this loop"})
+	}
+	rows, err := h.db.Query("SELECT id, loop_id, sender_id, content, created_at FROM trade_loop_messages WHERE loop_id = ? ORDER BY created_at ASC", loopID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch messages"})
+	}
+	defer rows.Close()
+	type msg struct {
+		ID        int       `json:"id"`
+		LoopID    int       `json:"loop_id"`
+		SenderID  int       `json:"sender_id"`
+		Content   string    `json:"content"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	list := []msg{}
+	for rows.Next() {
+		var m msg
+		if err := rows.Scan(&m.ID, &m.LoopID, &m.SenderID, &m.Content, &m.CreatedAt); err == nil {
+			list = append(list, m)
+		}
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: list})
+}
+
+// SendTradeLoopMessage posts a new message for a trade loop and notifies all participants
+func (h *TradeHandler) SendTradeLoopMessage(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	loopIDStr := c.Params("id")
+	loopID, valid := parseLikeLoopID(loopIDStr)
+	if !valid {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop id"})
+	}
+	var payload struct {
+		Content string `json:"content"`
+	}
+	if err := c.BodyParser(&payload); err != nil || payload.Content == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid content"})
+	}
+	// Check if user is a participant in this loop
+	var participantCount int
+	err := h.db.QueryRow("SELECT COUNT(*) FROM trade_like_loop_participants WHERE loop_id = ? AND user_id = ?", loopID, userID).Scan(&participantCount)
+	if err != nil || participantCount == 0 {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this loop"})
+	}
+	// insert message
+	res, err := h.db.Exec("INSERT INTO trade_loop_messages (loop_id, sender_id, content) VALUES (?, ?, ?)", loopID, userID, payload.Content)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to save message"})
+	}
+	id64, _ := res.LastInsertId()
+	var createdAt time.Time
+	_ = h.db.QueryRow("SELECT created_at FROM trade_loop_messages WHERE id = ?", id64).Scan(&createdAt)
+	// Get all participants in the loop to notify them
+	participantRows, err := h.db.Query("SELECT DISTINCT user_id FROM trade_like_loop_participants WHERE loop_id = ?", loopID)
+	if err == nil {
+		defer participantRows.Close()
+		evt := sseEvent{Type: "trade_loop_message", Data: fiber.Map{
+			"id":         int(id64),
+			"loop_id":    loopID,
+			"sender_id":  userID,
+			"content":    payload.Content,
+			"created_at": createdAt,
+		}}
+		for participantRows.Next() {
+			var participantID int
+			if err := participantRows.Scan(&participantID); err == nil {
+				publishToUser(participantID, evt)
+			}
+		}
+	}
+	return c.Status(201).JSON(models.APIResponse{Success: true})
+}
+
 // CountTrades returns count of trades for current user by direction and status
 func (h *TradeHandler) CountTrades(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)

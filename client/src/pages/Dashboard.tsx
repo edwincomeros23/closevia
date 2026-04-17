@@ -241,7 +241,6 @@ const Dashboard: React.FC = () => {
   const defaultOffersViewMode = useBreakpointValue({ base: 'list', md: 'grid' }) as 'grid' | 'list'
   const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('list')
   const [multiWayTradesViewMode, setMultiWayTradesViewMode] = useState<'grid' | 'list'>('grid')
-  const [multiWayChainFilter, setMultiWayChainFilter] = useState<'all' | '3'>('all')
   const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('list')
 
   // Color mode values
@@ -312,7 +311,7 @@ const Dashboard: React.FC = () => {
 
   // Fetch multi-way trades when tab is selected
   useEffect(() => {
-    if (user && (activeTab === 1 || activeTab === 2)) {
+    if (user && (activeTab === 1 || activeTab === 2 || activeTab === 3)) {
       fetchMultiWayTrades()
       if (activeTab === 2) fetchDiscoverableLoops()
     }
@@ -783,9 +782,15 @@ const Dashboard: React.FC = () => {
   }, [])
 
   const filteredMultiWayTrades = useMemo(() => {
-    if (multiWayChainFilter === 'all') return multiWayTrades
-    return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) === 3)
-  }, [multiWayTrades, multiWayChainFilter, getChainSize])
+    return (multiWayTrades || []).filter((trade: any) => {
+      const size = getChainSize(trade)
+      return size >= 3 && size <= 5
+    })
+  }, [multiWayTrades, getChainSize])
+
+  const tradeMatchTrades = useMemo(() => {
+    return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) === 2)
+  }, [multiWayTrades, getChainSize])
 
   // Group loops into "Needs Your Action" and "Waiting on Others"
   const groupedMultiWayTrades = useMemo(() => {
@@ -811,7 +816,30 @@ const Dashboard: React.FC = () => {
     return { needsAction, waitingOnOthers, autoSearchResults }
   }, [filteredMultiWayTrades])
 
+  const groupedTradeMatchTrades = useMemo(() => {
+    const needsAction: any[] = []
+    const waitingOnOthers: any[] = []
+    const autoSearchResults: any[] = []
+
+    for (const trade of tradeMatchTrades) {
+      const status = trade?.status || ''
+      const canJoin = trade?.can_join === true
+      const canDecline = trade?.can_decline === true
+
+      if (status === 'pending' && (canJoin || canDecline)) {
+        needsAction.push(trade)
+      } else if (status === 'pending' && !canJoin && !canDecline) {
+        waitingOnOthers.push(trade)
+      } else if (status === 'confirmed') {
+        continue
+      }
+    }
+
+    return { needsAction, waitingOnOthers, autoSearchResults }
+  }, [tradeMatchTrades])
+
   const multiWayIndicatorCount = groupedMultiWayTrades.needsAction.length + groupedMultiWayTrades.waitingOnOthers.length
+  const tradeMatchIndicatorCount = groupedTradeMatchTrades.needsAction.length + groupedTradeMatchTrades.waitingOnOthers.length
 
   // Get loop details from cache or fetch
   const getOrFetchMultiWayLoopDetails = useCallback(async (loopId: string, cardData?: any) => {
@@ -938,7 +966,12 @@ const Dashboard: React.FC = () => {
 
   // Notify about new visible loops (only those that actually appear in UI)
   useEffect(() => {
-    const visibleLoops = [...groupedMultiWayTrades.needsAction, ...groupedMultiWayTrades.waitingOnOthers]
+    const visibleLoops = [
+      ...groupedMultiWayTrades.needsAction,
+      ...groupedMultiWayTrades.waitingOnOthers,
+      ...groupedTradeMatchTrades.needsAction,
+      ...groupedTradeMatchTrades.waitingOnOthers,
+    ]
     const visibleIds = new Set(visibleLoops.map((t: any) => String(t.loop_id || t.chain_id || t.id)))
     const prevIds = prevMultiWayLoopIds.current
     
@@ -963,7 +996,13 @@ const Dashboard: React.FC = () => {
     }
     
     prevMultiWayLoopIds.current = visibleIds
-  }, [groupedMultiWayTrades.needsAction, groupedMultiWayTrades.waitingOnOthers, toast])
+  }, [
+    groupedMultiWayTrades.needsAction,
+    groupedMultiWayTrades.waitingOnOthers,
+    groupedTradeMatchTrades.needsAction,
+    groupedTradeMatchTrades.waitingOnOthers,
+    toast,
+  ])
 
   // Register refresh callbacks for all tabs with RealtimeContext
   useEffect(() => {
@@ -991,8 +1030,8 @@ const Dashboard: React.FC = () => {
       multiwayAlertCountRef.current += 1
       if (multiwayAlertTimerRef.current) clearTimeout(multiwayAlertTimerRef.current)
       multiwayAlertTimerRef.current = setTimeout(() => {
-        // Only show toast when user is on the Multi-Way tab (tab index 2)
-        if (activeTabRef.current !== 2) {
+        // Only show toast when user is on the Multi-Way or Trade Match tab
+        if (activeTabRef.current !== 2 && activeTabRef.current !== 3) {
           multiwayAlertCountRef.current = 0
           return
         }
@@ -3219,7 +3258,8 @@ const Dashboard: React.FC = () => {
     0: 'Manage your listings and keep them trade-ready.',
     1: 'Review your offers and respond quickly to pending actions.',
     2: 'Track multi-way matches and loop opportunities for your listings.',
-    3: 'Review your completed and archived trade history.',
+    3: 'Review mutual matches where both traders liked each other.',
+    4: 'Review your completed and archived trade history.',
   }
   const activeSubtitle = dashboardSubtitleByTab[activeTab] || 'Manage your products, trades, and offers.'
 
@@ -3232,7 +3272,7 @@ const Dashboard: React.FC = () => {
       setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')
       return
     }
-    if (activeTab === 2) {
+    if (activeTab === 2 || activeTab === 3) {
       setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')
       return
     }
@@ -3254,8 +3294,7 @@ const Dashboard: React.FC = () => {
       setOffersPage(1)
       return
     }
-    if (activeTab === 2) {
-      setMultiWayChainFilter(multiWayChainFilter === 'all' ? '3' : 'all')
+    if (activeTab === 2 || activeTab === 3) {
       return
     }
   }
@@ -3266,7 +3305,7 @@ const Dashboard: React.FC = () => {
       setCurrentPage(1)
       return
     }
-    if (activeTab === 1 || activeTab === 2) {
+    if (activeTab === 1 || activeTab === 2 || activeTab === 3) {
       setOffersSort(mode)
       return
     }
@@ -3278,13 +3317,13 @@ const Dashboard: React.FC = () => {
     ? productViewMode
     : activeTab === 1
       ? offersViewMode
-      : activeTab === 2
+      : activeTab === 2 || activeTab === 3
         ? multiWayTradesViewMode
         : tradeHistoryViewMode
 
   const activeSortMode = activeTab === 0
     ? productSort
-    : activeTab === 1 || activeTab === 2
+    : activeTab === 1 || activeTab === 2 || activeTab === 3
       ? offersSort
       : tradeHistorySort
 
@@ -3426,7 +3465,7 @@ const Dashboard: React.FC = () => {
                           cursor="pointer"
                           borderRadius="md"
                           onClick={() => {
-                            setActiveTab(2)
+                              setActiveTab(4)
                             setShowSearchSuggestions(false)
                           }}
                         >
@@ -3550,7 +3589,7 @@ const Dashboard: React.FC = () => {
                     </Tooltip>
                   )}
 
-                  {activeTab === 2 && (
+                  {(activeTab === 2 || activeTab === 3) && (
                     <Tooltip label={multiWayTradesViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                       <Button
                         size="sm"
@@ -3564,7 +3603,7 @@ const Dashboard: React.FC = () => {
                     </Tooltip>
                   )}
 
-                  {activeTab === 3 && (
+                  {activeTab === 4 && (
                     <Tooltip label={tradeHistoryViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                       <Button
                         size="sm"
@@ -3723,6 +3762,25 @@ const Dashboard: React.FC = () => {
                         {multiWayIndicatorCount > 0 && (
                           <Badge colorScheme="purple" borderRadius="full" fontSize="2xs">
                             {multiWayIndicatorCount}
+                          </Badge>
+                        )}
+                      </HStack>
+                    </Tab>
+                    <Tab
+                      _selected={{
+                        color: 'green.500',
+                        borderColor: 'green.500',
+                        borderBottomWidth: '3px',
+                        fontWeight: 'semibold'
+                      }}
+                      transition="all 0.2s"
+                    >
+                      <HStack spacing={1}>
+                        <Icon as={FaHandshake} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Trade Match</Text>
+                        {tradeMatchIndicatorCount > 0 && (
+                          <Badge colorScheme="blue" borderRadius="full" fontSize="2xs">
+                            {tradeMatchIndicatorCount}
                           </Badge>
                         )}
                       </HStack>
@@ -5033,6 +5091,157 @@ const Dashboard: React.FC = () => {
                               </VStack>
                             )}
                         </VStack>
+                </TabPanel>
+
+                {/* Trade Match Tab */}
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
+                  <VStack spacing={6} align="stretch">
+                    <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
+                      <VStack align="start" spacing={1}>
+                        <Text fontSize="xs" color="blue.800">
+                          Mutual likes mean both traders are interested in each other's items. Confirm to proceed.
+                        </Text>
+                      </VStack>
+                    </Box>
+
+                    {multiWayTradesLoading ? (
+                      <Center py={12}>
+                        <Spinner size="lg" color="brand.500" />
+                      </Center>
+                    ) : tradeMatchTrades.length === 0 ? (
+                      <Box textAlign="center" py={12}>
+                        <Icon as={FaHandshake} boxSize={16} color="blue.300" mb={4} />
+                        <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
+                          No trade matches yet
+                        </Text>
+                        <Text color="gray.500" fontSize="sm">
+                          Like items in Find Trades. When someone likes back, it will appear here.
+                        </Text>
+                      </Box>
+                    ) : (
+                      <VStack align="stretch" spacing={6}>
+                        {groupedTradeMatchTrades.needsAction.length > 0 && (
+                          <Box>
+                            <Heading size="sm" mb={3} color="blue.600">
+                              Needs Your Action
+                            </Heading>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+                              {groupedTradeMatchTrades.needsAction.map((trade) => {
+                                const summary = getSummary(trade)
+                                const participants = trade.participants || []
+                                const firstParticipantImage = resolveParticipantImage(participants[0])
+
+                                return (
+                                  <Card
+                                    key={trade.id || trade.loop_id || trade.chain_id}
+                                    variant="outline"
+                                    h="100%"
+                                    display="flex"
+                                    flexDirection="column"
+                                    _hover={{
+                                      shadow: 'lg',
+                                      transform: 'translateY(-4px)',
+                                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                      borderColor: 'blue.500',
+                                    }}
+                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                    borderLeftWidth="4px"
+                                    borderLeftColor="blue.400"
+                                    borderColor="blue.200"
+                                    cursor="pointer"
+                                    onClick={() => handleViewMultiWayTradeDetails(trade)}
+                                  >
+                                    <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
+                                      {firstParticipantImage ? (
+                                        <Image src={firstParticipantImage} alt="Item" w="full" h="full" objectFit="cover" />
+                                      ) : (
+                                        <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
+                                          <Text fontSize="xs" color="gray.500">Item</Text>
+                                        </Box>
+                                      )}
+                                    </Box>
+
+                                    <CardHeader pb={2} flex={1}>
+                                      <Badge colorScheme="blue" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
+                                        Your Action
+                                      </Badge>
+                                      <Heading size="sm" noOfLines={2}>
+                                        {summary.yourGive}
+                                      </Heading>
+                                      <Text fontSize="xs" color="gray.500" mt={2}>
+                                        → {summary.yourGet}
+                                      </Text>
+                                    </CardHeader>
+
+                                    <CardFooter pt={0} pb={3}>
+                                      <HStack w="full" spacing={2}>
+                                        <Button size="sm" colorScheme="green" flex={1} onClick={(e) => { e.stopPropagation(); handleJoinMultiWayTrade(trade) }} isLoading={multiWayTradeJoining}>
+                                          Accept
+                                        </Button>
+                                        <Button size="sm" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
+                                          Decline
+                                        </Button>
+                                      </HStack>
+                                    </CardFooter>
+                                  </Card>
+                                )
+                              })}
+                            </SimpleGrid>
+                          </Box>
+                        )}
+
+                        {groupedTradeMatchTrades.waitingOnOthers.length > 0 && (
+                          <Box>
+                            <Heading size="sm" mb={3} color="orange.600">
+                              Waiting on Others
+                            </Heading>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+                              {groupedTradeMatchTrades.waitingOnOthers.map((trade) => {
+                                const summary = getSummary(trade)
+
+                                return (
+                                  <Card
+                                    key={trade.id || trade.loop_id || trade.chain_id}
+                                    variant="outline"
+                                    h="100%"
+                                    display="flex"
+                                    flexDirection="column"
+                                    _hover={{
+                                      shadow: 'lg',
+                                      transform: 'translateY(-4px)',
+                                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                      borderColor: 'orange.500',
+                                    }}
+                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                    borderLeftWidth="4px"
+                                    borderLeftColor="orange.400"
+                                    borderColor="orange.200"
+                                    cursor="pointer"
+                                    onClick={() => handleViewMultiWayTradeDetails(trade)}
+                                  >
+                                    <CardHeader pb={2} flex={1}>
+                                      <Badge colorScheme="orange" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
+                                        Waiting...
+                                      </Badge>
+                                      <Heading size="sm" noOfLines={2}>
+                                        {summary.yourGive} → {summary.yourGet}
+                                      </Heading>
+                                    </CardHeader>
+
+                                    <CardFooter pt={0} pb={3}>
+                                      <Button size="sm" colorScheme="orange" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
+                                        View Trade
+                                      </Button>
+                                    </CardFooter>
+                                  </Card>
+                                )
+                              })}
+                            </SimpleGrid>
+                          </Box>
+                        )}
+                      </VStack>
+                    )}
+                  </VStack>
                 </TabPanel>
 
                 {/* Trade History Tab */}

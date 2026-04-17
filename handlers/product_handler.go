@@ -338,9 +338,23 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		finalCondition = appraisal.Condition
 	}
 
-	// Geocode location
+	// Get product location coordinates
+	// ==================== LOCKED: CONSISTENT WITH PROXIMITY CALCULATION ====================
+	// Products use seller's location for distance calculations (see: ai_features_handler.go GetProximity)
+	// Priority 1: Use user's saved home location (most accurate for items created from home)
+	// Priority 2: Geocode location text if provided (fallback)
+	// NOTE: Even if products have latitude/longitude stored, the proximity API uses seller's location
+	// =====================================================================================
 	var lat, lon *float64
-	if location != "" {
+	var userLat, userLon sql.NullFloat64
+	h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", userID).Scan(&userLat, &userLon)
+
+	if userLat.Valid && userLon.Valid {
+		// User has a saved home location - use it for the product
+		lat = &userLat.Float64
+		lon = &userLon.Float64
+	} else if location != "" {
+		// Fallback: Geocode location text only if user has no saved home location
 		coords, err := services.GetCoordinates(location)
 		if err == nil {
 			lat = &coords.Latitude

@@ -67,7 +67,7 @@ import {
   FaEnvelope,
   FaMobile,
 } from 'react-icons/fa'
-import { FiSettings, FiSave } from 'react-icons/fi'
+import { FiSettings, FiSave, FiMapPin } from 'react-icons/fi'
 
 const SettingsPage: React.FC = () => {
   const toast = useToast()
@@ -159,6 +159,12 @@ const SettingsPage: React.FC = () => {
     // Remove ?t=... or &t=... cache busters
     return url.replace(/[?&]t=\d+/g, '')
   }
+
+  // Refresh user data on component mount to ensure latest home location
+  useEffect(() => {
+    console.log('🗺️ Settings page mounted, refreshing user data...')
+    refreshUser()
+  }, [refreshUser])
 
   // Load initial values from user
   useEffect(() => {
@@ -1350,6 +1356,64 @@ const SettingsPage: React.FC = () => {
                 </Flex>
 
                 <Divider />
+              </VStack>
+            </CardBody>
+          </Card>
+
+          {/* My Home Location Section */}
+          <Card
+            bg={cardBg}
+            borderRadius="lg"
+            overflow="hidden"
+            variant="outline"
+            borderColor={borderColor}
+            _hover={{ boxShadow: 'md' }}
+            transition="all 0.2s"
+          >
+            <CardHeader pb={3}>
+              <HStack spacing={3}>
+                <Icon as={FiMapPin} color="brand.500" boxSize={5} />
+                <Heading size="md">My Home Location</Heading>
+              </HStack>
+            </CardHeader>
+            <CardBody pt={0}>
+              <VStack spacing={4} align="stretch">
+                <Box>
+                  <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')} mb={2}>
+                    Set your home location to see distances to products and meetup points.
+                  </Text>
+                  {user?.latitude && user?.longitude ? (
+                    <Box p={3} bg={useColorModeValue('blue.50', 'blue.900')} borderRadius="md" borderWidth="1px" borderColor={useColorModeValue('blue.200', 'blue.700')} mb={3}>
+                      <HStack spacing={2} mb={2}>
+                        <Icon as={FaCheckCircle} color="green.500" boxSize={4} />
+                        <Text fontSize="sm" fontWeight="bold" color="green.600">
+                          Home Location Set
+                        </Text>
+                      </HStack>
+                      <Text fontSize="xs" color={useColorModeValue('gray.600', 'gray.300')}>
+                        Latitude: {(user.latitude as any).toFixed(6)}
+                      </Text>
+                      <Text fontSize="xs" color={useColorModeValue('gray.600', 'gray.300')}>
+                        Longitude: {(user.longitude as any).toFixed(6)}
+                      </Text>
+                    </Box>
+                  ) : (
+                    <Box p={3} bg={useColorModeValue('orange.50', 'orange.900')} borderRadius="md" borderWidth="1px" borderColor={useColorModeValue('orange.200', 'orange.700')} mb={3}>
+                      <Text fontSize="xs" color={useColorModeValue('orange.700', 'orange.200')}>
+                        📍 No home location set yet. Click the button below to add one.
+                      </Text>
+                    </Box>
+                  )}
+                </Box>
+                <Button
+                  leftIcon={<FiMapPin />}
+                  colorScheme="brand"
+                  size="sm"
+                  onClick={() => navigate('/my-home-location')}
+                  w="fit-content"
+                >
+                  {user?.latitude && user?.longitude ? 'Update Home Location' : 'Set Home Location'}
+                </Button>
               </VStack>
             </CardBody>
           </Card>

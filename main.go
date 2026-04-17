@@ -533,6 +533,8 @@ func main() {
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
 	trades.Post("/loops/:id/cancel", middleware.AuthMiddleware(), tradeHandler.CancelTradeLoop)
 	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
+	trades.Get("/loops/:id/messages", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopMessages)
+	trades.Post("/loops/:id/messages", middleware.AuthMiddleware(), tradeHandler.SendTradeLoopMessage)
 
 	// Multi-way chain specific routes
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
