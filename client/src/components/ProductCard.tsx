@@ -19,7 +19,6 @@ import { getProductUrl } from '../utils/productUtils'
 import { IconButton } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
 import ProximityBadge from './ProximityBadge'
-import { api } from '../services/api'
 
 interface ProductCardProps {
   product: any
@@ -93,13 +92,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
   // Memoize click handlers
   const handleCardClick = useCallback(async () => {
-    // Increment view count when user clicks on the product card
-    try {
-      await api.post(`/api/products/${product.id}/view`)
-    } catch (error) {
-      // Silently fail - don't block navigation if view tracking fails
-      console.error('Failed to track view:', error)
-    }
     // Navigate to product details page
     navigate(getProductUrl(product))
   }, [product, navigate])

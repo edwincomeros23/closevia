@@ -17,6 +17,7 @@ interface ProductContextType {
   updateProduct: (id: number, product: ProductUpdate) => Promise<void>
   deleteProduct: (id: number) => Promise<void>
   getUserProducts: (userId: number, page?: number) => Promise<PaginatedResponse<Product>>
+  recordProductView: (productId: number) => void
   clearError: () => void
 }
 
@@ -34,6 +35,7 @@ const defaultContext: ProductContextType = {
   updateProduct: async () => {},
   deleteProduct: async () => {},
   getUserProducts: async () => ({ data: [], total: 0, page: 1, limit: 20, total_pages: 0 }),
+  recordProductView: () => {},
   clearError: () => {},
 }
 
@@ -78,7 +80,35 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
 
   // Cache management refs
   const cacheRef = useRef<{ filters: string; products: Product[]; timestamp: number } | null>(null)
-  const distanceCacheRef = useRef<Map<string, { distanceKm: number; distance: string }>>(new Map())
+  const loadDistanceCacheFromStorage = () => {
+    try {
+      const raw = localStorage.getItem('clovia_product_distance_cache')
+      if (!raw) return new Map<string, { distanceKm: number; distance: string }>()
+      const parsed = JSON.parse(raw) as Record<string, { distanceKm: number; distance: string }>
+      const map = new Map<string, { distanceKm: number; distance: string }>()
+      Object.entries(parsed).forEach(([key, value]) => {
+        if (value && typeof value.distanceKm === 'number') {
+          map.set(key, value)
+        }
+      })
+      return map
+    } catch (e) {
+      console.warn('Failed to read distance cache:', e)
+      return new Map<string, { distanceKm: number; distance: string }>()
+    }
+  }
+  const persistDistanceCache = () => {
+    try {
+      const serialized: Record<string, { distanceKm: number; distance: string }> = {}
+      distanceCacheRef.current.forEach((value, key) => {
+        serialized[key] = value
+      })
+      localStorage.setItem('clovia_product_distance_cache', JSON.stringify(serialized))
+    } catch (e) {
+      console.warn('Failed to persist distance cache:', e)
+    }
+  }
+  const distanceCacheRef = useRef<Map<string, { distanceKm: number; distance: string }>>(loadDistanceCacheFromStorage())
   const pendingRequestRef = useRef<Promise<void> | null>(null)
   const hasInitialized = useRef(false)
 
@@ -93,7 +123,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }, [products])
 
-  // Get the viewer's live location from the browser so the feed stays current.
+  // Get the viewer's location once; cached distances should not re-run on every move.
   useEffect(() => {
     if ('geolocation' in navigator) {
       const handlePosition = (position: GeolocationPosition) => {
@@ -108,20 +138,6 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         {
           enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 300000,
-        }
-      )
-
-      if (locationWatchId.current !== null) {
-        navigator.geolocation.clearWatch(locationWatchId.current)
-      }
-      locationWatchId.current = navigator.geolocation.watchPosition(
-        handlePosition,
-        (error) => {
-          console.warn('Geolocation watch error:', error.message)
-        },
-        {
-          enableHighAccuracy: true,
           maximumAge: 300000,
         }
       )
@@ -202,15 +218,10 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     return match[2] === 'km' ? value : value / 1000
   }
 
-  const roundLocationValue = (value: number): string => value.toFixed(5)
-
   const getDistanceCacheKey = (product: Product): string => {
-    const viewerKey = userLocation
-      ? `${roundLocationValue(userLocation.lat)}:${roundLocationValue(userLocation.lng)}`
-      : 'no-viewer'
-    const productLat = product.latitude != null ? roundLocationValue(product.latitude) : 'no-lat'
-    const productLng = product.longitude != null ? roundLocationValue(product.longitude) : 'no-lng'
-    return [product.id, product.updated_at, productLat, productLng, viewerKey].join('|')
+    const productLat = product.latitude != null ? product.latitude.toFixed(5) : 'no-lat'
+    const productLng = product.longitude != null ? product.longitude.toFixed(5) : 'no-lng'
+    return [product.id, product.updated_at, productLat, productLng].join('|')
   }
 
   const compareByDistance = (a: Product, b: Product): number => {
@@ -288,6 +299,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         distance: product.distance || '',
       })
     })
+    persistDistanceCache()
 
     // Sort by:
     // 1. Boosted status (boosted products first for 3 hours, then by remaining time)
@@ -683,6 +695,24 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }
 
+  const recordProductView = (productId: number) => {
+    setProducts((currentProducts) => {
+      const nextProducts = (currentProducts || []).map((product) => {
+        if (product.id !== productId) return product
+        const currentViewCount = typeof product.view_count === 'number' ? product.view_count : 0
+        return { ...product, view_count: currentViewCount + 1 }
+      })
+
+      try {
+        localStorage.setItem('clovia_home_products', JSON.stringify(nextProducts))
+      } catch (e) {
+        console.warn('Failed to persist updated view count:', e)
+      }
+
+      return nextProducts
+    })
+  }
+
   const getUserProducts = async (userId: number, page: number = 1): Promise<PaginatedResponse<Product>> => {
     try {
       setError(null)
@@ -711,6 +741,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     updateProduct,
     deleteProduct,
     getUserProducts,
+    recordProductView,
     clearError,
   }
 
