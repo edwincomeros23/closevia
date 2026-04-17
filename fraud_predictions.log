@@ -334,3 +334,51 @@
   "seller_id": 52,
   "timestamp": "2026-04-16T15:00:54-04:00"
 }
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 291,
+  "risk_level": "",
+  "seller_id": 4,
+  "timestamp": "2026-04-17T05:17:42-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 292,
+  "risk_level": "",
+  "seller_id": 63,
+  "timestamp": "2026-04-17T05:24:33-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 293,
+  "risk_level": "",
+  "seller_id": 63,
+  "timestamp": "2026-04-17T05:49:57-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 294,
+  "risk_level": "",
+  "seller_id": 63,
+  "timestamp": "2026-04-17T05:50:57-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 295,
+  "risk_level": "",
+  "seller_id": 63,
+  "timestamp": "2026-04-17T06:01:15-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 296,
+  "risk_level": "",
+  "seller_id": 63,
+  "timestamp": "2026-04-17T07:13:34-04:00"
+}

@@ -83,17 +83,35 @@ func (h *AIFeaturesHandler) GetProximity(c *fiber.Ctx) error {
 			&targetLat.Float64, &targetLon.Float64,
 		)
 	case "product":
-		// Calculate distance to a product
+		// ==================== LOCKED: PRODUCT DISTANCE = SELLER DISTANCE ====================
+		// CRITICAL: Always use the seller's location (from users table), NEVER the product's stored location
+		//
+		// WHY THIS IS LOCKED IN:
+		// - Products are physical items at the seller's location, not separate locations
+		// - Distance badge on product card shows "X away" = distance to seller
+		// - Distance shown on product detail page shows "X away" = distance to seller
+		// - Must be consistent: ProductCard distance = ProductDetail seller distance
+		// - User's home location determines proximity calculation for all their products
+		//
+		// IF YOU CHANGE THIS: Proximities will diverge again (product vs seller showing different distances)
+		// =====================================================================================
+		var sellerID int
 		var productLat, productLon sql.NullFloat64
-		err = h.db.QueryRow("SELECT latitude, longitude FROM products WHERE id = ?", targetID).Scan(&productLat, &productLon)
+		err = h.db.QueryRow("SELECT seller_id FROM products WHERE id = ?", targetID).Scan(&sellerID)
 		if err != nil {
 			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+		}
+
+		// Get the seller's location (not product-specific coordinates)
+		err = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", sellerID).Scan(&productLat, &productLon)
+		if err != nil {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Seller not found"})
 		}
 
 		if !productLat.Valid || !productLon.Valid {
 			return c.Status(400).JSON(models.APIResponse{
 				Success: false,
-				Error:   "Product location not set",
+				Error:   "Product seller location not set",
 			})
 		}
 

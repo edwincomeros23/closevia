@@ -483,6 +483,17 @@ func CreateTables() error {
 			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
 			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_messages (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id INT NOT NULL,
+			sender_id INT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (loop_id) REFERENCES trade_like_loops(id) ON DELETE CASCADE,
+			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_loop_messages_loop_id (loop_id),
+			INDEX idx_loop_messages_created_at (created_at)
+		)`,
 		`CREATE TABLE IF NOT EXISTS trade_events (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			trade_id INT NOT NULL,

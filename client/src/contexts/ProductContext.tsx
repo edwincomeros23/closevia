@@ -92,11 +92,36 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }, [products])
 
-  // Get user's current location
+  // Helper to get saved user location from localStorage
+  const getSavedUserLocation = () => {
+    try {
+      const cachedUser = localStorage.getItem('clovia_user')
+      if (cachedUser) {
+        const user = JSON.parse(cachedUser)
+        if (user.latitude && user.longitude) {
+          return { lat: user.latitude, lng: user.longitude }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to read saved user location:', e)
+    }
+    return null
+  }
+
+  // Get user's current location - prioritize saved home location over geolocation
   useEffect(() => {
     if (locationRequested.current) return
     locationRequested.current = true
 
+    // First, check if user has a saved home location
+    const savedLocation = getSavedUserLocation()
+    if (savedLocation) {
+      console.log('Using saved home location:', savedLocation.lat, savedLocation.lng)
+      setUserLocation(savedLocation)
+      return
+    }
+
+    // Fallback to browser geolocation if no saved location
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -121,6 +146,24 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       )
     }
   }, [token])
+
+  // Periodically check for location updates from localStorage (e.g., when user changes home location)
+  useEffect(() => {
+    const checkLocationUpdates = () => {
+      const savedLocation = getSavedUserLocation()
+      if (savedLocation && (!userLocation || userLocation.lat !== savedLocation.lat || userLocation.lng !== savedLocation.lng)) {
+        console.log('Detected location update:', savedLocation)
+        setUserLocation(savedLocation)
+        // Reset locationRequested to allow fresh geolocation if needed
+        locationRequested.current = false
+      }
+    }
+
+    // Check initially and then every 5 seconds
+    checkLocationUpdates()
+    const interval = setInterval(checkLocationUpdates, 5000)
+    return () => clearInterval(interval)
+  }, [userLocation])
 
   // Recalculate distances when user location becomes available
   useEffect(() => {
@@ -170,11 +213,25 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }
 
+  // Pre-compute boost expiration times to avoid redundant Date operations in sort
+  const getBoostStatus = (product: Product): { isBoosted: boolean; timeRemaining: number } => {
+    if (!product.boosted_at) return { isBoosted: false, timeRemaining: 0 }
+    const boostExpiry = new Date(product.boosted_at).getTime() + 3 * 60 * 60 * 1000
+    const timeRemaining = boostExpiry - Date.now()
+    return { isBoosted: timeRemaining > 0, timeRemaining }
+  }
+
   // Add distance to products and sort by nearest first
-  const addDistanceToProducts = (productsList: Product[]): Product[] => {
+  // skipProcessed=true skips products that already have distanceKm set (optimization for pagination)
+  const addDistanceToProducts = (productsList: Product[], skipProcessed = false): Product[] => {
     if (!userLocation) return productsList
 
     const withDistance = productsList.map((product) => {
+      // Skip if already processed (optimization: don't recalculate old products on pagination)
+      if (skipProcessed && product.distanceKm !== undefined && product.distanceKm !== Infinity) {
+        return product
+      }
+
       let dist = Infinity
       if (product.latitude && product.longitude) {
         dist = calculateDistance(
@@ -183,6 +240,17 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
           product.latitude,
           product.longitude
         )
+      } else if (product.distance) {
+        // If product doesn't have coordinates but has distance from backend, parse it for sorting
+        const distStr = product.distance.toLowerCase()
+        if (distStr.includes('m away')) {
+          // Extract meters: "453 M away" -> 0.453 km
+          const meters = parseFloat(distStr.replace(/[^\d.]/g, ''))
+          dist = meters / 1000
+        } else if (distStr.includes('km away')) {
+          // Extract kilometers: "2.5 KM away" -> 2.5
+          dist = parseFloat(distStr.replace(/[^\d.]/g, ''))
+        }
       }
 
       // If we couldn't compute a per-product distance on the client, keep
@@ -200,10 +268,25 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     })
 
     // Sort by:
-    // 1. Premium status (tie-breaker)
+    // 1. Boosted status (boosted products first for 3 hours, then by remaining time)
     // 2. Distance (nearest first)
-    // 3. Newest first (for identical distance)
+    // 3. Premium status (tie-breaker)
+    // 4. Newest first (for identical everything else)
     withDistance.sort((a, b) => {
+      // Pre-computed boost status (done once per product, not redundantly in each comparison)
+      const boostA = getBoostStatus(a)
+      const boostB = getBoostStatus(b)
+
+      // Prioritize boosted products first
+      if (boostA.isBoosted && !boostB.isBoosted) return -1
+      if (!boostA.isBoosted && boostB.isBoosted) return 1
+
+      // If both are boosted, sort by remaining boost time (more time remaining first)
+      if (boostA.isBoosted && boostB.isBoosted) {
+        return boostB.timeRemaining - boostA.timeRemaining
+      }
+
+      // Then sort by distance (nearest first)
       const distA = a.distanceKm
       const distB = b.distanceKm
       
@@ -402,8 +485,12 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       if (response.data && response.data.data) {
         const data = response.data.data as PaginatedResponse<Product>
         const newItems = Array.isArray(data?.data) ? data.data : []
-        const newItemsWithDistance = addDistanceToProducts(newItems)
-        setProducts(prev => (Array.isArray(prev) ? [...prev, ...newItemsWithDistance] : newItemsWithDistance))
+        // OPTIMIZATION: Only compute distance for new items, skip reprocessing old items
+        const newItemsWithDistance = addDistanceToProducts(newItems, false)
+        // Merge new items with existing, then sort entire list once (not twice)
+        const allProducts = Array.isArray(products) ? [...products, ...newItemsWithDistance] : newItemsWithDistance
+        const sortedProducts = addDistanceToProducts(allProducts, true) // skipProcessed=true avoids recalculating
+        setProducts(sortedProducts)
         setCurrentPage(data.page || nextPage)
         const totalPages = data.total_pages || 0
         if (totalPages > 0) {
@@ -414,7 +501,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         }
       } else if (response.data && Array.isArray(response.data)) {
         const newItems = response.data as Product[]
-        setProducts(prev => (Array.isArray(prev) ? [...prev, ...newItems] : newItems))
+        const allProducts = Array.isArray(products) ? [...products, ...newItems] : newItems
+        const sortedProducts = addDistanceToProducts(allProducts)
+        setProducts(sortedProducts)
         setHasMore(newItems.length > 0)
         setCurrentPage(nextPage)
       } else {

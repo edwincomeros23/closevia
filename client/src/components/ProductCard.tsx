@@ -18,6 +18,7 @@ import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 import { IconButton } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
+import ProximityBadge from './ProximityBadge'
 import { api } from '../services/api'
 
 interface ProductCardProps {
@@ -84,43 +85,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
     return () => clearInterval(interval)
   }, [product.boosted_at])
 
-  const formatDistanceCompact = (rawDistance: unknown): string => {
-    if (!rawDistance) return ''
 
-    const raw = String(rawDistance).trim().toLowerCase()
-    if (!raw) return ''
-
-    const match = raw.match(/([\d.]+)\s*(km|m)\b/)
-    if (!match) return ''
-
-    const value = Number(match[1])
-    const unit = match[2]
-    if (!Number.isFinite(value)) return ''
-
-    if (unit === 'm') {
-      if (value < 1000) {
-        return `${Math.round(value)}m`
-      }
-
-      const km = value / 1000
-      const oneDecimal = Math.round(km * 10) / 10
-      return `${oneDecimal.toString().replace(/\.0$/, '.0')}km`
-    }
-
-    const meters = value * 1000
-    if (meters <= 2000) {
-      return `${Math.round(meters)}m`
-    }
-
-    if (value < 10) {
-      const oneDecimal = Math.round(value * 10) / 10
-      return `${oneDecimal.toString().replace(/\.0$/, '')}km`
-    }
-
-    return `${Math.round(value)}km`
-  }
-
-  const compactDistance = formatDistanceCompact(product.distance)
 
   const sellerAvatar = product.seller_profile_picture
     ? getImageUrl(product.seller_profile_picture)
@@ -253,30 +218,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
               </Badge>
             )}
 
-            {/* Boosted indicator - Minimal and lowkey */}
-            {isBoosted && boostTimeRemaining && (
-              <Tooltip label={`Boosted for ${boostTimeRemaining} more`} placement="left" hasArrow>
-                <Badge
-                  colorScheme="orange"
-                  variant="subtle"
-                  borderRadius="md"
-                  px={1.5}
-                  py={0.5}
-                  display="flex"
-                  alignItems="center"
-                  gap={0.5}
-                  fontSize="9px"
-                  fontWeight="600"
-                  bg="orange.50"
-                  color="orange.700"
-                  borderWidth="1px"
-                  borderColor="orange.200"
-                >
-                  <Icon as={FaRocket} boxSize={2.5} />
-                  <Text fontSize="9px">{boostTimeRemaining}</Text>
-                </Badge>
-              </Tooltip>
-            )}
+
 
             {showPriceOverlay && (
               <Box
@@ -367,25 +309,33 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </Badge>
         )}
 
-        {/* Location badge */}
-        {compactDistance && (
-          <Badge
-            position="absolute"
-            bottom={2}
-            left={2}
-            colorScheme="gray"
-            variant="solid"
-            borderRadius="full"
-            px={2}
-            bg="blackAlpha.600"
-            color="white"
-            fontSize="xs"
-          >
-            <Text as="span" mr={1}>
-              📍
-            </Text>
-            {compactDistance}
-          </Badge>
+        {/* Boosted indicator at bottom-left */}
+        {isBoosted && boostTimeRemaining && (
+          <Box position="absolute" bottom={2} left={2} display="flex" flexDirection="column" gap={1}>
+            <Tooltip label={`Boosted for ${boostTimeRemaining} more`} placement="top" hasArrow>
+              <Badge
+                colorScheme="orange"
+                variant="solid"
+                borderRadius="md"
+                px={1.5}
+                py={0.5}
+                fontSize="10px"
+                fontWeight="600"
+                bg="orange.500"
+                color="white"
+              >
+                {boostTimeRemaining}
+              </Badge>
+            </Tooltip>
+            <ProximityBadge type="product" targetId={product.id} showIcon={true} />
+          </Box>
+        )}
+
+        {/* Location badge - Using accurate ProximityBadge */}
+        {!isBoosted && (
+          <Box position="absolute" bottom={2} left={2}>
+            <ProximityBadge type="product" targetId={product.id} showIcon={true} />
+          </Box>
         )}
       </Box>
 
