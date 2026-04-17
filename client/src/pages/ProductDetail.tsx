@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
@@ -81,7 +81,7 @@ import { CloseIcon } from '@chakra-ui/icons'
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
-  const { getProduct, getUserProducts } = useProducts()
+  const { getProduct, getUserProducts, recordProductView } = useProducts()
   const [product, setProduct] = useState<Product | null>(null)
   const [sellerProducts, setSellerProducts] = useState<Product[]>([])
   const [sellerStats, setSellerStats] = useState<any | null>(null)
@@ -117,6 +117,7 @@ const ProductDetail: React.FC = () => {
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [upgradingPremium, setUpgradingPremium] = useState(false)
   const [boosting, setBoosting] = useState(false)
+  const trackedViewRef = useRef<string | null>(null)
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -146,6 +147,28 @@ const ProductDetail: React.FC = () => {
       fetchProduct()
     }
   }, [id])
+
+  useEffect(() => {
+    if (!product || !id) return
+
+    const trackedKey = `product_viewed_${product.id}`
+    if (trackedViewRef.current === trackedKey || sessionStorage.getItem(trackedKey) === '1') {
+      return
+    }
+
+    trackedViewRef.current = trackedKey
+    sessionStorage.setItem(trackedKey, '1')
+
+    api.post(`/api/products/${product.id}/view`).then((response) => {
+      recordProductView(product.id)
+      const nextViewCount = response.data?.data?.view_count
+      if (typeof nextViewCount === 'number') {
+        setProduct((current) => current ? { ...current, view_count: nextViewCount } : current)
+      }
+    }).catch((error) => {
+      console.error('Failed to track view:', error)
+    })
+  }, [product, id, recordProductView])
 
   // Fetch seller's other products (for Seller Products section)
   useEffect(() => {
