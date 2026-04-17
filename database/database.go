@@ -191,6 +191,12 @@ func CreateTables() error {
 		DB.Exec("ALTER TABLE users ADD COLUMN premium_tier VARCHAR(20) NULL DEFAULT 'free'")
 	}
 
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'premium_expires_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing premium_expires_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN premium_expires_at TIMESTAMP NULL")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'strikes'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding strikes column to users table...")

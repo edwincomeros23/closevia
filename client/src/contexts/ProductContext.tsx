@@ -17,6 +17,7 @@ interface ProductContextType {
   updateProduct: (id: number, product: ProductUpdate) => Promise<void>
   deleteProduct: (id: number) => Promise<void>
   getUserProducts: (userId: number, page?: number) => Promise<PaginatedResponse<Product>>
+  markProductBoosted: (productId: number, boostedAt?: string) => void
   recordProductView: (productId: number) => void
   clearError: () => void
 }
@@ -35,6 +36,7 @@ const defaultContext: ProductContextType = {
   updateProduct: async () => {},
   deleteProduct: async () => {},
   getUserProducts: async () => ({ data: [], total: 0, page: 1, limit: 20, total_pages: 0 }),
+  markProductBoosted: () => {},
   recordProductView: () => {},
   clearError: () => {},
 }
@@ -201,7 +203,11 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   // Pre-compute boost expiration times to avoid redundant Date operations in sort
   const getBoostStatus = (product: Product): { isBoosted: boolean; timeRemaining: number } => {
     if (!product.boosted_at) return { isBoosted: false, timeRemaining: 0 }
-    const boostExpiry = new Date(product.boosted_at).getTime() + 3 * 60 * 60 * 1000
+    const boostedAtRaw = String(product.boosted_at)
+    const normalizedBoostedAt = boostedAtRaw.includes('T') ? boostedAtRaw : boostedAtRaw.replace(' ', 'T')
+    const boostTimestamp = new Date(normalizedBoostedAt).getTime()
+    if (Number.isNaN(boostTimestamp)) return { isBoosted: false, timeRemaining: 0 }
+    const boostExpiry = boostTimestamp + 3 * 60 * 60 * 1000
     const timeRemaining = boostExpiry - Date.now()
     return { isBoosted: timeRemaining > 0, timeRemaining }
   }
@@ -243,7 +249,12 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     const withDistance = productsList.map((product) => {
       // Skip if already processed (optimization: don't recalculate old products on pagination)
       if (skipProcessed && product.distanceKm !== undefined && product.distanceKm !== Infinity) {
-        return product
+        return {
+          ...product,
+          // Ensure boosted items keep priority when re-sorting after pagination.
+          // @ts-ignore - extending product with cache for sorting
+          _boostStatus: (product as any)._boostStatus || getBoostStatus(product),
+        }
       }
 
       let dist = Infinity
@@ -303,8 +314,8 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
 
     // Sort by:
     // 1. Boosted status (boosted products first for 3 hours, then by remaining time)
-    // 2. Distance (nearest first)
-    // 3. Premium status (tie-breaker)
+    // 2. Premium pin status
+    // 3. Distance (nearest first)
     // 4. Newest first (for identical everything else)
     withDistance.sort((a, b) => {
       // Use pre-cached boost status (computed once per product during mapping, not during sort)
@@ -321,14 +332,14 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         return boostB.timeRemaining - boostA.timeRemaining
       }
 
+      // Otherwise, prioritize premium pins
+      if (a.premium !== b.premium) {
+        return a.premium ? -1 : 1
+      }
+
       const distanceComparison = compareByDistance(a, b)
       if (distanceComparison !== 0) {
         return distanceComparison
-      }
-
-      // Otherwise, prioritize premium
-      if (a.premium !== b.premium) {
-        return a.premium ? -1 : 1
       }
       
       // Finally, newest first
@@ -346,6 +357,25 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     } else {
       setProducts([])
     }
+  }
+
+  const markProductBoosted = (productId: number, boostedAt?: string) => {
+    const boostedAtValue = boostedAt || new Date().toISOString()
+    setProducts((current) => {
+      const nextProducts = (current || []).map((product) =>
+        product.id === productId ? { ...product, boosted_at: boostedAtValue } : product
+      )
+      const nextWithDistance = addDistanceToProducts(nextProducts)
+      if (cacheRef.current) {
+        cacheRef.current = { ...cacheRef.current, products: nextWithDistance, timestamp: Date.now() }
+      }
+      try {
+        localStorage.setItem('clovia_home_products', JSON.stringify(nextWithDistance))
+      } catch (e) {
+        console.warn('Failed to persist products:', e)
+      }
+      return nextWithDistance
+    })
   }
 
   // Helper function to get headers with auth token
@@ -741,6 +771,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     updateProduct,
     deleteProduct,
     getUserProducts,
+    markProductBoosted,
     recordProductView,
     clearError,
   }

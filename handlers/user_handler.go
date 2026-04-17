@@ -74,6 +74,61 @@ func normalizeOrgHandle(handle string) string {
 	return h
 }
 
+func isWmsuEmail(email string) bool {
+	clean := strings.TrimSpace(strings.ToLower(email))
+	return strings.HasSuffix(clean, "@wmsu.edu.ph")
+}
+
+func (h *UserHandler) ensureWmsuPlus(user *models.User) {
+	if user == nil || user.ID == 0 {
+		return
+	}
+	if !isWmsuEmail(user.Email) {
+		return
+	}
+	if user.IsPremium && user.PremiumTier != "" && user.PremiumTier != "free" {
+		return
+	}
+	_, _ = h.db.Exec("UPDATE users SET is_premium = TRUE, premium_tier = 'plus' WHERE id = ?", user.ID)
+	user.IsPremium = true
+	user.PremiumTier = "plus"
+}
+
+func (h *UserHandler) applyPremiumExpiry(user *models.User) {
+	if user == nil || user.ID == 0 {
+		return
+	}
+	if user.PremiumExpiresAt == nil {
+		// If there's no expiry but tier is paid, ensure is_premium is consistent.
+		if user.PremiumTier != "" && user.PremiumTier != "free" && !user.IsPremium {
+			_, _ = h.db.Exec("UPDATE users SET is_premium = TRUE WHERE id = ?", user.ID)
+			user.IsPremium = true
+		}
+		return
+	}
+
+	if time.Now().Before(*user.PremiumExpiresAt) {
+		if user.PremiumTier != "" && user.PremiumTier != "free" && !user.IsPremium {
+			_, _ = h.db.Exec("UPDATE users SET is_premium = TRUE WHERE id = ?", user.ID)
+			user.IsPremium = true
+		}
+		return
+	}
+
+	if isWmsuEmail(user.Email) {
+		_, _ = h.db.Exec("UPDATE users SET is_premium = TRUE, premium_tier = 'plus', premium_expires_at = NULL WHERE id = ?", user.ID)
+		user.IsPremium = true
+		user.PremiumTier = "plus"
+		user.PremiumExpiresAt = nil
+		return
+	}
+
+	_, _ = h.db.Exec("UPDATE users SET is_premium = FALSE, premium_tier = 'free', premium_expires_at = NULL WHERE id = ?", user.ID)
+	user.IsPremium = false
+	user.PremiumTier = "free"
+	user.PremiumExpiresAt = nil
+}
+
 // generateUserSlug creates a URL-friendly slug from name and appends a short UUID
 func generateUserSlug(name string) string {
 	slug := strings.ToLower(name)
@@ -609,17 +664,18 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 
 	// Find user by email - optimized single query with graceful nullable handling
 	var user models.User
+	var premiumExpiresAt sql.NullTime
 
 	// Use context with timeout to prevent hanging queries (requires index on email)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	err := h.db.QueryRowContext(ctx, `
+		err := h.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(slug, ''), name, email, password_hash, role, verified, 
-		       COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), 
+		       COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), premium_expires_at,
 		       COALESCE(strikes, 0), COALESCE(is_suspended, FALSE)
 		FROM users WHERE email = ?`,
 		login.Email,
 	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified,
-		&user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
+		&user.IsPremium, &user.PremiumTier, &premiumExpiresAt, &user.Strikes, &user.IsSuspended)
 	cancel()
 
 	if err != nil {
@@ -651,10 +707,17 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		})
 	}
 
+	if premiumExpiresAt.Valid {
+		user.PremiumExpiresAt = &premiumExpiresAt.Time
+	}
+
 	// Update last_login timestamp ASYNCHRONOUSLY (non-blocking)
 	go func() {
 		_, _ = h.db.Exec("UPDATE users SET last_login = NOW() WHERE id = ?", user.ID)
 	}()
+
+	h.applyPremiumExpiry(&user)
+	h.ensureWmsuPlus(&user)
 
 	now := time.Now()
 	user.LastLogin = &now
@@ -705,10 +768,11 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 
 	// Check if user exists
 	var user models.User
+	var premiumExpiresAt sql.NullTime
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), strikes, is_suspended FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), premium_expires_at, strikes, is_suspended FROM users WHERE email = ?",
 		req.Email,
-	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier, &premiumExpiresAt, &user.Strikes, &user.IsSuspended)
 
 	if err == sql.ErrNoRows {
 		// Generate slug for the new user
@@ -775,6 +839,13 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 		})
 	}
 
+	if premiumExpiresAt.Valid {
+		user.PremiumExpiresAt = &premiumExpiresAt.Time
+	}
+
+	h.applyPremiumExpiry(&user)
+	h.ensureWmsuPlus(&user)
+
 	// Check if user is suspended or has 3+ strikes
 	if user.IsSuspended || user.Strikes >= 3 {
 		return c.Status(403).JSON(models.APIResponse{
@@ -824,6 +895,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var nameChangedAt sql.NullTime
 	var phoneChangedAt sql.NullTime
 	var lastLogin sql.NullTime
+	var premiumExpiresAt sql.NullTime
 
 	var slugNull sql.NullString
 	err := h.db.QueryRow(
@@ -854,6 +926,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
 		        COALESCE(language_preference, 'en') AS language_preference,
 		        COALESCE(premium_tier, 'free') AS premium_tier,
+		        premium_expires_at,
 		        COALESCE(strikes, 0) AS strikes,
 		        COALESCE(is_suspended, FALSE) AS is_suspended,
 		        created_at, updated_at, password_changed_at, name_changed_at, phone_changed_at, last_login
@@ -869,7 +942,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
-		&user.LanguagePreference, &user.PremiumTier, &user.Strikes, &user.IsSuspended,
+		&user.LanguagePreference, &user.PremiumTier, &premiumExpiresAt, &user.Strikes, &user.IsSuspended,
 		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &nameChangedAt, &phoneChangedAt, &lastLogin,
 	)
 
@@ -888,10 +961,16 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
 	}
+	if premiumExpiresAt.Valid {
+		user.PremiumExpiresAt = &premiumExpiresAt.Time
+	}
 	user.ActivityStatus = computeActivityStatus(user.LastLogin)
 	if slugNull.Valid {
 		user.Slug = slugNull.String
 	}
+
+	h.applyPremiumExpiry(&user)
+	h.ensureWmsuPlus(&user)
 
 	if err != nil {
 		fmt.Printf("❌ ERROR in GetProfile (ID: %v): %v\n", userID, err)
@@ -1110,8 +1189,13 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		args = append(args, newEmail)
 		if emailChanged {
 			query += ", verified = false"
-			// Revoke is_premium if it was from WMSU, they will get it back after verifying new WMSU email
-			query += ", is_premium = false"
+			var currentEmail string
+			_ = h.db.QueryRow("SELECT email FROM users WHERE id = ?", userID).Scan(&currentEmail)
+			if isWmsuEmail(currentEmail) && !isWmsuEmail(newEmail) {
+				// Drop WMSU perk when leaving the domain, but keep paid tiers (e.g., pro).
+				query += ", is_premium = CASE WHEN premium_tier = 'plus' THEN false ELSE is_premium END"
+				query += ", premium_tier = CASE WHEN premium_tier = 'plus' THEN 'free' ELSE premium_tier END"
+			}
 		}
 	}
 

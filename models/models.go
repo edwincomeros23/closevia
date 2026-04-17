@@ -125,6 +125,7 @@ type User struct {
 	Longitude                   *float64   `json:"longitude,omitempty"`
 	IsPremium                   bool       `json:"is_premium"`
 	PremiumTier                 string     `json:"premium_tier"` // "free", "plus", "pro"
+	PremiumExpiresAt            *time.Time `json:"premium_expires_at,omitempty"`
 	CreatedAt                   time.Time  `json:"created_at"`
 	UpdatedAt                   time.Time  `json:"updated_at"`
 	VerificationStatus          string     `json:"verification_status,omitempty"`

@@ -96,7 +96,7 @@ import {
 
 const Dashboard: React.FC = () => {
   const { user, loading, isAuthenticated, restoreAuthentication } = useAuth()
-  const { deleteProduct, updateProduct } = useProducts()
+  const { deleteProduct, updateProduct, markProductBoosted } = useProducts()
   const { refreshCounts, setRefreshCallback } = useRealtime()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -447,6 +447,21 @@ const Dashboard: React.FC = () => {
       completedTrades
     }
   }, [inventoryProducts, incoming, ongoingTradesData, tradeHistory])
+
+  const currentTier = (user?.premium_tier || 'free') as 'free' | 'plus' | 'pro'
+  const planMeta = {
+    free: { label: 'Free', color: 'gray', listingLimit: 10, boosts: 0, deliveryDiscount: '0%', matchPriority: 'Standard' },
+    plus: { label: 'Plus', color: 'blue', listingLimit: 30, boosts: 3, deliveryDiscount: '10%', matchPriority: 'Priority' },
+    pro: { label: 'Pro', color: 'purple', listingLimit: Infinity, boosts: 10, deliveryDiscount: '20%', matchPriority: 'Top queue' },
+  }
+  const planBenefits = {
+    free: ['10 active listings', 'Standard delivery', 'Standard matches'],
+    plus: ['30 active listings', '3 boosts', '10% delivery discount', 'Priority matches'],
+    pro: ['Unlimited listings', '10 boosts', '20% delivery discount', 'Top match priority', 'Multi-way trading'],
+  }
+  const activePlan = planMeta[currentTier] || planMeta.free
+  const activeBenefits = planBenefits[currentTier] || planBenefits.free
+  const listingLimitLabel = activePlan.listingLimit === Infinity ? 'Unlimited' : String(activePlan.listingLimit)
 
   // Get product title helper (needs to be defined before use)
   const getProductTitle = (productId: number, fallbackTitle?: string): string => {
@@ -1868,6 +1883,7 @@ const Dashboard: React.FC = () => {
               icon: FaCheckCircle,
               confirmColorScheme: 'green'
             })
+            markProductBoosted(product.id, new Date().toISOString())
             invalidateDashboard()
           } else {
             throw new Error(response.data?.error || 'Failed to boost product')
@@ -3661,6 +3677,27 @@ const Dashboard: React.FC = () => {
               </Flex>
 
             </VStack>
+          </Box>
+
+          <Box bg={cardBg} border="1px" borderColor={borderColor} borderRadius="lg" px={{ base: 3, md: 4 }} py={{ base: 3, md: 4 }}>
+            <Flex direction={{ base: 'column', md: 'row' }} gap={3} align={{ base: 'flex-start', md: 'center' }} justify="space-between">
+              <HStack spacing={2} align="center">
+                <Icon as={FaCrown} color={`${activePlan.color}.500`} />
+                <Text fontWeight="semibold">Plan: {activePlan.label}</Text>
+                <Badge colorScheme={activePlan.color} borderRadius="full" fontSize="xs">{activePlan.label}</Badge>
+              </HStack>
+              <Text fontSize="sm" color="gray.600">
+                Listings {dashboardStats.activeProducts}/{listingLimitLabel}
+              </Text>
+              <Button size="sm" variant="outline" onClick={() => navigate('/premium')}>View plan</Button>
+            </Flex>
+            <Flex mt={3} gap={2} flexWrap="wrap">
+              {activeBenefits.map((benefit) => (
+                <Badge key={benefit} colorScheme={activePlan.color} variant="subtle" borderRadius="full" px={2} py={1} fontSize="xs">
+                  {benefit}
+                </Badge>
+              ))}
+            </Flex>
           </Box>
 
           {/* Tabs with Sticky Navigation */}

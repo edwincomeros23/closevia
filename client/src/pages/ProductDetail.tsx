@@ -81,7 +81,7 @@ import { CloseIcon } from '@chakra-ui/icons'
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
-  const { getProduct, getUserProducts, recordProductView } = useProducts()
+  const { getProduct, getUserProducts, recordProductView, markProductBoosted } = useProducts()
   const [product, setProduct] = useState<Product | null>(null)
   const [sellerProducts, setSellerProducts] = useState<Product[]>([])
   const [sellerStats, setSellerStats] = useState<any | null>(null)
@@ -881,6 +881,7 @@ const ProductDetail: React.FC = () => {
           duration: 5000,
           isClosable: true,
         })
+        markProductBoosted(product.id, new Date().toISOString())
         fetchProduct() // Refresh to update boosted_at
       }
     } catch (error: any) {

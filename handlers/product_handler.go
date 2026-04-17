@@ -1422,7 +1422,12 @@ func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 			placeholders[i] = "?"
 			args = append(args, cat)
 		}
-		query += fmt.Sprintf(" AND LOWER(COALESCE(p.category, '')) IN (%s)\n", strings.Join(placeholders, ","))
+		normCategory := "LOWER(TRIM(COALESCE(p.category, '')))"
+		if hasOther {
+			query += fmt.Sprintf(" AND (%s IN (%s) OR %s LIKE 'other%%')\n", normCategory, strings.Join(placeholders, ","), normCategory)
+		} else {
+			query += fmt.Sprintf(" AND %s IN (%s)\n", normCategory, strings.Join(placeholders, ","))
+		}
 	}
 
 	scoreParts := []string{
