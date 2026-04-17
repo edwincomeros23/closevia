@@ -74,10 +74,11 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const [currentPage, setCurrentPage] = useState<number>(1)
   const [currentFilters, setCurrentFilters] = useState<SearchFilters | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
-  const locationRequested = useRef(false)
+  const locationWatchId = useRef<number | null>(null)
 
   // Cache management refs
   const cacheRef = useRef<{ filters: string; products: Product[]; timestamp: number } | null>(null)
+  const distanceCacheRef = useRef<Map<string, { distanceKm: number; distance: string }>>(new Map())
   const pendingRequestRef = useRef<Promise<void> | null>(null)
   const hasInitialized = useRef(false)
 
@@ -92,78 +93,46 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }, [products])
 
-  // Helper to get saved user location from localStorage
-  const getSavedUserLocation = () => {
-    try {
-      const cachedUser = localStorage.getItem('clovia_user')
-      if (cachedUser) {
-        const user = JSON.parse(cachedUser)
-        if (user.latitude && user.longitude) {
-          return { lat: user.latitude, lng: user.longitude }
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to read saved user location:', e)
-    }
-    return null
-  }
-
-  // Get user's current location - prioritize saved home location over geolocation
+  // Get the viewer's live location from the browser so the feed stays current.
   useEffect(() => {
-    if (locationRequested.current) return
-    locationRequested.current = true
-
-    // First, check if user has a saved home location
-    const savedLocation = getSavedUserLocation()
-    if (savedLocation) {
-      console.log('Using saved home location:', savedLocation.lat, savedLocation.lng)
-      setUserLocation(savedLocation)
-      return
-    }
-
-    // Fallback to browser geolocation if no saved location
     if ('geolocation' in navigator) {
+      const handlePosition = (position: GeolocationPosition) => {
+        setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude })
+      }
+
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const lat = position.coords.latitude
-          const lng = position.coords.longitude
-          setUserLocation({ lat, lng })
-          // Persist to backend so product distance calculations server-side
-          // (and other users checking this user's location) stay fresh.
-          if (token) {
-            api.put('/api/users/location', { latitude: lat, longitude: lng }).catch(() => {})
-          }
-        },
+        handlePosition,
         (error) => {
           console.warn('Geolocation error:', error.message)
-          // Don't set error state, just silently fail - distance will show fallback
         },
         {
           enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 300000, // Cache for 5 minutes
+          maximumAge: 300000,
+        }
+      )
+
+      if (locationWatchId.current !== null) {
+        navigator.geolocation.clearWatch(locationWatchId.current)
+      }
+      locationWatchId.current = navigator.geolocation.watchPosition(
+        handlePosition,
+        (error) => {
+          console.warn('Geolocation watch error:', error.message)
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 300000,
         }
       )
     }
-  }, [token])
-
-  // Periodically check for location updates from localStorage (e.g., when user changes home location)
-  useEffect(() => {
-    const checkLocationUpdates = () => {
-      const savedLocation = getSavedUserLocation()
-      if (savedLocation && (!userLocation || userLocation.lat !== savedLocation.lat || userLocation.lng !== savedLocation.lng)) {
-        console.log('Detected location update:', savedLocation)
-        setUserLocation(savedLocation)
-        // Reset locationRequested to allow fresh geolocation if needed
-        locationRequested.current = false
+    return () => {
+      if (locationWatchId.current !== null && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(locationWatchId.current)
+        locationWatchId.current = null
       }
     }
-
-    // Check initially and then every 5 seconds
-    checkLocationUpdates()
-    const interval = setInterval(checkLocationUpdates, 5000)
-    return () => clearInterval(interval)
-  }, [userLocation])
+  }, [])
 
   // Recalculate distances when user location becomes available
   useEffect(() => {
@@ -196,7 +165,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
 
   // Format distance for display - refined for accuracy as per user request
   const formatDistance = (distanceKm: number): string => {
-    if (distanceKm === 0) return '0 M away'
+    if (distanceKm === 0) return '0 m away'
     
     // Convert to meters
     const meters = distanceKm * 1000
@@ -204,12 +173,12 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     if (meters < 2000) {
       // Show nearby distances in meters for better granularity (up to ~2km)
       if (meters < 10) {
-        return `${meters.toFixed(1)} M away`
+        return `${meters.toFixed(1)} m away`
       }
-      return `${Math.round(meters)} M away`
+      return `${Math.round(meters)} m away`
     } else {
       // If more than 1km, show in KM with 1 decimal place
-      return `${distanceKm.toFixed(1)} KM away`
+      return `${distanceKm.toFixed(1)} km away`
     }
   }
 
@@ -221,10 +190,44 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     return { isBoosted: timeRemaining > 0, timeRemaining }
   }
 
+  // Helper to parse distance string quickly (avoids regex in hot path)
+  const parseDistanceString = (distStr: string): number => {
+    const lowerStr = distStr.toLowerCase().trim()
+    const match = lowerStr.match(/([\d.]+)\s*(km|m)\b/)
+    if (!match) return Infinity
+
+    const value = parseFloat(match[1])
+    if (!Number.isFinite(value)) return Infinity
+
+    return match[2] === 'km' ? value : value / 1000
+  }
+
+  const roundLocationValue = (value: number): string => value.toFixed(5)
+
+  const getDistanceCacheKey = (product: Product): string => {
+    const viewerKey = userLocation
+      ? `${roundLocationValue(userLocation.lat)}:${roundLocationValue(userLocation.lng)}`
+      : 'no-viewer'
+    const productLat = product.latitude != null ? roundLocationValue(product.latitude) : 'no-lat'
+    const productLng = product.longitude != null ? roundLocationValue(product.longitude) : 'no-lng'
+    return [product.id, product.updated_at, productLat, productLng, viewerKey].join('|')
+  }
+
+  const compareByDistance = (a: Product, b: Product): number => {
+    const distA = a.distanceKm ?? Infinity
+    const distB = b.distanceKm ?? Infinity
+
+    if (distA === distB) return 0
+    if (distA === Infinity) return 1
+    if (distB === Infinity) return -1
+    return distA - distB
+  }
+
   // Add distance to products and sort by nearest first
   // skipProcessed=true skips products that already have distanceKm set (optimization for pagination)
   const addDistanceToProducts = (productsList: Product[], skipProcessed = false): Product[] => {
-    if (!userLocation) return productsList
+    // IMPORTANT: Parse distances and sort even if userLocation isn't available yet
+    // This ensures products with backend distance strings still sort correctly on initial load
 
     const withDistance = productsList.map((product) => {
       // Skip if already processed (optimization: don't recalculate old products on pagination)
@@ -233,24 +236,31 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       }
 
       let dist = Infinity
-      if (product.latitude && product.longitude) {
+      const cacheKey = getDistanceCacheKey(product)
+      const cachedDistance = distanceCacheRef.current.get(cacheKey)
+
+      if (cachedDistance) {
+        return {
+          ...product,
+          distance: cachedDistance.distance,
+          distanceKm: cachedDistance.distanceKm,
+          // @ts-ignore - extending product with cache for sorting
+          _boostStatus: getBoostStatus(product),
+        }
+      }
+      
+      // Priority 1: Calculate from stored coordinates if available AND userLocation is known
+      if (userLocation && product.latitude && product.longitude) {
         dist = calculateDistance(
           userLocation.lat,
           userLocation.lng,
           product.latitude,
           product.longitude
         )
-      } else if (product.distance) {
-        // If product doesn't have coordinates but has distance from backend, parse it for sorting
-        const distStr = product.distance.toLowerCase()
-        if (distStr.includes('m away')) {
-          // Extract meters: "453 M away" -> 0.453 km
-          const meters = parseFloat(distStr.replace(/[^\d.]/g, ''))
-          dist = meters / 1000
-        } else if (distStr.includes('km away')) {
-          // Extract kilometers: "2.5 KM away" -> 2.5
-          dist = parseFloat(distStr.replace(/[^\d.]/g, ''))
-        }
+      } 
+      // Priority 2: Parse backend distance string (always available, even without userLocation)
+      else if (product.distance) {
+        dist = parseDistanceString(product.distance)
       }
 
       // If we couldn't compute a per-product distance on the client, keep
@@ -260,11 +270,23 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       const nextDistance =
         dist === Infinity ? (product.distance || '') : formatDistance(dist)
 
+      // Cache boost status on product to avoid recomputing during sort
+      const boostStatus = getBoostStatus(product)
+      
       return {
         ...product,
         distance: nextDistance,
         distanceKm: dist,
+        // @ts-ignore - extending product with cache for sorting
+        _boostStatus: boostStatus,
       }
+    })
+
+    withDistance.forEach((product) => {
+      distanceCacheRef.current.set(getDistanceCacheKey(product), {
+        distanceKm: product.distanceKm ?? Infinity,
+        distance: product.distance || '',
+      })
     })
 
     // Sort by:
@@ -273,36 +295,25 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     // 3. Premium status (tie-breaker)
     // 4. Newest first (for identical everything else)
     withDistance.sort((a, b) => {
-      // Pre-computed boost status (done once per product, not redundantly in each comparison)
-      const boostA = getBoostStatus(a)
-      const boostB = getBoostStatus(b)
+      // Use pre-cached boost status (computed once per product during mapping, not during sort)
+      const boostA = (a as any)._boostStatus || { isBoosted: false, timeRemaining: 0 }
+      const boostB = (b as any)._boostStatus || { isBoosted: false, timeRemaining: 0 }
 
       // Prioritize boosted products first
-      if (boostA.isBoosted && !boostB.isBoosted) return -1
-      if (!boostA.isBoosted && boostB.isBoosted) return 1
+      if (boostA.isBoosted !== boostB.isBoosted) {
+        return boostA.isBoosted ? -1 : 1
+      }
 
       // If both are boosted, sort by remaining boost time (more time remaining first)
-      if (boostA.isBoosted && boostB.isBoosted) {
+      if (boostA.isBoosted) {
         return boostB.timeRemaining - boostA.timeRemaining
       }
 
-      // Then sort by distance (nearest first)
-      const distA = a.distanceKm
-      const distB = b.distanceKm
-      
-      const isAInf = distA === undefined || distA === Infinity
-      const isBInf = distB === undefined || distB === Infinity
-
-      if (isAInf && isBInf) {
-        // Continue to other tie-breakers
-      } else if (isAInf) {
-        return 1
-      } else if (isBInf) {
-        return -1
-      } else if (Math.abs(distA! - distB!) > 0.0001) {
-        return distA! - distB!
+      const distanceComparison = compareByDistance(a, b)
+      if (distanceComparison !== 0) {
+        return distanceComparison
       }
-      
+
       // Otherwise, prioritize premium
       if (a.premium !== b.premium) {
         return a.premium ? -1 : 1
