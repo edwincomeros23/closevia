@@ -205,6 +205,9 @@ type Product struct {
 	Value                *float64          `json:"value,omitempty"` // User-defined product value
 	Category             string            `json:"category,omitempty"`
 	LocationType         string            `json:"location_type,omitempty" validate:"omitempty,oneof=current_location pickup_location no_location"` // Type of product location setting
+	PickupLatitude       *float64          `json:"pickup_latitude,omitempty"`
+	PickupLongitude      *float64          `json:"pickup_longitude,omitempty"`
+	PickupAddress        string            `json:"pickup_address,omitempty"`
 	Wants                string            `json:"wants,omitempty"`
 	WantedCategories     StringArray       `json:"wanted_categories,omitempty"`
 	DesiredPrice         *float64          `json:"desired_price,omitempty"`

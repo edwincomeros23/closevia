@@ -739,6 +739,22 @@ func CreateTables() error {
 			UNIQUE KEY uniq_loop_user (loop_id, user_id),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_meetup_selections (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id VARCHAR(255) NOT NULL,
+			user_id INT NOT NULL,
+			meetup_location VARCHAR(500) NULL,
+			meetup_date VARCHAR(20) NULL,
+			meetup_time VARCHAR(20) NULL,
+			meetup_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+			met_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_loop_meetup_user (loop_id, user_id),
+			INDEX idx_loop_meetup_loop (loop_id),
+			INDEX idx_loop_meetup_user (user_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS trade_rejection_signals (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			trade_id INT NOT NULL,

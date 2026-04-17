@@ -4619,6 +4619,7 @@ const Dashboard: React.FC = () => {
                                   const participants = Array.isArray(trade?.participants) ? trade.participants : []
                                   if (participants.length < 2) return null
                                   const summary = getMultiWayTradeSummary(trade)
+                                  const loopLabel = participants.length <= 2 ? 'Trade Match' : 'Multi-Way'
                                   
                                   const currentUserID = Number(user?.id || 0)
                                   const yourParticipantIndex = participants.findIndex((p: any) => Number(p?.id || p?.user_id) === currentUserID)
@@ -4680,11 +4681,11 @@ const Dashboard: React.FC = () => {
                                             }/>
                                           ) : (
                                             <Box w="100%" h="100%" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
-                                              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Multi-Way</Text>
+                                              <Text fontSize="xs" color="gray.600" fontWeight="semibold">{loopLabel}</Text>
                                             </Box>
                                           )}
                                           <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
-                                            Multi-Way
+                                            {loopLabel}
                                           </Badge>
                                         </Box>
                                       </Box>
@@ -4697,7 +4698,7 @@ const Dashboard: React.FC = () => {
                                                 Active Loop
                                               </Badge>
                                               <Badge colorScheme="purple" variant="solid" fontSize="xs" px={2} py={1} borderRadius="full">
-                                                Multi-Way
+                                                {loopLabel}
                                               </Badge>
                                             </HStack>
                                             {matchScore > 0 && (

@@ -23,6 +23,31 @@ type TradeHandler struct {
 	db *sql.DB
 }
 
+func isMySQLTableMissing(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1146
+}
+
+func (h *TradeHandler) ensureTradeLoopMeetupSelectionsTable() error {
+	_, err := h.db.Exec(`CREATE TABLE IF NOT EXISTS trade_loop_meetup_selections (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id VARCHAR(255) NOT NULL,
+			user_id INT NOT NULL,
+			meetup_location VARCHAR(500) NULL,
+			meetup_date VARCHAR(20) NULL,
+			meetup_time VARCHAR(20) NULL,
+			meetup_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+			met_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_loop_meetup_user (loop_id, user_id),
+			INDEX idx_loop_meetup_loop (loop_id),
+			INDEX idx_loop_meetup_user (user_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`)
+	return err
+}
+
 type likeEdge struct {
 	FromUser         int
 	ToUser           int
@@ -3601,6 +3626,339 @@ func (h *TradeHandler) SendTradeLoopMessage(c *fiber.Ctx) error {
 		}
 	}
 	return c.Status(201).JSON(models.APIResponse{Success: true})
+}
+
+// getTradeLoopParticipantUserIDs returns the set of user IDs participating in a loop.
+// Supports like loops, multiway chains, product loops, and graph loops.
+func (h *TradeHandler) getTradeLoopParticipantUserIDs(loopID string) ([]int, error) {
+	// Like loop
+	if likeLoopID, ok := parseLikeLoopID(loopID); ok {
+		rows, err := h.db.Query("SELECT DISTINCT user_id FROM trade_like_loop_participants WHERE loop_id = ?", likeLoopID)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		ids := []int{}
+		for rows.Next() {
+			var uid int
+			if scanErr := rows.Scan(&uid); scanErr == nil {
+				ids = append(ids, uid)
+			}
+		}
+		if len(ids) == 0 {
+			return nil, sql.ErrNoRows
+		}
+		return ids, nil
+	}
+
+	// Multiway chain
+	if strings.HasPrefix(loopID, "chain_") {
+		var u1ID, u2ID, u3ID int
+		err := h.db.QueryRow("SELECT user1_id, user2_id, COALESCE(user3_id, 0) FROM multiway_trades WHERE chain_id = ?", loopID).
+			Scan(&u1ID, &u2ID, &u3ID)
+		if err != nil {
+			// Backward compatibility: chain_123 numeric IDs
+			chainID, convErr := strconv.Atoi(strings.Replace(loopID, "chain_", "", 1))
+			if convErr == nil {
+				err = h.db.QueryRow("SELECT user1_id, user2_id, COALESCE(user3_id, 0) FROM multiway_trades WHERE id = ?", chainID).
+					Scan(&u1ID, &u2ID, &u3ID)
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		ids := []int{}
+		for _, uid := range []int{u1ID, u2ID, u3ID} {
+			if uid > 0 {
+				ids = append(ids, uid)
+			}
+		}
+		return ids, nil
+	}
+
+	// Product loop: product_loop_{prodA}_{prodB}_{prodC}
+	if strings.HasPrefix(loopID, "product_loop_") {
+		parts := strings.Split(loopID, "_")
+		if len(parts) != 5 {
+			return nil, fmt.Errorf("invalid product loop id")
+		}
+		pids := []int{}
+		for _, s := range parts[2:] {
+			pid, err := strconv.Atoi(s)
+			if err != nil || pid <= 0 {
+				return nil, fmt.Errorf("invalid product id")
+			}
+			pids = append(pids, pid)
+		}
+		placeholders := []string{"?", "?", "?"}
+		args := []interface{}{pids[0], pids[1], pids[2]}
+		q := fmt.Sprintf("SELECT DISTINCT seller_id FROM products WHERE id IN (%s)", strings.Join(placeholders, ","))
+		rows, err := h.db.Query(q, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		ids := []int{}
+		for rows.Next() {
+			var uid int
+			if scanErr := rows.Scan(&uid); scanErr == nil {
+				ids = append(ids, uid)
+			}
+		}
+		if len(ids) == 0 {
+			return nil, sql.ErrNoRows
+		}
+		return ids, nil
+	}
+
+	// Graph loop: loop_{tradeId1}_{tradeId2}_...
+	if strings.HasPrefix(loopID, "loop_") {
+		parts := strings.Split(loopID, "_")
+		if len(parts) < 3 {
+			return nil, fmt.Errorf("invalid loop id")
+		}
+		unique := map[int]bool{}
+		for i := 1; i < len(parts); i++ {
+			tradeID, err := strconv.Atoi(parts[i])
+			if err != nil || tradeID <= 0 {
+				return nil, fmt.Errorf("invalid trade id")
+			}
+			var buyerID, sellerID int
+			if err := h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID); err != nil {
+				return nil, err
+			}
+			if buyerID > 0 {
+				unique[buyerID] = true
+			}
+			if sellerID > 0 {
+				unique[sellerID] = true
+			}
+		}
+		ids := []int{}
+		for uid := range unique {
+			ids = append(ids, uid)
+		}
+		if len(ids) == 0 {
+			return nil, sql.ErrNoRows
+		}
+		return ids, nil
+	}
+
+	return nil, fmt.Errorf("unsupported loop id")
+}
+
+func containsInt(list []int, v int) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// GetTradeLoopMeetup returns the meetup selection and "met" confirmation status for each participant.
+func (h *TradeHandler) GetTradeLoopMeetup(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	loopID := c.Params("id")
+
+	participantIDs, err := h.getTradeLoopParticipantUserIDs(loopID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade loop not found"})
+		}
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop id"})
+	}
+	if !containsInt(participantIDs, userID) {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this trade loop"})
+	}
+
+	// Fetch existing selections.
+	placeholders := make([]string, len(participantIDs))
+	args := make([]interface{}, 0, len(participantIDs)+1)
+	args = append(args, loopID)
+	for i, uid := range participantIDs {
+		placeholders[i] = "?"
+		args = append(args, uid)
+	}
+	q := fmt.Sprintf(`
+		SELECT user_id,
+		       COALESCE(meetup_location, '') as meetup_location,
+		       COALESCE(meetup_date, '') as meetup_date,
+		       COALESCE(meetup_time, '') as meetup_time,
+		       COALESCE(meetup_confirmed, FALSE) as meetup_confirmed,
+		       COALESCE(met_confirmed, FALSE) as met_confirmed
+		FROM trade_loop_meetup_selections
+		WHERE loop_id = ? AND user_id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := h.db.Query(q, args...)
+	if err != nil {
+		if isMySQLTableMissing(err) {
+			if ensureErr := h.ensureTradeLoopMeetupSelectionsTable(); ensureErr == nil {
+				rows, err = h.db.Query(q, args...)
+			}
+		}
+		if err != nil {
+			log.Printf("GetTradeLoopMeetup: query failed (loop_id=%s): %v", loopID, err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch meetup status"})
+		}
+	}
+	defer rows.Close()
+
+	type selection struct {
+		UserID          int    `json:"user_id"`
+		MeetupLocation  string `json:"meetup_location"`
+		MeetupDate      string `json:"meetup_date"`
+		MeetupTime      string `json:"meetup_time"`
+		MeetupConfirmed bool   `json:"meetup_confirmed"`
+		MetConfirmed    bool   `json:"met_confirmed"`
+	}
+
+	byUser := map[int]selection{}
+	for rows.Next() {
+		var s selection
+		if scanErr := rows.Scan(&s.UserID, &s.MeetupLocation, &s.MeetupDate, &s.MeetupTime, &s.MeetupConfirmed, &s.MetConfirmed); scanErr == nil {
+			byUser[s.UserID] = s
+		} else {
+			log.Printf("GetTradeLoopMeetup: scan failed (loop_id=%s): %v", loopID, scanErr)
+		}
+	}
+
+	// Fill missing participants as "not confirmed".
+	out := []selection{}
+	for _, uid := range participantIDs {
+		s, ok := byUser[uid]
+		if !ok {
+			out = append(out, selection{UserID: uid, MeetupLocation: "", MeetupDate: "", MeetupTime: "", MeetupConfirmed: false, MetConfirmed: false})
+			continue
+		}
+		out = append(out, s)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"loop_id":      loopID,
+		"participants": out,
+	}})
+}
+
+// UpdateTradeLoopMeetup supports ViewTradeModal-like actions for loops.
+// Actions: confirm_meetup, reset_meetup_selection, confirm_meetup_done.
+func (h *TradeHandler) UpdateTradeLoopMeetup(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	loopID := c.Params("id")
+
+	participantIDs, err := h.getTradeLoopParticipantUserIDs(loopID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade loop not found"})
+		}
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop id"})
+	}
+	if !containsInt(participantIDs, userID) {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this trade loop"})
+	}
+
+	var payload struct {
+		Action         string `json:"action"`
+		MeetupLocation string `json:"meetup_location"`
+		MeetupDate     string `json:"meetup_date"`
+		MeetupTime     string `json:"meetup_time"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid payload"})
+	}
+
+	switch payload.Action {
+	case "confirm_meetup":
+		if strings.TrimSpace(payload.MeetupLocation) == "" || strings.TrimSpace(payload.MeetupDate) == "" || strings.TrimSpace(payload.MeetupTime) == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Missing meetup selection"})
+		}
+		execMeetupConfirm := func() error {
+			_, err := h.db.Exec(`
+			INSERT INTO trade_loop_meetup_selections (loop_id, user_id, meetup_location, meetup_date, meetup_time, meetup_confirmed, met_confirmed)
+			VALUES (?, ?, ?, ?, ?, TRUE, FALSE)
+			ON DUPLICATE KEY UPDATE
+				meetup_location = VALUES(meetup_location),
+				meetup_date = VALUES(meetup_date),
+				meetup_time = VALUES(meetup_time),
+				meetup_confirmed = TRUE,
+				met_confirmed = FALSE,
+				updated_at = CURRENT_TIMESTAMP
+			`, loopID, userID, payload.MeetupLocation, payload.MeetupDate, payload.MeetupTime)
+			return err
+		}
+		err := execMeetupConfirm()
+		if err != nil {
+			if isMySQLTableMissing(err) {
+				if ensureErr := h.ensureTradeLoopMeetupSelectionsTable(); ensureErr == nil {
+					err = execMeetupConfirm()
+				}
+			}
+		}
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to save meetup selection"})
+		}
+	case "reset_meetup_selection":
+		execMeetupReset := func() error {
+			_, err := h.db.Exec(`
+			INSERT INTO trade_loop_meetup_selections (loop_id, user_id, meetup_location, meetup_date, meetup_time, meetup_confirmed, met_confirmed)
+			VALUES (?, ?, NULL, NULL, NULL, FALSE, FALSE)
+			ON DUPLICATE KEY UPDATE
+				meetup_location = NULL,
+				meetup_date = NULL,
+				meetup_time = NULL,
+				meetup_confirmed = FALSE,
+				met_confirmed = FALSE,
+				updated_at = CURRENT_TIMESTAMP
+			`, loopID, userID)
+			return err
+		}
+		err := execMeetupReset()
+		if err != nil {
+			if isMySQLTableMissing(err) {
+				if ensureErr := h.ensureTradeLoopMeetupSelectionsTable(); ensureErr == nil {
+					err = execMeetupReset()
+				}
+			}
+		}
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to reset meetup selection"})
+		}
+	case "confirm_meetup_done":
+		execMeetupDone := func() (sql.Result, error) {
+			return h.db.Exec(`
+			UPDATE trade_loop_meetup_selections
+			SET met_confirmed = TRUE, updated_at = CURRENT_TIMESTAMP
+			WHERE loop_id = ? AND user_id = ? AND meetup_confirmed = TRUE
+			`, loopID, userID)
+		}
+		res, err := execMeetupDone()
+		if err != nil {
+			if isMySQLTableMissing(err) {
+				if ensureErr := h.ensureTradeLoopMeetupSelectionsTable(); ensureErr == nil {
+					res, err = execMeetupDone()
+				}
+			}
+		}
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm meetup completion"})
+		}
+		ra, _ := res.RowsAffected()
+		if ra == 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup is not confirmed yet"})
+		}
+	default:
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid action"})
+	}
+
+	// Return refreshed status for convenience.
+	return h.GetTradeLoopMeetup(c)
 }
 
 // CountTrades returns count of trades for current user by direction and status
