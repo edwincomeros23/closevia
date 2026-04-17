@@ -441,12 +441,13 @@ type TradeCreate struct {
 
 // TradeAction represents accept/decline/counter actions
 type TradeAction struct {
-	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup confirm_meetup_done update_delivery_state request_option_change approve_option_change reject_option_change"`
+	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup confirm_meetup_done reset_meetup_selection update_delivery_state request_option_change approve_option_change reject_option_change convert_to_multiway"`
 	Message                  string   `json:"message,omitempty"`
 	CounterOfferedProductIDs []int    `json:"counter_offered_product_ids,omitempty"`
 	CounterOfferedCashAmount *float64 `json:"counter_offered_cash_amount,omitempty"`
 	MeetupLocation           string   `json:"meetup_location,omitempty"`
 	MeetupTime               string   `json:"meetup_time,omitempty"`
+	MeetupDate               string   `json:"meetup_date,omitempty"`
 	RequestedOption          string   `json:"requested_option,omitempty"`
 	DeliveryAddress          string   `json:"delivery_address,omitempty"`
 	CancellationReason       string   `json:"cancellation_reason,omitempty"`

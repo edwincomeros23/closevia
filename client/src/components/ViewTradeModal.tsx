@@ -162,6 +162,44 @@ const formatTimePH = (time?: string | null): string => {
   return `${hour12}:${minute} ${suffix}`
 }
 
+const normalizeTimeValue = (value: string): string => {
+  const trimmed = value.trim()
+  const match = trimmed.match(/^(\d{2}:\d{2})/)
+  return match ? match[1] : trimmed
+}
+
+const splitMeetupDateTime = (value?: string | null): { date: string | null; time: string | null } => {
+  if (!value) return { date: null, time: null }
+  const trimmed = value.trim()
+  if (!trimmed) return { date: null, time: null }
+
+  if (trimmed.includes('T')) {
+    const [datePart, timePart] = trimmed.split('T')
+    return {
+      date: datePart || null,
+      time: timePart ? normalizeTimeValue(timePart) : null,
+    }
+  }
+
+  if (trimmed.includes(' ')) {
+    const [datePart, timePart] = trimmed.split(' ')
+    return {
+      date: datePart || null,
+      time: timePart ? normalizeTimeValue(timePart) : null,
+    }
+  }
+
+  return { date: null, time: normalizeTimeValue(trimmed) }
+}
+
+const buildMeetupKey = (location: string | null, date: string | null, time: string | null): string | null => {
+  if (!location || !time) return null
+  const normalizedLocation = location.trim().toLowerCase()
+  const normalizedDate = (date || '').trim()
+  const normalizedTime = time.trim()
+  return `${normalizedLocation}|${normalizedDate}|${normalizedTime}`
+}
+
 // Calculate estimated distance between two coordinates (Haversine formula)
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371 // Earth's radius in kilometers
@@ -1230,7 +1268,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const isUserBuyer = !!(trade && currentUserId != null && buyerId != null && buyerId === currentUserId)
   const isUserSeller = !!(trade && currentUserId != null && sellerId != null && sellerId === currentUserId)
 
-  const meetupAgreed = buyerMeetupConfirmed && sellerMeetupConfirmed && buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime
+  const buyerMeetupKey = buildMeetupKey(buyerMeetupLocation, buyerMeetupDate, buyerMeetupTime)
+  const sellerMeetupKey = buildMeetupKey(sellerMeetupLocation, sellerMeetupDate, sellerMeetupTime)
+  const meetupSelectionMatches = !!buyerMeetupKey && buyerMeetupKey === sellerMeetupKey
+  const meetupAgreed = buyerMeetupConfirmed && sellerMeetupConfirmed && meetupSelectionMatches
   const isMeetupActive = meetupAgreed && trade?.status === 'active'
   const bothMetConfirmed = buyerMetConfirmed && sellerMetConfirmed
   const userMetConfirmed = (isUserBuyer && buyerMetConfirmed) || (isUserSeller && sellerMetConfirmed)
@@ -1838,9 +1879,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
       // Set each party's meetup selections
       setBuyerMeetupLocation(tradeData?.buyer_meetup_location || null)
-      setBuyerMeetupTime(tradeData?.buyer_meetup_time || null)
+      const buyerSelection = splitMeetupDateTime(tradeData?.buyer_meetup_time)
+      setBuyerMeetupDate(buyerSelection.date)
+      setBuyerMeetupTime(buyerSelection.time)
       setSellerMeetupLocation(tradeData?.seller_meetup_location || null)
-      setSellerMeetupTime(tradeData?.seller_meetup_time || null)
+      const sellerSelection = splitMeetupDateTime(tradeData?.seller_meetup_time)
+      setSellerMeetupDate(sellerSelection.date)
+      setSellerMeetupTime(sellerSelection.time)
 
 	  // Set met confirmation status
 	  setBuyerMetConfirmed(!!tradeData?.buyer_met)
@@ -1851,7 +1896,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         setSelectedLocation(tradeData.meetup_location)
       }
       if (tradeData?.meetup_time) {
-        setSelectedTime(tradeData.meetup_time)
+        const selectedSelection = splitMeetupDateTime(tradeData.meetup_time)
+        if (selectedSelection.date) setSelectedDate(selectedSelection.date)
+        if (selectedSelection.time) setSelectedTime(selectedSelection.time)
       }
     } catch (error) {
       console.error('Failed to fetch meetup status:', error)
@@ -2180,9 +2227,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       return
     }
 
-    // Format the full datetime for the backend (combining date + time)
-    const fullDateTime = `${selectedDate}T${selectedTime}`
-
     try {
       setConfirmingMeetup(true)
       setValidationError(null)
@@ -2208,11 +2252,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
       // Check if selections match the other party
       const otherPartyLocation = isUserBuyer ? sellerMeetupLocation : buyerMeetupLocation
+      const otherPartyDate = isUserBuyer ? sellerMeetupDate : buyerMeetupDate
       const otherPartyTime = isUserBuyer ? sellerMeetupTime : buyerMeetupTime
       const otherPartyConfirmed = isUserBuyer ? sellerMeetupConfirmed : buyerMeetupConfirmed
 
       if (otherPartyConfirmed && otherPartyLocation && otherPartyTime) {
-        if (selectedLocation === otherPartyLocation && selectedTime === otherPartyTime) {
+        const currentKey = buildMeetupKey(selectedLocation, selectedDate, selectedTime)
+        const otherKey = buildMeetupKey(otherPartyLocation, otherPartyDate, otherPartyTime)
+        if (currentKey && otherKey && currentKey === otherKey) {
           toast({
             id: "viewtrademodal-meetup-agreed",
             title: 'Meetup Agreed!',
@@ -2276,6 +2323,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       // Clear selected location and time to allow new selection
       setSelectedLocation(null)
       setSelectedTime(null)
+      setSelectedDate(null)
 
       toast({
         id: 'viewtrademodal-reset-selection',
@@ -2379,6 +2427,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
 
   if (!trade) return null
+
+  const waitingLabel = trade.trade_option === 'delivery'
+    ? 'Waiting for Delivery'
+    : trade.meeting_type === 'pickup'
+      ? 'Waiting for Pickup Schedule'
+      : 'Waiting for Meetup'
 
 
   const isDeliveryTrade = trade.trade_option === 'delivery'
@@ -2548,7 +2602,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     : trade.status === 'completed'
                       ? 'Completed'
                       : trade.status === 'accepted'
-                        ? 'Waiting for Meetup'
+                        ? waitingLabel
                         : 'Pending'}
                 </Badge>
               </HStack>
@@ -3243,12 +3297,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           borderRadius="md"
                         >
                           <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
-                            Current Stage: Waiting for both parties to confirm location
+                            {trade?.meeting_type === 'pickup'
+                              ? 'Current Stage: Waiting for both parties to confirm pickup schedule'
+                              : 'Current Stage: Waiting for both parties to confirm location'}
                           </Text>
                         </Box>
                       )}
 
-                      {meetupAgreed && (buyerMeetupLocation === sellerMeetupLocation) && (
+                      {meetupAgreed && meetupSelectionMatches && (
                         <Card bg="green.50" borderWidth="2px" borderColor="green.200">
                           <CardBody>
                             <VStack spacing={3} align="stretch">
@@ -3283,7 +3339,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     <Icon as={FaClock} boxSize={4} color="green.600" />
                                     <VStack align="start" spacing={0} flex={1}>
                                       <Text fontWeight="semibold" color="green.900">Time</Text>
-                                      <Text color="green.800">{buyerMeetupTime}</Text>
+                                      <Text color="green.800">{formatTimePH(buyerMeetupTime)}</Text>
                                     </VStack>
                                   </HStack>
                                 )}
@@ -3894,7 +3950,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <HStack justify="center" spacing={2} py={[1, 2]}>
                             <Icon as={FaHandshake} color="blue.500" boxSize={4} />
                             <Text fontWeight="bold" fontSize={["sm", "md"]} color="blue.700">
-                              Meetup Agreement
+                              {trade?.meeting_type === 'pickup' ? 'Pickup Agreement' : 'Meetup Agreement'}
                             </Text>
                           </HStack>
 
@@ -3910,7 +3966,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             </VStack>
                           ) : buyerMeetupConfirmed && sellerMeetupConfirmed ? (
                             // Both submitted - check if they match
-                            buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime ? (
+                            meetupSelectionMatches ? (
                               // MATCH - Success!
                               <VStack spacing={[2, 3]} align="stretch">
                                 <Box
@@ -4153,7 +4209,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                       {/* Change Selection Button - Only show when mismatch */}
                       {buyerMeetupConfirmed && sellerMeetupConfirmed &&
-                        !(buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime) && (
+                        !meetupSelectionMatches && (
                           <Button
                             colorScheme="orange"
                             variant="outline"

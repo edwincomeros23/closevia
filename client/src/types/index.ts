@@ -222,8 +222,13 @@ export interface Trade {
   completed_at?: string | null
   meetup_confirmed?: boolean
   meetup_location?: string
+  meetup_time?: string
   buyer_meetup_confirmed?: boolean
   seller_meetup_confirmed?: boolean
+  buyer_meetup_location?: string
+  buyer_meetup_time?: string
+  seller_meetup_location?: string
+  seller_meetup_time?: string
   buyer_met?: boolean
   seller_met?: boolean
   transaction_proof_url?: string
@@ -310,10 +315,13 @@ export interface TradeCreate {
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
+  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'confirm_meetup' | 'confirm_meetup_done' | 'reset_meetup_selection' | 'update_delivery_state' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
   message?: string
   counter_offered_product_ids?: number[]
   counter_offered_cash_amount?: number
+  meetup_location?: string
+  meetup_time?: string
+  meetup_date?: string
   requested_option?: TradeOption // For option change requests
   delivery_address?: string // For delivery option
 }

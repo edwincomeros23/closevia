@@ -2166,6 +2166,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup time is required"})
 		}
 
+		meetupTimeValue := payload.MeetupTime
+		if payload.MeetupDate != "" {
+			meetupTimeValue = payload.MeetupDate + " " + payload.MeetupTime
+		}
+
 		// Store each party's meetup selection separately
 		var updateQuery string
 		switch userID {
@@ -2178,7 +2183,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		}
 
 		// Update the trade with this party's meetup selection
-		_, err = h.db.Exec(updateQuery, payload.MeetupLocation, payload.MeetupTime, tradeID)
+		_, err = h.db.Exec(updateQuery, payload.MeetupLocation, meetupTimeValue, tradeID)
 		if err != nil {
 			log.Printf("Failed to update meetup confirmation for trade %d: %v", tradeID, err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm meetup"})
@@ -2195,7 +2200,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			confirmerName = "seller"
 		}
 
-		notifMsg := fmt.Sprintf("The %s has selected meetup: %s at %s", confirmerName, payload.MeetupLocation, payload.MeetupTime)
+		notifMsg := fmt.Sprintf("The %s has selected meetup: %s at %s", confirmerName, payload.MeetupLocation, meetupTimeValue)
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, notifMsg)
 
 		// Check if both parties have confirmed and if their selections MATCH
@@ -2248,7 +2253,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 				// Send mismatch notifications
 				mismatchMsg := fmt.Sprintf("Meetup selections don't match! You selected %s at %s, but the other party selected %s at %s. Please coordinate.",
-					payload.MeetupLocation, payload.MeetupTime,
+					payload.MeetupLocation, meetupTimeValue,
 					func() string {
 						if userID == buyerID {
 							return sellerLocation.String
@@ -2270,7 +2275,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		}
 
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_selection', ?)",
-			tradeID, userID, currentStatus, "Meetup selection: "+payload.MeetupLocation+" at "+payload.MeetupTime)
+			tradeID, userID, currentStatus, "Meetup selection: "+payload.MeetupLocation+" at "+meetupTimeValue)
 
 	case "reset_meetup_selection":
 		log.Printf("User %d resetting meetup selection for trade %d", userID, tradeID)
