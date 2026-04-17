@@ -772,14 +772,14 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query := `
 		SELECT p.id, COALESCE(p.slug, '') as slug, p.title, COALESCE(p.description, '') as description, p.price, COALESCE(p.image_urls, '[]') as image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, COALESCE(p.location, '') as location, COALESCE(p.` + "`condition`" + `, '') as ` + "`condition`" + `, 
-		       p.suggested_value, COALESCE(p.category, 'General') as category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
+		       p.suggested_value, COALESCE(p.category, 'General') as category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.location_type, p.pickup_latitude, p.pickup_longitude, p.pickup_address, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
 		       COALESCE(u.name, 'User') as seller_name, COALESCE(u.profile_picture, '') as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
-			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
-			   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
-		FROM products p
-		LEFT JOIN users u ON p.seller_id = u.id
-		` + whereClause
+		   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
+		   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
+	FROM products p
+	LEFT JOIN users u ON p.seller_id = u.id
+	` + whereClause
 
 	// Apply sorting based on sort_by parameter
 	tierSort := "(CASE WHEN u.premium_tier = 'pro' THEN 3 WHEN u.premium_tier = 'plus' THEN 2 ELSE 1 END)"
@@ -839,6 +839,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var imageURLsJSONStr string
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
 		var boostedAtNull sql.NullTime
+		var locationTypeNull sql.NullString
+		var pickupLatNull, pickupLonNull sql.NullFloat64
+		var pickupAddressNull sql.NullString
 		var wantsNull sql.NullString
 		var wantedCategoriesRaw sql.NullString
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
@@ -847,6 +850,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			&conditionNull, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
 			&wantsNull, &wantedCategoriesRaw,
+			&locationTypeNull, &pickupLatNull, &pickupLonNull, &pickupAddressNull,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 
@@ -855,6 +859,18 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		}
 		if wantedCategoriesRaw.Valid {
 			product.WantedCategories = parseWantedCategories(wantedCategoriesRaw.String)
+		}
+		if locationTypeNull.Valid {
+			product.LocationType = locationTypeNull.String
+		}
+		if pickupLatNull.Valid {
+			product.PickupLatitude = &pickupLatNull.Float64
+		}
+		if pickupLonNull.Valid {
+			product.PickupLongitude = &pickupLonNull.Float64
+		}
+		if pickupAddressNull.Valid {
+			product.PickupAddress = pickupAddressNull.String
 		}
 		if slugNull.Valid {
 			product.Slug = slugNull.String
@@ -1404,14 +1420,14 @@ func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 	query := `
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
-		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
+		       p.suggested_value, p.category, p.location_type, p.pickup_latitude, p.pickup_longitude, p.pickup_address, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
 		       u.name as seller_name, u.profile_picture as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
-			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
-			   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
-		FROM products p
-		JOIN users u ON p.seller_id = u.id
-		WHERE p.status = 'available' AND p.seller_id != ?
+		   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
+		   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
+	FROM products p
+	JOIN users u ON p.seller_id = u.id
+	WHERE p.status = 'available' AND p.seller_id != ?
 	`
 
 	args := []interface{}{pSellerID}
@@ -1461,10 +1477,14 @@ func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 		var imageURLsJSONStr string
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
 		var boostedAtNull sql.NullTime
+		var locationTypeNull sql.NullString
+		var pickupLatNull, pickupLonNull sql.NullFloat64
+		var pickupAddressNull sql.NullString
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&conditionNull, &product.SuggestedValue, &product.Category,
+			&locationTypeNull, &pickupLatNull, &pickupLonNull, &pickupAddressNull,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 
@@ -1485,6 +1505,18 @@ func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 		if priceNull.Valid {
 			p := priceNull.Float64
 			product.Price = &p
+		}
+		if locationTypeNull.Valid {
+			product.LocationType = locationTypeNull.String
+		}
+		if pickupLatNull.Valid {
+			product.PickupLatitude = &pickupLatNull.Float64
+		}
+		if pickupLonNull.Valid {
+			product.PickupLongitude = &pickupLonNull.Float64
+		}
+		if pickupAddressNull.Valid {
+			product.PickupAddress = pickupAddressNull.String
 		}
 		if sellerProfile.Valid {
 			product.SellerProfilePicture = sellerProfile.String
@@ -2960,14 +2992,14 @@ func (h *ProductHandler) SmartSearch(c *fiber.Ctx) error {
 	query := `
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `,
-		       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
+		       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.location_type, p.pickup_latitude, p.pickup_longitude, p.pickup_address, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
 		       u.name as seller_name, u.profile_picture as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
-			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
-			   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
-		FROM products p
-		LEFT JOIN users u ON p.seller_id = u.id
-		` + whereClause
+		   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
+		   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
+	FROM products p
+	LEFT JOIN users u ON p.seller_id = u.id
+	` + whereClause
 
 	// Sorting: prioritize pins, then user tier, then recency
 	query += ` ORDER BY p.premium DESC, (CASE WHEN u.premium_tier = 'pro' THEN 3 WHEN u.premium_tier = 'plus' THEN 2 ELSE 1 END) DESC, COALESCE(p.boosted_at, p.created_at) DESC`
@@ -3007,6 +3039,9 @@ func (h *ProductHandler) SmartSearch(c *fiber.Ctx) error {
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
 		var boostedAtNull sql.NullTime
 		var offerCount int
+		var locationTypeNull sql.NullString
+		var pickupLatNull, pickupLonNull sql.NullFloat64
+		var pickupAddressNull sql.NullString
 		var wantsNull sql.NullString
 		var wantedCategoriesRaw sql.NullString
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
@@ -3015,6 +3050,7 @@ func (h *ProductHandler) SmartSearch(c *fiber.Ctx) error {
 			&conditionNull, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
 			&wantsNull, &wantedCategoriesRaw,
+			&locationTypeNull, &pickupLatNull, &pickupLonNull, &pickupAddressNull,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 		if err != nil {
@@ -3026,6 +3062,18 @@ func (h *ProductHandler) SmartSearch(c *fiber.Ctx) error {
 		}
 		if wantedCategoriesRaw.Valid {
 			product.WantedCategories = parseWantedCategories(wantedCategoriesRaw.String)
+		}
+		if locationTypeNull.Valid {
+			product.LocationType = locationTypeNull.String
+		}
+		if pickupLatNull.Valid {
+			product.PickupLatitude = &pickupLatNull.Float64
+		}
+		if pickupLonNull.Valid {
+			product.PickupLongitude = &pickupLonNull.Float64
+		}
+		if pickupAddressNull.Valid {
+			product.PickupAddress = pickupAddressNull.String
 		}
 		if slugNull.Valid {
 			product.Slug = slugNull.String

@@ -168,6 +168,15 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
   }, [trade, isOpen])
 
   const handleSubmitCompletion = () => {
+    if (!policyAgreed) {
+      toast({
+        id: 'tradecompletionmodal-policy-required',
+        title: 'Please confirm completion',
+        description: 'Check the acknowledgement box before completing the trade.',
+        status: 'warning',
+      })
+      return
+    }
     if (!trade) return
     setShowConfirmationModal(true)
   }
@@ -643,7 +652,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                 isLoading={submitting}
                 loadingText="Completing..."
                 leftIcon={<FaCheck />}
-                isDisabled={rating === 0 || !policyAgreed || uploadingImage || (isPhotoMandatory && !transactionProof)}
+                isDisabled={rating === 0 || uploadingImage || (isPhotoMandatory && !transactionProof)}
                 mt={{ base: 2, md: 4 }}
               >
                 Complete Trade
