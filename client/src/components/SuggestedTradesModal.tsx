@@ -24,10 +24,33 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
 
     useEffect(() => {
         if (isOpen && product) {
-            setLikedIds(new Set());
+            try {
+                const raw = localStorage.getItem(`trade-likes-${product.id}`);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        setLikedIds(new Set(parsed.map((id) => Number(id))));
+                    } else {
+                        setLikedIds(new Set());
+                    }
+                } else {
+                    setLikedIds(new Set());
+                }
+            } catch {
+                setLikedIds(new Set());
+            }
             fetchSuggestions();
         }
     }, [isOpen, product]);
+
+    useEffect(() => {
+        if (!product) return;
+        try {
+            localStorage.setItem(`trade-likes-${product.id}`, JSON.stringify(Array.from(likedIds)));
+        } catch {
+            // Ignore storage errors
+        }
+    }, [likedIds, product]);
 
     const fetchSuggestions = async () => {
         try {
@@ -36,7 +59,10 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
             const normalizeCategory = (value?: string): string => {
                 const v = (value || '').trim().toLowerCase();
                 if (!v) return '';
-                return v === 'others' ? 'other' : v;
+                if (v === 'other' || v === 'others' || v.startsWith('other')) {
+                    return 'other';
+                }
+                return v;
             };
 
             // Load full product details so we can reliably read wanted_categories (dashboard listing payload may omit it)
