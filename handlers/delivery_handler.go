@@ -1501,11 +1501,14 @@ func (h *DeliveryHandler) ensureDeliveryStops(deliveryID int) error {
 			sellerPhone = receiverPhone
 		}
 
+		buyerPaymentAmount := offeredCash + totalCost
+		returnFee := totalCost
+
 		_, err := h.db.Exec(`
 			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
 			                             address, latitude, longitude, fee_amount, status)
 			VALUES (?, 1, 'buyer_payment', ?, ?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, buyerName, buyerPhone, deliveryAddr, deliveryLat, deliveryLng, totalCost,
+			deliveryID, buyerName, buyerPhone, deliveryAddr, deliveryLat, deliveryLng, buyerPaymentAmount,
 		)
 		if err != nil {
 			return err
@@ -1515,7 +1518,7 @@ func (h *DeliveryHandler) ensureDeliveryStops(deliveryID int) error {
 			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
 			                             address, latitude, longitude, fee_amount, status)
 			VALUES (?, 2, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, sellerName, sellerPhone, pickupAddr, pickupLat, pickupLng, 0.0,
+			deliveryID, sellerName, sellerPhone, pickupAddr, pickupLat, pickupLng, returnFee,
 		)
 		if err != nil {
 			return err
@@ -2181,12 +2184,15 @@ func (h *DeliveryHandler) ClaimDelivery(c *fiber.Ctx) error {
 			sellerPhone = receiverPhone
 		}
 
+		buyerPaymentAmount := offeredCash + totalCost
+		returnFee := totalCost
+
 		// Stop 1: Buyer payment + delivery fee collection
 		_, err = h.db.Exec(`
 			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
 			                             address, latitude, longitude, fee_amount, status)
 			VALUES (?, 1, 'buyer_payment', ?, ?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, buyerName, buyerPhone, deliveryAddr, deliveryLat, deliveryLng, totalCost)
+			deliveryID, buyerName, buyerPhone, deliveryAddr, deliveryLat, deliveryLng, buyerPaymentAmount)
 		if err != nil {
 			log.Printf("Failed to create buyer payment stop: %v", err)
 		}
@@ -2196,7 +2202,7 @@ func (h *DeliveryHandler) ClaimDelivery(c *fiber.Ctx) error {
 			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
 			                             address, latitude, longitude, fee_amount, status)
 			VALUES (?, 2, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, sellerName, sellerPhone, pickupAddr, pickupLat, pickupLng, 0.0)
+			deliveryID, sellerName, sellerPhone, pickupAddr, pickupLat, pickupLng, returnFee)
 		if err != nil {
 			log.Printf("Failed to create seller pickup stop: %v", err)
 		}

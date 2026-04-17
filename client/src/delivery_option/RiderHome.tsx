@@ -135,7 +135,6 @@ interface DeliveryCardProps {
 
 const DeliveryCard: React.FC<DeliveryCardProps> = ({ delivery, onViewDetails, onAccept, accepting }) => {
   const isExpress = delivery.delivery_type === 'express'
-  const isBuyoutDelivery = !!delivery.trade_id
   const isBatching = delivery.is_batching && !isExpress
 
   return (
@@ -395,6 +394,7 @@ const ViewDetailsModal: React.FC<ViewDetailsModalProps> = ({
   if (!delivery) return null
 
   const isExpress = delivery.delivery_type === 'express'
+  const isBuyoutDelivery = !!delivery.trade_id
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" scrollBehavior="inside">

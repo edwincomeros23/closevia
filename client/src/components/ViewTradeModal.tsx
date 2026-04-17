@@ -20,6 +20,7 @@ import {
   Spinner,
   Textarea,
   Icon,
+  IconButton,
   Flex,
   SimpleGrid,
   Image,
@@ -55,6 +56,7 @@ import {
   FiTruck,
   FiDollarSign,
   FiUpload,
+  FiCamera,
   FiCheck,
   FiClock,
   FiPackage,
@@ -117,6 +119,14 @@ interface TradeMessage {
   content: string
   created_at: string
   sender_name?: string
+}
+
+const linkBlockPattern = /(https?:\/\/|www\.|facebook\.com|fb\.com|m\.me|instagram\.com|t\.me|telegram\.me|wa\.me|whatsapp\.com)/i
+const isBlockedMessage = (value: string): boolean => {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  if (/^photo:/i.test(trimmed)) return true
+  return linkBlockPattern.test(trimmed)
 }
 
 interface ViewTradeModalProps {
@@ -486,7 +496,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           <VStack spacing={3} align="stretch">
             <HStack spacing={3} align="center">
               <Icon as={FaTruck} color="green.600" />
-              <Text fontWeight="bold" fontSize="sm">Delivery Tracking</Text>
+              <Text fontWeight="bold" fontSize="sm">Buyout Delivery Tracking</Text>
               <Badge ml="auto" colorScheme={deliveryStatusColorScheme} fontSize="xs">
                 {deliveryStatus.replace(/_/g, ' ').toUpperCase()}
               </Badge>
@@ -495,7 +505,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
             <Progress value={deliveryProgress} size="sm" borderRadius="full" colorScheme={deliveryStatusColorScheme} />
 
             <Text fontSize="2xs" color="gray.600">
-              Buyout delivery (1 delivery)
+              Buyout delivery (round trip)
             </Text>
 
             <HStack justify="space-between" align="start" spacing={2}>
@@ -643,8 +653,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
             <HStack spacing={2} align="start">
               <Text fontSize={["lg", "2xl"]}>=�Ʀ</Text>
               <VStack align="start" spacing={0}>
-                <Text fontSize="sm" fontWeight="semibold">Delivery Fee (Cash on Delivery)</Text>
-                <Text fontSize="xs" color="gray.500">This is the rider fee only</Text>
+                <Text fontSize="sm" fontWeight="semibold">Delivery Fee (Cash on Delivery, per leg)</Text>
+                <Text fontSize="xs" color="gray.500">Return fee is collected at seller pickup</Text>
               </VStack>
             </HStack>
             <Text fontSize="sm" fontWeight="bold" color="green.600">
@@ -1135,6 +1145,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [newMessage, setNewMessage] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [chatPhotoFile, setChatPhotoFile] = useState<File | null>(null)
+  const [chatPhotoPreview, setChatPhotoPreview] = useState<string | null>(null)
+  const [uploadingChatPhoto, setUploadingChatPhoto] = useState(false)
+  const chatPhotoInputRef = useRef<HTMLInputElement>(null)
   const [requestedProduct, setRequestedProduct] = useState<Product | null>(null)
   const [offeredProducts, setOfferedProducts] = useState<Product[]>([])
   const [loadingProducts, setLoadingProducts] = useState(false)
@@ -1876,14 +1890,41 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
 
   const sendMessage = async () => {
-    if (!trade || !newMessage.trim() || sendingMessage) return
+    if (!trade || sendingMessage) return
+    const trimmed = newMessage.trim()
+    const hasText = trimmed.length > 0
+    const hasPhoto = !!chatPhotoFile
+    if (!hasText && !hasPhoto) return
+
+    if (hasText && isBlockedMessage(trimmed)) {
+      toast({
+        id: "viewtrademodal-link-block",
+        title: 'Links are not allowed',
+        description: 'Please remove links. You can send photos instead.',
+        status: 'warning',
+      })
+      return
+    }
 
     try {
       setSendingMessage(true)
-      await api.post(`/api/trades/${trade.id}/messages`, {
-        content: newMessage.trim(),
-      })
-      setNewMessage('')
+      if (hasText) {
+        await api.post(`/api/trades/${trade.id}/messages`, {
+          content: trimmed,
+        })
+        setNewMessage('')
+      }
+
+      if (hasPhoto) {
+        const uploadedUrl = await uploadChatPhoto()
+        if (uploadedUrl) {
+          await api.post(`/api/trades/${trade.id}/messages`, {
+            content: `photo:${uploadedUrl}`,
+          })
+          clearChatPhoto()
+        }
+      }
+
       await fetchMessages({ showLoading: false })
     } catch (error: any) {
       toast({
@@ -1894,6 +1935,58 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       })
     } finally {
       setSendingMessage(false)
+    }
+  }
+
+  const handleChatPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast({ id: 'viewtrade-photo-type', title: 'Photo only', description: 'Please select an image file.', status: 'warning' })
+      e.target.value = ''
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ id: 'viewtrade-photo-size', title: 'File too large', description: 'Photo must be under 10MB.', status: 'warning' })
+      e.target.value = ''
+      return
+    }
+    if (chatPhotoPreview) {
+      URL.revokeObjectURL(chatPhotoPreview)
+    }
+    setChatPhotoFile(file)
+    setChatPhotoPreview(URL.createObjectURL(file))
+    e.target.value = ''
+  }
+
+  const clearChatPhoto = () => {
+    if (chatPhotoPreview) {
+      URL.revokeObjectURL(chatPhotoPreview)
+    }
+    setChatPhotoPreview(null)
+    setChatPhotoFile(null)
+  }
+
+  const uploadChatPhoto = async (): Promise<string | null> => {
+    if (!chatPhotoFile) return null
+    setUploadingChatPhoto(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', chatPhotoFile)
+      const uploadRes = await api.post('/api/upload', formData)
+      const uploadedUrl = uploadRes.data?.data?.url
+      if (!uploadedUrl) throw new Error('No image URL returned')
+      return uploadedUrl
+    } catch (error: any) {
+      toast({
+        id: 'viewtrade-photo-upload',
+        title: 'Photo upload failed',
+        description: error?.response?.data?.error || 'Please try again.',
+        status: 'error',
+      })
+      return null
+    } finally {
+      setUploadingChatPhoto(false)
     }
   }
 
@@ -2630,7 +2723,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                   )}
                 </Tab>
                 <Tab>
-                  {trade?.trade_option === 'delivery' ? 'Delivery' : trade?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup'}
+                  {trade?.trade_option === 'delivery' ? 'Buyout Delivery' : trade?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup'}
                 </Tab>
               </TabList>
 
@@ -3116,6 +3209,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             const senderAvatarSrc = isOwnMessage
                               ? resolveAvatarSrc((user as any)?.profile_picture)
                               : resolveAvatarSrc(userAvatarById[Number(msg.sender_id)])
+                            const isPhotoMessage = typeof msg.content === 'string' && msg.content.startsWith('photo:')
+                            const photoUrl = isPhotoMessage ? msg.content.slice('photo:'.length).trim() : ''
                             return (
                               <HStack
                                 key={`msg-${msg.id}`}
@@ -3141,7 +3236,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   borderWidth={isOwnMessage ? 0 : '1px'}
                                   borderColor={borderColor}
                                 >
-                                  <Text fontSize="sm">{msg.content}</Text>
+                                  {isPhotoMessage ? (
+                                    <Image
+                                      src={getImageUrl(photoUrl)}
+                                      alt="Shared photo"
+                                      borderRadius="md"
+                                      maxH="220px"
+                                      objectFit="cover"
+                                    />
+                                  ) : (
+                                    <Text fontSize="sm">{msg.content}</Text>
+                                  )}
                                   <Text
                                     fontSize="xs"
                                     color={isOwnMessage ? 'brand.100' : 'gray.500'}
@@ -3171,6 +3276,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     </Box>
 
                     {/* Message Input */}
+                    {chatPhotoPreview && (
+                      <HStack spacing={2} mb={2} align="center">
+                        <Image src={chatPhotoPreview} alt="Photo preview" maxH="60px" borderRadius="md" />
+                        <Button size="xs" variant="ghost" onClick={clearChatPhoto}>Remove</Button>
+                      </HStack>
+                    )}
                     <HStack spacing={2}>
                       <InputGroup>
                         <Textarea
@@ -3185,14 +3296,29 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               sendMessage()
                             }
                           }}
+                          isDisabled={sendingMessage || uploadingChatPhoto}
                         />
                       </InputGroup>
+                      <input
+                        ref={chatPhotoInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleChatPhotoSelect}
+                        style={{ display: 'none' }}
+                      />
+                      <IconButton
+                        aria-label="Attach photo"
+                        icon={<FiCamera />}
+                        variant="outline"
+                        onClick={() => chatPhotoInputRef.current?.click()}
+                        isDisabled={sendingMessage || uploadingChatPhoto}
+                      />
                       <Button
                         colorScheme="brand"
                         onClick={sendMessage}
-                        isLoading={sendingMessage}
+                        isLoading={sendingMessage || uploadingChatPhoto}
                         leftIcon={<FaPaperPlane />}
-                        isDisabled={!newMessage.trim()}
+                        isDisabled={!newMessage.trim() && !chatPhotoFile}
                       >
                         Send
                       </Button>

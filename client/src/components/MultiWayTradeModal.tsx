@@ -15,6 +15,7 @@ import {
   Badge,
   Image,
   Icon,
+  IconButton,
   useToast,
   Heading,
   Avatar,
@@ -45,10 +46,12 @@ import {
   FaPaperPlane,
   FaSmile,
   FaExclamationTriangle,
+  FaCamera,
 } from 'react-icons/fa'
 import { useNavigate } from 'react-router-dom'
 import { MultiWayTrade, MultiWayTradeParticipant } from '../types'
 import { getProductUrl } from '../utils/productUtils'
+import { getImageUrl } from '../utils/imageUtils'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -83,6 +86,14 @@ interface TradeMessage {
   content: string
   created_at: string
   sender_name?: string
+}
+
+const linkBlockPattern = /(https?:\/\/|www\.|facebook\.com|fb\.com|m\.me|instagram\.com|t\.me|telegram\.me|wa\.me|whatsapp\.com)/i
+const isBlockedMessage = (value: string): boolean => {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  if (/^photo:/i.test(trimmed)) return true
+  return linkBlockPattern.test(trimmed)
 }
 
 /** Format ms remaining as "Xh Ym" or "Expired" */
@@ -170,7 +181,13 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const [newMessage, setNewMessage] = useState('')
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
+  const [chatPhotoFile, setChatPhotoFile] = useState<File | null>(null)
+  const [chatPhotoPreview, setChatPhotoPreview] = useState<string | null>(null)
+  const [uploadingChatPhoto, setUploadingChatPhoto] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const [userAvatarById, setUserAvatarById] = useState<Record<number, string>>({})
+  const fetchedAvatarUserIdsRef = useRef<Set<number>>(new Set())
 
   const { isOpen: isLegsOpen, onToggle: onLegsToggle } = useDisclosure({
     defaultIsOpen: isActiveChain,
@@ -264,6 +281,45 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     })
     return map
   }, [sortedParticipants])
+
+  const resolveAvatarSrc = (raw?: string | null): string | undefined => {
+    if (!raw) return undefined
+    return getImageUrl(raw)
+  }
+
+  // Fetch participant avatars for chat
+  useEffect(() => {
+    if (!isOpen) return
+    if (!sortedParticipants.length) return
+
+    let cancelled = false
+
+    const fetchAvatarForUser = async (id: number) => {
+      if (!id) return
+      if (fetchedAvatarUserIdsRef.current.has(id)) return
+      fetchedAvatarUserIdsRef.current.add(id)
+
+      try {
+        const res = await api.get(`/api/users/${id}`)
+        const payload = res.data?.data || res.data
+        const apiUser = (payload?.user || payload) as any
+        const rawPic = apiUser?.profile_picture || apiUser?.avatar_url || apiUser?.org_logo_url || apiUser?.logo_url
+        if (!rawPic) return
+
+        if (!cancelled) {
+          setUserAvatarById(prev => ({ ...prev, [id]: rawPic }))
+        }
+      } catch (_) {
+        // Best-effort: fall back to initials
+      }
+    }
+
+    sortedParticipants.forEach((p) => fetchAvatarForUser(Number(p.user_id)))
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, sortedParticipants])
 
   const completedLegs = multiWayTrade.edges.filter((e) => e.status === 'completed').length
   const totalLegs = multiWayTrade.edges.length
@@ -433,15 +489,95 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     }
   }
 
+  const handleChatPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast({ id: 'mwt-photo-type', title: 'Photo only', description: 'Please select an image file.', status: 'warning' })
+      e.target.value = ''
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ id: 'mwt-photo-size', title: 'File too large', description: 'Photo must be under 10MB.', status: 'warning' })
+      e.target.value = ''
+      return
+    }
+    if (chatPhotoPreview) {
+      URL.revokeObjectURL(chatPhotoPreview)
+    }
+    setChatPhotoFile(file)
+    setChatPhotoPreview(URL.createObjectURL(file))
+    e.target.value = ''
+  }
+
+  const clearChatPhoto = () => {
+    if (chatPhotoPreview) {
+      URL.revokeObjectURL(chatPhotoPreview)
+    }
+    setChatPhotoPreview(null)
+    setChatPhotoFile(null)
+  }
+
+  const uploadChatPhoto = async (): Promise<string | null> => {
+    if (!chatPhotoFile) return null
+    setUploadingChatPhoto(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', chatPhotoFile)
+      const uploadRes = await api.post('/api/upload', formData)
+      const uploadedUrl = uploadRes.data?.data?.url
+      if (!uploadedUrl) throw new Error('No image URL returned')
+      return uploadedUrl
+    } catch (error: any) {
+      toast({
+        id: 'mwt-photo-upload',
+        title: 'Photo upload failed',
+        description: error?.response?.data?.error || 'Please try again.',
+        status: 'error',
+      })
+      return null
+    } finally {
+      setUploadingChatPhoto(false)
+    }
+  }
+
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !multiWayTrade.loop_id) return
+    if (!multiWayTrade.loop_id || sendingMessage) return
+    const trimmed = newMessage.trim()
+    const hasText = trimmed.length > 0
+    const hasPhoto = !!chatPhotoFile
+
+    if (!hasText && !hasPhoto) return
+
+    if (hasText && isBlockedMessage(trimmed)) {
+      toast({
+        id: 'mwt-link-block',
+        title: 'Links are not allowed',
+        description: 'Please remove links. You can send photos instead.',
+        status: 'warning',
+      })
+      return
+    }
+
     setSendingMessage(true)
     try {
-      await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/messages`, {
-        content: newMessage.trim(),
-      })
-      setNewMessage('')
-      // Refresh messages
+      if (hasText) {
+        await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/messages`, {
+          content: trimmed,
+        })
+        setNewMessage('')
+      }
+
+      if (hasPhoto) {
+        const uploadedUrl = await uploadChatPhoto()
+        if (uploadedUrl) {
+          await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/messages`, {
+            content: `photo:${uploadedUrl}`,
+          })
+          clearChatPhoto()
+        }
+      }
+
       const res = await api.get(`/api/trades/loops/${multiWayTrade.loop_id}/messages`)
       setMessages(Array.isArray(res.data?.data) ? res.data.data : [])
     } catch (error: any) {
@@ -957,6 +1093,11 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 <VStack spacing={12} align="stretch">
                   {messages.map((msg) => {
                     const isOwnMessage = msg.sender_id === user?.id
+                    const isPhotoMessage = typeof msg.content === 'string' && msg.content.startsWith('photo:')
+                    const photoUrl = isPhotoMessage ? msg.content.slice('photo:'.length).trim() : ''
+                    const senderAvatarSrc = isOwnMessage
+                      ? resolveAvatarSrc((user as any)?.profile_picture)
+                      : resolveAvatarSrc(userAvatarById[Number(msg.sender_id)])
                     return (
                       <HStack
                         key={`msg-${msg.id}`}
@@ -967,6 +1108,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                         {!isOwnMessage && (
                           <Avatar
                             name={msg.sender_name || 'User'}
+                            src={senderAvatarSrc}
                             size="sm"
                             bg="brand.500"
                             color="white"
@@ -987,9 +1129,19 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               {msg.sender_name}
                             </Text>
                           )}
-                          <Text fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-word">
-                            {msg.content}
-                          </Text>
+                          {isPhotoMessage ? (
+                            <Image
+                              src={getImageUrl(photoUrl)}
+                              alt="Shared photo"
+                              borderRadius="md"
+                              maxH="220px"
+                              objectFit="cover"
+                            />
+                          ) : (
+                            <Text fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-word">
+                              {msg.content}
+                            </Text>
+                          )}
                           <Text
                             fontSize="2xs"
                             opacity={0.7}
@@ -1008,7 +1160,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                             size="sm"
                             bg="brand.500"
                             color="white"
-                            src={user?.profile_picture}
+                            src={senderAvatarSrc}
                           />
                         )}
                       </HStack>
@@ -1021,6 +1173,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
             {/* Message Input */}
             <Box borderTopWidth="1px" borderColor={borderColor} pt={3}>
+              {chatPhotoPreview && (
+                <HStack spacing={2} mb={2} align="center">
+                  <Image src={chatPhotoPreview} alt="Photo preview" maxH="60px" borderRadius="md" />
+                  <Button size="xs" variant="ghost" onClick={clearChatPhoto}>Remove</Button>
+                </HStack>
+              )}
               <HStack spacing={2} align="flex-end">
                 <Textarea
                   value={newMessage}
@@ -1035,16 +1193,30 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                   minH="60px"
                   maxH="120px"
                   resize="none"
-                  isDisabled={sendingMessage}
+                  isDisabled={sendingMessage || uploadingChatPhoto}
                   fontSize="sm"
                   borderRadius="md"
                   flex={1}
                 />
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleChatPhotoSelect}
+                  style={{ display: 'none' }}
+                />
+                <IconButton
+                  aria-label="Attach photo"
+                  icon={<FaCamera />}
+                  variant="outline"
+                  onClick={() => photoInputRef.current?.click()}
+                  isDisabled={sendingMessage || uploadingChatPhoto}
+                />
                 <Button
                   colorScheme="brand"
                   onClick={handleSendMessage}
-                  isLoading={sendingMessage}
-                  isDisabled={!newMessage.trim()}
+                  isLoading={sendingMessage || uploadingChatPhoto}
+                  isDisabled={!newMessage.trim() && !chatPhotoFile}
                   leftIcon={<FaPaperPlane />}
                   h="48px"
                   px={4}

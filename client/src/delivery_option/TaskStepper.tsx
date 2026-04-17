@@ -26,9 +26,22 @@ import {
   IconButton,
 } from '@chakra-ui/react'
 import { CheckCircleIcon, WarningIcon, CloseIcon } from '@chakra-ui/icons'
-import { FaMapMarkerAlt, FaCamera, FaPhone, FaSync, FaRedo } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaCamera, FaSync, FaRedo } from 'react-icons/fa'
+import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
 import { api } from '../services/api'
 import { Delivery, DeliveryStop, Trade } from '../types'
+
+// Fix generic leaflet icon URLs (guarded to avoid runtime import issues)
+if (L?.Icon?.Default) {
+  delete (L.Icon.Default.prototype as any)._getIconUrl
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  })
+}
 
 // The status progression for a delivery
 const STATUS_PROGRESSION: Array<Delivery['status']> = ['claimed', 'picked_up', 'in_transit', 'delivered']
@@ -45,6 +58,16 @@ interface Task {
   itemCount: number
   notes: string
   timestamp?: string
+}
+
+const FitBounds: React.FC<{ points: Array<[number, number]> }> = ({ points }) => {
+  const map = useMap()
+  useEffect(() => {
+    if (points.length === 0) return
+    const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)))
+    map.fitBounds(bounds, { padding: [30, 30] })
+  }, [map, points])
+  return null
 }
 
 const TaskStepper: React.FC = () => {
@@ -65,6 +88,14 @@ const TaskStepper: React.FC = () => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [routeCoords, setRouteCoords] = useState<Array<[number, number]>>([])
+  const [routeSteps, setRouteSteps] = useState<Array<{ instruction: string; distance: number; duration: number }>>([])
+  const [routeLoading, setRouteLoading] = useState(false)
+  const [routeError, setRouteError] = useState<string | null>(null)
+  const [showAllSteps, setShowAllSteps] = useState(false)
+  const [stepPoints, setStepPoints] = useState<Array<{ lat: number; lng: number; instruction: string }>>([])
+  const [activeStepIndex, setActiveStepIndex] = useState(0)
 
   // Fetch delivery data from API
   const fetchStops = async (deliveryId: string) => {
@@ -117,6 +148,26 @@ const TaskStepper: React.FC = () => {
     fetchDelivery()
   }, [batchId])
 
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setRouteError('Location services are not available in this browser.')
+      return
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        setRouteError(null)
+      },
+      () => {
+        setRouteError('Unable to read your current location.')
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    )
+
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [])
+
   // Build task steps from delivery stops when available
   const buildTasks = (): Task[] => {
     if (!delivery) return []
@@ -130,7 +181,7 @@ const TaskStepper: React.FC = () => {
           case 'buyer_payment':
             return 'Collect Buyer Payment'
           case 'pickup':
-            return 'Pay Seller & Pick Up'
+            return 'Pay Seller, Collect Return Fee & Pick Up'
           case 'delivery':
             return 'Deliver to Buyer'
           default:
@@ -199,6 +250,9 @@ const TaskStepper: React.FC = () => {
   const currentTaskIndex = tasks.findIndex(t => t.status === 'in-progress')
   const activeIndex = currentTaskIndex >= 0 ? currentTaskIndex : tasks.findIndex(t => t.status === 'pending')
   const currentTask = activeIndex >= 0 ? tasks[activeIndex] : null
+  const currentStop = currentTask?.stopId
+    ? stops.find((s) => s.id === currentTask.stopId) || null
+    : null
   const completedCount = tasks.filter(t => t.status === 'completed').length
   const totalTasks = tasks.length
   const allDone = delivery?.status === 'delivered'
@@ -208,7 +262,7 @@ const TaskStepper: React.FC = () => {
       case 'buyer_payment':
         return 'Collect Buyer Payment'
       case 'pickup':
-        return 'Pay Seller & Pick Up'
+        return 'Pay Seller, Collect Return Fee & Pick Up'
       case 'delivery':
         return 'Deliver to Buyer'
       default:
@@ -218,7 +272,95 @@ const TaskStepper: React.FC = () => {
 
   const productCash = trade?.offered_cash_amount || 0
   const deliveryFee = delivery?.total_cost || 0
+  const returnFee = deliveryFee
   const buyerTotal = productCash + deliveryFee
+
+  const destinationLat = currentStop?.latitude
+    ?? (currentTask?.type === 'pickup' ? delivery?.pickup_latitude : delivery?.delivery_latitude)
+  const destinationLng = currentStop?.longitude
+    ?? (currentTask?.type === 'pickup' ? delivery?.pickup_longitude : delivery?.delivery_longitude)
+  const destinationAddress = currentTask?.address || ''
+  const etaMinutes = routeSteps.length > 0
+    ? Math.max(1, Math.round(routeSteps.reduce((sum, step) => sum + step.duration, 0) / 60))
+    : null
+
+  useEffect(() => {
+    const lat = destinationLat
+    const lng = destinationLng
+    if (!userLocation || lat == null || lng == null) {
+      setRouteCoords([])
+      setRouteSteps([])
+      return
+    }
+
+    const fetchRoute = async () => {
+      setRouteLoading(true)
+      setRouteError(null)
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${userLocation.lng},${userLocation.lat};${lng},${lat}?overview=full&geometries=geojson&steps=true`
+        const res = await fetch(url)
+        const data = await res.json()
+        const route = data?.routes?.[0]
+        if (!route) throw new Error('No route found')
+
+        const coords = route.geometry?.coordinates || []
+        const latLngs: Array<[number, number]> = coords.map((c: number[]) => [c[1], c[0]])
+        setRouteCoords(latLngs)
+
+        const leg = route.legs?.[0]
+        const steps = (leg?.steps || []).map((step: any) => {
+          const maneuver = step.maneuver || {}
+          const base = maneuver.instruction || [maneuver.type, maneuver.modifier].filter(Boolean).join(' ')
+          const name = step.name || ''
+          const instruction = name ? `${base} onto ${name}` : base
+          return {
+            instruction: instruction || 'Continue',
+            distance: step.distance || 0,
+            duration: step.duration || 0,
+            lat: maneuver.location?.[1],
+            lng: maneuver.location?.[0],
+          }
+        })
+        setRouteSteps(steps)
+        setStepPoints(steps
+          .filter((s: any) => typeof s.lat === 'number' && typeof s.lng === 'number')
+          .map((s: any) => ({ lat: s.lat, lng: s.lng, instruction: s.instruction })))
+        setActiveStepIndex(0)
+      } catch (err: any) {
+        setRouteError('Unable to load route right now.')
+        setRouteCoords([])
+        setRouteSteps([])
+        setStepPoints([])
+        setActiveStepIndex(0)
+      } finally {
+        setRouteLoading(false)
+      }
+    }
+
+    fetchRoute()
+  }, [userLocation, destinationLat, destinationLng])
+
+  useEffect(() => {
+    if (!userLocation || stepPoints.length === 0) return
+
+    const toRad = (v: number) => (v * Math.PI) / 180
+    const distanceMeters = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+      const R = 6371000
+      const dLat = toRad(b.lat - a.lat)
+      const dLng = toRad(b.lng - a.lng)
+      const lat1 = toRad(a.lat)
+      const lat2 = toRad(b.lat)
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+      return 2 * R * Math.asin(Math.sqrt(h))
+    }
+
+    const current = stepPoints[activeStepIndex]
+    if (!current) return
+    const dist = distanceMeters(userLocation, { lat: current.lat, lng: current.lng })
+    if (dist < 25 && activeStepIndex < stepPoints.length - 1) {
+      setActiveStepIndex((prev) => Math.min(prev + 1, stepPoints.length - 1))
+    }
+  }, [userLocation, stepPoints, activeStepIndex])
 
   // Get the next status in the progression
   const getNextStatus = (): Delivery['status'] | null => {
@@ -241,7 +383,7 @@ const TaskStepper: React.FC = () => {
         return { action: 'collect_fee', label: 'Collect Buyer Payment' }
       }
       if (stop.stop_type === 'pickup') {
-        return { action: 'collect_fee', label: 'Pay Seller & Pick Up' }
+        return { action: 'collect_fee', label: 'Pay Seller, Collect Return Fee & Pick Up' }
       }
       return { action: 'collect_fee', label: 'Confirm Drop-off' }
     }
@@ -375,7 +517,7 @@ const TaskStepper: React.FC = () => {
           payload.photo_url = capturedPhotoUrl
         }
 
-        await api.put(`/api/deliveries/stops/${currentStop.id}/status`, payload)
+        await api.post(`/api/deliveries/stops/${currentStop.id}/update`, payload)
 
         toast({
           id: "taskstepper-stop-updated",
@@ -399,6 +541,29 @@ const TaskStepper: React.FC = () => {
         }
       } catch (error: any) {
         const errMsg = error?.response?.data?.error || 'Failed to update stop'
+        const needsQr = /scan\s*qr/i.test(String(errMsg))
+        if (needsQr && currentStop && stopAction?.action === 'collect_fee') {
+          try {
+            await api.post(`/api/deliveries/stops/${currentStop.id}/update`, {
+              action: 'scan_qr',
+              qr_code: currentStop.item_qr_code || '',
+            })
+            await api.post(`/api/deliveries/stops/${currentStop.id}/update`, {
+              action: 'collect_fee',
+            })
+            toast({
+              id: "taskstepper-stop-updated",
+              title: 'Stop Updated',
+              status: 'success',
+              duration: 2000,
+            })
+            await fetchDelivery()
+            return
+          } catch (retryError: any) {
+            // Fall through to show the original error message.
+          }
+        }
+
         toast({
           id: "taskstepper-stop-error",
           title: 'Error',
@@ -533,9 +698,16 @@ const TaskStepper: React.FC = () => {
             <Heading size="sm" color="gray.800">
               Delivery #{delivery.id}
             </Heading>
-            <Badge colorScheme={allDone ? 'green' : 'blue'} fontSize="sm">
-              {delivery.status.replace(/_/g, ' ').toUpperCase()}
-            </Badge>
+            <HStack spacing={2}>
+              {etaMinutes != null && !allDone && (
+                <Badge colorScheme="purple" fontSize="sm">
+                  ETA ~{etaMinutes} min
+                </Badge>
+              )}
+              <Badge colorScheme={allDone ? 'green' : 'blue'} fontSize="sm">
+                {delivery.status.replace(/_/g, ' ').toUpperCase()}
+              </Badge>
+            </HStack>
           </HStack>
           <Progress
             value={(completedCount / totalTasks) * 100}
@@ -548,6 +720,17 @@ const TaskStepper: React.FC = () => {
             {completedCount}/{totalTasks} steps completed
           </Text>
         </VStack>
+
+        {!allDone && routeSteps.length > 0 && (
+          <Box w="full" p={3} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
+            <Text fontSize="xs" color="blue.700" fontWeight="bold">
+              Next step
+            </Text>
+            <Text fontSize="sm" color="blue.900">
+              {routeSteps[Math.min(activeStepIndex, routeSteps.length - 1)]?.instruction}
+            </Text>
+          </Box>
+        )}
 
         {/* Task Stepper Timeline */}
         <Card bg="white" w="full" border="1px" borderColor="gray.200">
@@ -656,12 +839,12 @@ const TaskStepper: React.FC = () => {
                       </Text>
                     </HStack>
                   )}
-                  {currentTask.stopType === 'buyer_payment' && (
+                    {currentTask.stopType === 'buyer_payment' && (
                     <HStack justify="space-between">
                       <Text fontSize="sm" color="gray.600">Collect:</Text>
                       <Text fontWeight="bold" fontSize="sm" color="gray.800">
                         {buyerTotal > 0
-                          ? `₱${buyerTotal.toFixed(2)} (₱${productCash.toFixed(2)} product + ₱${deliveryFee.toFixed(2)} fee)`
+                          ? `₱${buyerTotal.toFixed(2)} (₱${productCash.toFixed(2)} product + ₱${deliveryFee.toFixed(2)} outbound fee)`
                           : 'Payment amount not available'}
                       </Text>
                     </HStack>
@@ -674,29 +857,103 @@ const TaskStepper: React.FC = () => {
                       </Text>
                     </HStack>
                   )}
+                  {currentTask.stopType === 'pickup' && returnFee > 0 && (
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" color="gray.600">Collect return fee:</Text>
+                      <Text fontWeight="bold" fontSize="sm" color="gray.800">
+                        ₱{returnFee.toFixed(2)}
+                      </Text>
+                    </HStack>
+                  )}
                 </VStack>
 
-                {/* Action Buttons */}
-                <HStack spacing={2}>
-                  <Button
-                    flex={1}
-                    size="sm"
-                    colorScheme="brand"
-                    variant="outline"
-                    leftIcon={<Icon as={FaPhone} />}
-                  >
-                    Call
-                  </Button>
-                  <Button
-                    flex={1}
-                    size="sm"
-                    colorScheme="brand"
-                    variant="outline"
-                    leftIcon={<Icon as={FaMapMarkerAlt} />}
-                  >
-                    Map
-                  </Button>
-                </HStack>
+                {/* Map Guidance */}
+                <VStack spacing={2} align="stretch">
+                  {destinationLat != null && destinationLng != null ? (
+                    <Box borderRadius="md" overflow="hidden" borderWidth="1px" borderColor="gray.200">
+                      <MapContainer
+                        center={[destinationLat, destinationLng]}
+                        zoom={15}
+                        style={{ height: '240px', width: '100%' }}
+                        scrollWheelZoom={false}
+                      >
+                        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                        {routeCoords.length > 0 && (
+                          <Polyline positions={routeCoords} color="#2F855A" weight={4} />
+                        )}
+                        {userLocation && (
+                          <Marker position={[userLocation.lat, userLocation.lng]} />
+                        )}
+                        <Marker position={[destinationLat, destinationLng]} />
+                        <FitBounds
+                          points={[
+                            ...(routeCoords || []),
+                            userLocation ? [userLocation.lat, userLocation.lng] : null,
+                            [destinationLat, destinationLng],
+                          ].filter(Boolean) as Array<[number, number]>}
+                        />
+                      </MapContainer>
+                    </Box>
+                  ) : (
+                    <Box p={3} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                      <Text fontSize="sm" color="gray.600">Map preview unavailable for this stop.</Text>
+                    </Box>
+                  )}
+
+                  {routeLoading && (
+                    <HStack spacing={2} align="center">
+                      <Spinner size="sm" />
+                      <Text fontSize="sm" color="gray.600">Loading route…</Text>
+                    </HStack>
+                  )}
+
+                  {routeError && (
+                    <Text fontSize="sm" color="red.600">{routeError}</Text>
+                  )}
+
+                  {etaMinutes != null && (
+                    <HStack justify="space-between">
+                      <Text fontSize="xs" color="gray.600">
+                        ETA: ~{etaMinutes} min
+                      </Text>
+                      <Text fontSize="xs" color="gray.500">
+                        {routeSteps.length} steps
+                      </Text>
+                    </HStack>
+                  )}
+
+                  {routeSteps.length > 0 && (
+                    <VStack spacing={2} align="stretch">
+                      <VStack spacing={2} align="stretch" maxH={showAllSteps ? '280px' : '180px'} overflowY="auto">
+                        {(showAllSteps ? routeSteps : routeSteps.slice(0, 10)).map((step, idx) => (
+                          <HStack key={`step-${idx}`} justify="space-between" align="start">
+                            <Text fontSize="xs" color="gray.700" flex={1}>
+                              {idx + 1}. {step.instruction}
+                            </Text>
+                            <Text fontSize="xs" color="gray.500" flexShrink={0}>
+                              {Math.round(step.distance)}m
+                            </Text>
+                          </HStack>
+                        ))}
+                      </VStack>
+                      {routeSteps.length > 10 && (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => setShowAllSteps((prev) => !prev)}
+                        >
+                          {showAllSteps ? 'Hide steps' : 'Show all steps'}
+                        </Button>
+                      )}
+                    </VStack>
+                  )}
+
+                  {destinationAddress && (
+                    <Text fontSize="xs" color="gray.500">
+                      Destination: {destinationAddress}
+                    </Text>
+                  )}
+                </VStack>
 
                 <Divider />
 
