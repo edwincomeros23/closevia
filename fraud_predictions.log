@@ -382,3 +382,19 @@
   "seller_id": 63,
   "timestamp": "2026-04-17T07:13:34-04:00"
 }
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 297,
+  "risk_level": "",
+  "seller_id": 58,
+  "timestamp": "2026-04-18T01:17:31+08:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 298,
+  "risk_level": "",
+  "seller_id": 58,
+  "timestamp": "2026-04-18T01:29:37+08:00"
+}

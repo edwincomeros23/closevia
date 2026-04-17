@@ -19,7 +19,6 @@ import { getProductUrl } from '../utils/productUtils'
 import { IconButton } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
 import ProximityBadge from './ProximityBadge'
-import { api } from '../services/api'
 
 interface ProductCardProps {
   product: any
@@ -58,7 +57,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
     }
 
     const calculateRemaining = () => {
-      const boostedTime = new Date(product.boosted_at).getTime()
+      const boostedAtRaw = String(product.boosted_at)
+      const normalizedBoostedAt = boostedAtRaw.includes('T') ? boostedAtRaw : boostedAtRaw.replace(' ', 'T')
+      const boostedTime = new Date(normalizedBoostedAt).getTime()
+      if (Number.isNaN(boostedTime)) {
+        setIsBoosted(false)
+        setBoostTimeRemaining(null)
+        return
+      }
       const expiresAt = boostedTime + 3 * 60 * 60 * 1000 // 3 hours in ms
       const now = new Date().getTime()
       const remaining = expiresAt - now
@@ -93,13 +99,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
   // Memoize click handlers
   const handleCardClick = useCallback(async () => {
-    // Increment view count when user clicks on the product card
-    try {
-      await api.post(`/api/products/${product.id}/view`)
-    } catch (error) {
-      // Silently fail - don't block navigation if view tracking fails
-      console.error('Failed to track view:', error)
-    }
     // Navigate to product details page
     navigate(getProductUrl(product))
   }, [product, navigate])
@@ -207,16 +206,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 </Button>
               </Tooltip>
             )}
-            {product.premium && (
-              <Badge
-                colorScheme="yellow"
-                variant="solid"
-                borderRadius="full"
-                px={2}
-              >
-                <StarIcon mr={0} />
-              </Badge>
-            )}
+            {/* Premium/pinned badge moved to left stack */}
 
 
 
@@ -264,35 +254,77 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </Box>
         </Box>
 
-        {/* Trade Ready score badge */}
-        {product.tradeMatchScore != null && product.tradeMatchScore > 0 && (
-          <Tooltip
-            hasArrow
-            placement="top-start"
-            label={
-              product.tradeMatchBreakdown
-                ? `${product.tradeMatchBreakdown.isSuperCheap ? 'Warning: super cheap vs AI estimate | ' : ''}Value ${product.tradeMatchBreakdown.value} | Category ${product.tradeMatchBreakdown.category} | Demand ${product.tradeMatchBreakdown.demand} | Distance ${product.tradeMatchBreakdown.distance}${product.tradeMatchBreakdown.valueNote ? ` | ${product.tradeMatchBreakdown.valueNote}` : ''}`
-                : 'Trade ready score'
-            }
-          >
-            <Badge
-              position="absolute"
-              top={2}
-              left={2}
-              variant="solid"
-              borderRadius="full"
-              px={2}
-              py={0.5}
-              fontSize="10px"
-              fontWeight="bold"
-              bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
-              color="white"
-            >
-              <Text display={{ base: 'block', md: 'none' }}>{product.tradeMatchScore}% ✓</Text>
-              <Text display={{ base: 'none', md: 'block' }}>{product.tradeMatchScore}% Ready</Text>
-            </Badge>
-          </Tooltip>
-        )}
+        {(product.tradeMatchScore != null && product.tradeMatchScore > 0) || isBoosted ? (
+          <Box position="absolute" top={2} left={2} display="flex" flexDirection="column" gap={1}>
+            {product.tradeMatchScore != null && product.tradeMatchScore > 0 && (
+              <Tooltip
+                hasArrow
+                placement="top-start"
+                label={
+                  product.tradeMatchBreakdown
+                    ? `${product.tradeMatchBreakdown.isSuperCheap ? 'Warning: super cheap vs AI estimate | ' : ''}Value ${product.tradeMatchBreakdown.value} | Category ${product.tradeMatchBreakdown.category} | Demand ${product.tradeMatchBreakdown.demand} | Distance ${product.tradeMatchBreakdown.distance}${product.tradeMatchBreakdown.valueNote ? ` | ${product.tradeMatchBreakdown.valueNote}` : ''}`
+                    : 'Trade ready score'
+                }
+              >
+                <Badge
+                  variant="solid"
+                  borderRadius="full"
+                  px={2}
+                  py={0.5}
+                  fontSize="10px"
+                  fontWeight="bold"
+                  bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
+                  color="white"
+                >
+                  <Text display={{ base: 'block', md: 'none' }}>{product.tradeMatchScore}% ✓</Text>
+                  <Text display={{ base: 'none', md: 'block' }}>{product.tradeMatchScore}% Ready</Text>
+                </Badge>
+              </Tooltip>
+            )}
+            {isBoosted && (
+              <Tooltip label={boostTimeRemaining ? `Boosted for ${boostTimeRemaining} more` : 'Boosted'} placement="top-start" hasArrow>
+                <Badge
+                  colorScheme="orange"
+                  variant="solid"
+                  borderRadius="full"
+                  px={2}
+                  py={0.5}
+                  fontSize="10px"
+                  fontWeight="bold"
+                  bg="orange.500"
+                  color="white"
+                  display="inline-flex"
+                  alignItems="center"
+                  gap={1}
+                >
+                  <StarIcon boxSize={2.5} />
+                  Boosted
+                </Badge>
+              </Tooltip>
+            )}
+            {product.premium && (
+              <Tooltip label="Boosted listing" placement="top-start" hasArrow>
+                <Badge
+                  colorScheme="yellow"
+                  variant="solid"
+                  borderRadius="full"
+                  px={2}
+                  py={0.5}
+                  fontSize="10px"
+                  fontWeight="bold"
+                  bg="yellow.400"
+                  color="gray.800"
+                  display="inline-flex"
+                  alignItems="center"
+                  gap={1}
+                >
+                  <StarIcon boxSize={2.5} />
+                  Boosted
+                </Badge>
+              </Tooltip>
+            )}
+          </Box>
+        ) : null}
 
         {/* Status badge (e.g. sold) */}
         {product.status === 'sold' && (
@@ -309,34 +341,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </Badge>
         )}
 
-        {/* Boosted indicator at bottom-left */}
-        {isBoosted && boostTimeRemaining && (
-          <Box position="absolute" bottom={2} left={2} display="flex" flexDirection="column" gap={1}>
-            <Tooltip label={`Boosted for ${boostTimeRemaining} more`} placement="top" hasArrow>
-              <Badge
-                colorScheme="orange"
-                variant="solid"
-                borderRadius="md"
-                px={1.5}
-                py={0.5}
-                fontSize="10px"
-                fontWeight="600"
-                bg="orange.500"
-                color="white"
-              >
-                {boostTimeRemaining}
-              </Badge>
-            </Tooltip>
-            <ProximityBadge type="product" targetId={product.id} showIcon={true} />
-          </Box>
-        )}
-
         {/* Location badge - Using accurate ProximityBadge */}
-        {!isBoosted && (
-          <Box position="absolute" bottom={2} left={2}>
-            <ProximityBadge type="product" targetId={product.id} showIcon={true} />
-          </Box>
-        )}
+        <Box position="absolute" bottom={2} left={2}>
+          <ProximityBadge type="product" targetId={product.id} showIcon={true} />
+        </Box>
       </Box>
 
       {/* Info section */}
@@ -440,26 +448,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </Badge>
           )}
           
-          {/* Boosted indicator - minimal at bottom */}
-          {isBoosted && (
-            <Badge
-              colorScheme="orange"
-              variant="subtle"
-              borderRadius="full"
-              px={2}
-              py={0.5}
-              fontSize="xs"
-              bg="orange.50"
-              color="orange.600"
-              ml="auto"
-              display="flex"
-              alignItems="center"
-              gap={0.5}
-            >
-              <Icon as={FaRocket} boxSize={3} />
-              Boosted
-            </Badge>
-          )}
+          {/* Boosted indicator moved to image badge stack */}
         </Flex>
 
         {/* Organization Tags */}

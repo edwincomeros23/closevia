@@ -191,6 +191,12 @@ func CreateTables() error {
 		DB.Exec("ALTER TABLE users ADD COLUMN premium_tier VARCHAR(20) NULL DEFAULT 'free'")
 	}
 
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'premium_expires_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing premium_expires_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN premium_expires_at TIMESTAMP NULL")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'strikes'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding strikes column to users table...")
@@ -731,6 +737,22 @@ func CreateTables() error {
 			status ENUM('accepted', 'declined') NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE KEY uniq_loop_user (loop_id, user_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_meetup_selections (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id VARCHAR(255) NOT NULL,
+			user_id INT NOT NULL,
+			meetup_location VARCHAR(500) NULL,
+			meetup_date VARCHAR(20) NULL,
+			meetup_time VARCHAR(20) NULL,
+			meetup_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+			met_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_loop_meetup_user (loop_id, user_id),
+			INDEX idx_loop_meetup_loop (loop_id),
+			INDEX idx_loop_meetup_user (user_id),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS trade_rejection_signals (

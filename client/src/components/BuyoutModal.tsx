@@ -31,6 +31,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
   const [detectedCoords, setDetectedCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [detectedLocationLabel, setDetectedLocationLabel] = useState('')
   const [profileLocationLabel, setProfileLocationLabel] = useState('')
+  const [customLocationLabel, setCustomLocationLabel] = useState('')
   
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -69,6 +70,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     setDetectedCoords(null)
     setDetectedLocationLabel('')
     setProfileLocationLabel('')
+    setCustomLocationLabel('')
 
     // Auto-set delivery option if user has location
     if (user?.latitude && user?.longitude) {
@@ -93,6 +95,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
   }, [isOpen, user?.latitude, user?.longitude])
 
   const resolvedDeliveryAddress = (): string | undefined => {
+    if (customLocationLabel.trim()) return customLocationLabel.trim()
     if (detectedLocationLabel.trim()) return detectedLocationLabel.trim()
     if (detectedCoords) return formatCoordinates(detectedCoords.lat, detectedCoords.lng)
     if (profileLocationLabel.trim()) return profileLocationLabel.trim()
@@ -374,7 +377,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                           textAlign="center"
                           lineHeight="1.3"
                         >
-                          Rider delivers to you. Prepare the exact amount — no change given.
+                          Rider collects payment and delivery fee from you before picking up the item.
                         </Text>
                       </VStack>
                     </CardBody>
@@ -397,14 +400,14 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                           <Icon as={FaMapMarkerAlt} boxSize={4} color={selectedBorder} flexShrink={0} />
                           <VStack spacing={0} align="start" minW={0} flex={1}>
                             <Text fontSize="11px" fontWeight="600" noOfLines={1}>
-                              {detectedLocationLabel || profileLocationLabel || 'Location not set'}
+                              {customLocationLabel || detectedLocationLabel || profileLocationLabel || 'Location not set'}
                             </Text>
                             <Text fontSize="9px" color={mutedTextColor} noOfLines={1}>
-                              Detected from your device
+                              {customLocationLabel ? 'Custom address' : 'Detected from your device'}
                             </Text>
                           </VStack>
                         </HStack>
-                        {(detectedCoords || profileLocationLabel) && (
+                        {(customLocationLabel || detectedCoords || profileLocationLabel) && (
                           <Link
                             fontSize="9px"
                             fontWeight="600"
@@ -412,6 +415,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                             onClick={() => {
                               setDetectedCoords(null)
                               setDetectedLocationLabel('')
+                              setCustomLocationLabel('')
                             }}
                             textDecoration="none"
                             _hover={{ textDecoration: 'underline' }}
@@ -422,6 +426,25 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                         )}
                       </HStack>
                     </Box>
+
+                    {/* Custom Location Input */}
+                    <FormControl>
+                      <FormLabel fontSize="10px" fontWeight="600" color={mutedTextColor} mb={1}>
+                        Use a different delivery location
+                      </FormLabel>
+                      <Input
+                        placeholder="Enter another address (e.g., sister's house)"
+                        value={customLocationLabel}
+                        onChange={(e) => setCustomLocationLabel(e.target.value)}
+                        fontSize="11px"
+                        py={4}
+                      />
+                      {customLocationLabel && (
+                        <Text fontSize="9px" color={mutedTextColor} mt={1}>
+                          This will be used instead of your detected location.
+                        </Text>
+                      )}
+                    </FormControl>
 
                     {/* Detect Location Button */}
                     <Button
@@ -452,7 +475,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                 borderLeftColor={mutedTextColor}
               >
                 <Text fontSize="10px" color={mutedTextColor} lineHeight="1.4">
-                  Your preference is included in the offer. Trader can accept or propose a different setup in chat.
+                  Delivery is buyout-only. The rider collects your payment first, pays the seller, then delivers the item.
                 </Text>
               </Box>
 

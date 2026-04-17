@@ -1422,7 +1422,12 @@ func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 			placeholders[i] = "?"
 			args = append(args, cat)
 		}
-		query += fmt.Sprintf(" AND LOWER(COALESCE(p.category, '')) IN (%s)\n", strings.Join(placeholders, ","))
+		normCategory := "LOWER(TRIM(COALESCE(p.category, '')))"
+		if hasOther {
+			query += fmt.Sprintf(" AND (%s IN (%s) OR %s LIKE 'other%%')\n", normCategory, strings.Join(placeholders, ","), normCategory)
+		} else {
+			query += fmt.Sprintf(" AND %s IN (%s)\n", normCategory, strings.Join(placeholders, ","))
+		}
 	}
 
 	scoreParts := []string{
@@ -1523,6 +1528,10 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	var sellerNameNull sql.NullString
 	var sellerProfilePictureNull sql.NullString
 	var priceReasoningNull sql.NullString
+	var locationTypeNull sql.NullString
+	var pickupLatNull sql.NullFloat64
+	var pickupLonNull sql.NullFloat64
+	var pickupAddressNull sql.NullString
 	var err error
 
 	var wantsNull sql.NullString
@@ -1534,6 +1543,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.`+"`value`"+`, p.wants, p.wanted_categories, 
+			       p.location_type, p.pickup_latitude, p.pickup_longitude, p.pickup_address,
 			       p.price_reasoning, p.created_at, p.updated_at,
 			       u.name as seller_name, u.profile_picture as seller_profile_picture,
 			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
@@ -1545,7 +1555,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
-			&wantsNull, &wantedCategoriesRaw, &priceReasoningNull,
+			&wantsNull, &wantedCategoriesRaw, &locationTypeNull, &pickupLatNull, &pickupLonNull, &pickupAddressNull, &priceReasoningNull,
 			&product.CreatedAt, &product.UpdatedAt,
 			&sellerNameNull, &sellerProfilePictureNull, &product.WantCount)
 	} else {
@@ -1553,6 +1563,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.`+"`value`"+`, p.wants, p.wanted_categories, 
+			       p.location_type, p.pickup_latitude, p.pickup_longitude, p.pickup_address,
 			       p.price_reasoning, p.created_at, p.updated_at,
 			       u.name as seller_name, u.profile_picture as seller_profile_picture,
 			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
@@ -1564,7 +1575,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
-			&wantsNull, &wantedCategoriesRaw, &priceReasoningNull,
+			&wantsNull, &wantedCategoriesRaw, &locationTypeNull, &pickupLatNull, &pickupLonNull, &pickupAddressNull, &priceReasoningNull,
 			&product.CreatedAt, &product.UpdatedAt,
 			&sellerNameNull, &sellerProfilePictureNull, &product.WantCount)
 	}
@@ -1610,6 +1621,18 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	}
 	if priceReasoningNull.Valid {
 		product.PriceReasoning = priceReasoningNull.String
+	}
+	if locationTypeNull.Valid {
+		product.LocationType = locationTypeNull.String
+	}
+	if pickupLatNull.Valid {
+		product.PickupLatitude = &pickupLatNull.Float64
+	}
+	if pickupLonNull.Valid {
+		product.PickupLongitude = &pickupLonNull.Float64
+	}
+	if pickupAddressNull.Valid {
+		product.PickupAddress = pickupAddressNull.String
 	}
 
 	if err != nil {

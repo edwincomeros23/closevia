@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Box,
   VStack,
@@ -41,6 +42,7 @@ import {
   FaRedoAlt, FaSearch, FaUserShield, FaImage
 } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
+import { useProducts } from '../contexts/ProductContext'
 import { TradeLoop, MultiWayTrade } from '../types'
 import { fetchTradeLoops, fetchMultiWayTrade } from '../services/tradeService'
 import MultiWayTradeModal from '../components/MultiWayTradeModal'
@@ -48,8 +50,10 @@ import { api } from '../services/api'
 
 const Premium: React.FC = () => {
   const { user, refreshUser } = useAuth()
+  const { markProductBoosted } = useProducts()
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
+  const [searchParams] = useSearchParams()
 
   const [loops, setLoops] = useState<TradeLoop[]>([])
   const [loading, setLoading] = useState(false)
@@ -72,6 +76,7 @@ const Premium: React.FC = () => {
   // Use actual premium status from user context
   const isPremiumUser = user?.is_premium ?? false
   const currentTier = (user?.premium_tier || 'free') as 'free' | 'plus' | 'pro'
+  const isWmsuUser = (user?.email || '').toLowerCase().endsWith('@wmsu.edu.ph')
 
   useEffect(() => {
     fetchLoops()
@@ -82,6 +87,57 @@ const Premium: React.FC = () => {
     const interval = setInterval(fetchLoops, 30000)
     return () => clearInterval(interval)
   }, [refreshUser, isPremiumUser])
+
+  useEffect(() => {
+    const xenditExternalID = searchParams.get('xendit_external_id')
+    const paymentStatus = searchParams.get('payment')
+    if (!xenditExternalID) return
+
+    const toastKey = `xendit_user_premium_${xenditExternalID}`
+    if (sessionStorage.getItem(toastKey)) return
+    sessionStorage.setItem(toastKey, '1')
+
+    ;(async () => {
+      if (paymentStatus === 'failed') {
+        toast({
+          title: 'Payment Failed',
+          description: 'Your payment was not completed. Please try again.',
+          status: 'error',
+          duration: 5000,
+        })
+        return
+      }
+
+      toast({
+        title: 'Payment Successful!',
+        description: 'Syncing your subscription... this can take a few seconds.',
+        status: 'success',
+        duration: 5000,
+      })
+
+      try {
+        for (let i = 0; i < 5; i++) {
+          let r
+          try {
+            r = await api.post('/api/payments/subscription/sync', { external_id: xenditExternalID })
+          } catch (err: any) {
+            if (err?.response?.status === 405) {
+              r = await api.get('/api/payments/subscription/sync', { params: { external_id: xenditExternalID } })
+            } else {
+              throw err
+            }
+          }
+          if (r?.data?.data?.paid) break
+          await new Promise(res => setTimeout(res, 1500))
+        }
+      } catch (_) {
+        // Best-effort sync; UI will refresh below.
+      }
+
+      await refreshUser()
+      fetchSubscriptionData()
+    })()
+  }, [searchParams, refreshUser, toast])
 
   const fetchLoops = async () => {
     try {
@@ -132,11 +188,14 @@ const Premium: React.FC = () => {
   }
 
   const fetchUserProducts = async () => {
+    if (!user?.id) return
     try {
       setProductsLoading(true)
-      const response = await api.get('/api/products/my-products')
-      if (response.data?.data) {
-        setUserProducts(response.data.data)
+      const response = await api.get(`/api/products/user/${user.id}`, { params: { limit: 200, active: true } })
+      const payload = response.data?.data
+      const products = Array.isArray(payload) ? payload : payload?.data
+      if (Array.isArray(products)) {
+        setUserProducts(products)
       }
     } catch (error: any) {
       // Silently fail
@@ -162,6 +221,7 @@ const Premium: React.FC = () => {
           duration: 4000,
           isClosable: true,
         })
+        markProductBoosted(productId, new Date().toISOString())
         // Refresh products list to show updated boost status
         fetchUserProducts()
       }
@@ -281,7 +341,6 @@ const Premium: React.FC = () => {
     listings: [
       { text: '30 active listings', icon: FaBoxes, bold: true },
       { text: '3 boosted listings — pinned higher in the feed', icon: FaRocket, bold: true },
-      { text: 'Relist in one tap — no retyping, instant repost', icon: FaRedoAlt, bold: true },
     ],
     trading: [
       { text: 'Express delivery access', icon: FaTruck, bold: true },
@@ -290,7 +349,6 @@ const Premium: React.FC = () => {
       { text: 'Trade dispute reviewed first', icon: FaShieldAlt, bold: true },
     ],
     insights: [
-      { text: 'Who viewed your profile — see actual usernames', icon: FaEye, bold: true },
       { text: 'Item popularity breakdown — views, saves, feed rank', icon: FaChartLine, bold: true },
       { text: 'AI price confidence — see what data backs the estimate', icon: FaStar, bold: true },
     ],
@@ -304,7 +362,6 @@ const Premium: React.FC = () => {
       { text: 'Unlimited listings', icon: FaInfinity, bold: true },
       { text: '10 boosted listings — always pinned', icon: FaRocket, bold: true },
       { text: 'Bundle listing — group items into one trade', icon: FaBoxes, bold: true },
-      { text: 'Relist in one tap — instant repost', icon: FaRedoAlt, bold: true },
     ],
     trading: [
       { text: 'Express delivery access', icon: FaTruck, bold: true },
@@ -316,7 +373,6 @@ const Premium: React.FC = () => {
     ],
     insights: [
       { text: 'Full trade analytics — volume, best items, trends', icon: FaChartLine, bold: true },
-      { text: 'Who viewed your profile — full history', icon: FaEye, bold: true },
       { text: 'AI price confidence + market data', icon: FaStar, bold: true },
     ],
     profile: [
@@ -349,7 +405,7 @@ const Premium: React.FC = () => {
   const faqItems = [
     {
       question: 'How does the subscription work?',
-      answer: 'Plus is ₱79/month or ₱699/year (save 26%). Pro is ₱120/month or ₱1,099/year (save 24%). Cancel anytime from your account settings.'
+      answer: 'Plus is ₱79/month or ₱699/year (save 26%). Pro is ₱129/month or ₱1,099/year (save 24%). Cancel anytime from your account settings.'
     },
     {
       question: 'What is Multi-Way Trading?',
@@ -466,7 +522,11 @@ const Premium: React.FC = () => {
                   </HStack>
                 </>
               ) : (
-                <Text fontSize="sm" color={mutedText}>No active subscription</Text>
+                <Text fontSize="sm" color={mutedText}>
+                  {isWmsuUser && currentTier === 'plus'
+                    ? 'WMSU Plus — no expiration'
+                    : 'No active subscription'}
+                </Text>
               )}
             </VStack>
           </CardBody>
@@ -930,7 +990,7 @@ const Premium: React.FC = () => {
               <Button
                 colorScheme="blue" size="lg" leftIcon={<FaStar />}
                 isLoading={upgrading === 'plus'} onClick={() => handleUpgrade('plus')}
-                isDisabled={isPremiumUser}
+                isDisabled={currentTier !== 'free'}
                 w="full"
                 _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }} transition="all 0.2s"
               >
@@ -967,13 +1027,13 @@ const Premium: React.FC = () => {
               <VStack align="start" spacing={0}>
                 <HStack align="baseline" spacing={1}>
                   <Text fontSize="4xl" fontWeight="extrabold" color="purple.600">
-                    {isYearly ? '₱1,099' : '₱120'}
+                    {isYearly ? '₱1,099' : '₱129'}
                   </Text>
                   <Text color={mutedText}>/ {isYearly ? 'year' : 'month'}</Text>
                 </HStack>
                 {isYearly ? (
                   <HStack spacing={2}>
-                    <Text fontSize="sm" color={mutedText} textDecoration="line-through">₱1,440/yr</Text>
+                    <Text fontSize="sm" color={mutedText} textDecoration="line-through">₱1,548/yr</Text>
                     <Badge colorScheme="green" variant="subtle" borderRadius="full" fontSize="xs">save 24%</Badge>
                   </HStack>
                 ) : (
@@ -994,7 +1054,7 @@ const Premium: React.FC = () => {
               <Button
                 colorScheme="purple" size="lg" leftIcon={<FaCrown />}
                 isLoading={upgrading === 'pro'} onClick={() => handleUpgrade('pro')}
-                isDisabled={isPremiumUser}
+                isDisabled={currentTier === 'pro'}
                 w="full"
                 _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }} transition="all 0.2s"
               >
@@ -1071,7 +1131,7 @@ const Premium: React.FC = () => {
                 colorScheme="whiteAlpha" size="lg" variant="solid"
                 onClick={() => handleUpgrade('plus')}
                 isLoading={upgrading === 'plus'}
-                isDisabled={isPremiumUser}
+                isDisabled={currentTier !== 'free'}
               >
                 Start with Plus
               </Button>
@@ -1079,7 +1139,7 @@ const Premium: React.FC = () => {
                 colorScheme="whiteAlpha" size="lg" variant="outline"
                 onClick={() => handleUpgrade('pro')}
                 isLoading={upgrading === 'pro'}
-                isDisabled={isPremiumUser}
+                isDisabled={currentTier === 'pro'}
               >
                 Go Pro
               </Button>

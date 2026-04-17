@@ -8,6 +8,12 @@ import {
   ModalCloseButton,
   ModalFooter,
   Button,
+  AlertDialog,
+  AlertDialogOverlay,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogBody,
+  AlertDialogFooter,
   VStack,
   HStack,
   Box,
@@ -15,6 +21,7 @@ import {
   Badge,
   Image,
   Icon,
+  IconButton,
   useToast,
   Heading,
   Avatar,
@@ -31,6 +38,14 @@ import {
   Spinner,
   Textarea,
   SimpleGrid,
+  FormControl,
+  FormLabel,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  Card,
+  CardBody,
+  Divider,
 } from '@chakra-ui/react'
 import {
   FaArrowRight,
@@ -45,10 +60,18 @@ import {
   FaPaperPlane,
   FaSmile,
   FaExclamationTriangle,
+  FaCheckCircle,
+  FaCalendarAlt,
+  FaStore,
+  FaCamera,
 } from 'react-icons/fa'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
 import { useNavigate } from 'react-router-dom'
 import { MultiWayTrade, MultiWayTradeParticipant } from '../types'
 import { getProductUrl } from '../utils/productUtils'
+import { getImageUrl } from '../utils/imageUtils'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -57,10 +80,73 @@ import {
   executeMultiWayTrade,
   cancelTradeLoop,
   reinviteTradeLoop,
-  getChainLegs,
-  updateLegHandoff,
-  completeLeg,
+  fetchTradeLoopMeetup,
+  updateTradeLoopMeetup,
 } from '../services/tradeService'
+
+// Fix generic leaflet icon
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+})
+
+const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
+  const map = useMap()
+  useEffect(() => {
+    const timers = [
+      setTimeout(() => {
+        map.invalidateSize()
+        map.setView([lat, lng], 16, { animate: true })
+      }, 350),
+      setTimeout(() => {
+        map.invalidateSize()
+        map.setView([lat, lng], 16, { animate: true })
+      }, 700),
+    ]
+    return () => timers.forEach(t => clearTimeout(t))
+  }, [lat, lng, map])
+  return null
+}
+
+const ModalMapFix = () => {
+  const map = useMap()
+  useEffect(() => {
+    const timers = [
+      setTimeout(() => map.invalidateSize(), 350),
+      setTimeout(() => map.invalidateSize(), 600),
+      setTimeout(() => map.invalidateSize(), 1000),
+    ]
+    return () => timers.forEach(t => clearTimeout(t))
+  }, [map])
+  return null
+}
+
+const formatTimePH = (time?: string | null): string => {
+  if (!time) return ''
+  const [hourStr, minuteStr] = time.split(':')
+  const hour = Number(hourStr)
+  const minute = Number(minuteStr)
+  const date = new Date()
+  date.setHours(hour)
+  date.setMinutes(minute)
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+const buildMeetupKey = (location?: string | null, date?: string | null, time?: string | null): string | null => {
+  if (!location || !date || !time) return null
+  return `${location.trim().toLowerCase()}|${date.trim()}|${time.trim()}`
+}
+
+interface MeetupLocation {
+  name: string
+  address: string
+  type: 'cafe' | 'mall' | 'public' | 'other'
+  lat?: number
+  lng?: number
+  isPartner?: boolean
+}
 
 // Helper to get user profile URL using slug if available, otherwise ID
 const getUserProfileUrl = (userId: number, userSlug?: string): string => {
@@ -83,6 +169,14 @@ interface TradeMessage {
   content: string
   created_at: string
   sender_name?: string
+}
+
+const linkBlockPattern = /(https?:\/\/|www\.|facebook\.com|fb\.com|m\.me|instagram\.com|t\.me|telegram\.me|wa\.me|whatsapp\.com)/i
+const isBlockedMessage = (value: string): boolean => {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  if (/^photo:/i.test(trimmed)) return true
+  return linkBlockPattern.test(trimmed)
 }
 
 /** Format ms remaining as "Xh Ym" or "Expired" */
@@ -148,6 +242,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   currentUserId,
 }) => {
   const { user } = useAuth()
+  const viewerUserId = currentUserId ?? user?.id
   const isActiveChain =
     multiWayTrade.status === 'confirmed'
 
@@ -157,24 +252,57 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   >(null)
   const [activeTab, setActiveTab] = useState(0)
   const [timeLeft, setTimeLeft] = useState<string>('')
-  const [legs, setLegs] = useState<any[]>([])
-  const [legForms, setLegForms] = useState<
-    Record<number, { method: 'meetup' | 'delivery'; location: string; time: string }>
-  >({})
-  const [sharedForm, setSharedForm] = useState<{ method: 'meetup' | 'delivery'; location: string; time: string }>({ method: 'meetup', location: '', time: '' })
-  const [savingLeg, setSavingLeg] = useState<number | null>(null)
-  const [completingLeg, setCompletingLeg] = useState<number | null>(null)
+
+  // Meetup UI state
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
+  const [searchedLocations, setSearchedLocations] = useState<MeetupLocation[]>([])
+  const [placeQuery, setPlaceQuery] = useState('')
+  const [placeResults, setPlaceResults] = useState<Array<{ name: string; address: string; latitude: number; longitude: number }>>([])
+  const [placeSearching, setPlaceSearching] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedTime, setSelectedTime] = useState<string | null>(null)
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [showSuggestionsPanel, setShowSuggestionsPanel] = useState(false)
+  const [mapInitKey, setMapInitKey] = useState(0)
+
+  // Meetup Agreement / Dispute state (mirrors ViewTradeModal flow)
+  const [meetupStatus, setMeetupStatus] = useState<{
+    loop_id: string
+    participants: Array<{
+      user_id: number
+      meetup_location: string
+      meetup_date: string
+      meetup_time: string
+      meetup_confirmed: boolean
+      met_confirmed: boolean
+    }>
+  } | null>(null)
+  const [loadingMeetupStatus, setLoadingMeetupStatus] = useState(false)
+  const [confirmingMeetup, setConfirmingMeetup] = useState(false)
+  const [resettingMeetup, setResettingMeetup] = useState(false)
+  const [confirmingMeetupDone, setConfirmingMeetupDone] = useState(false)
+  const [agreeingToSchedule, setAgreeingToSchedule] = useState(false)
+
+  const [meetupInDispute, setMeetupInDispute] = useState(false)
+  const [meetupDisputeReason, setMeetupDisputeReason] = useState<
+    'time' | 'date' | 'unresponsive' | 'conflict' | null
+  >(null)
+  const [disputeNotes, setDisputeNotes] = useState('')
+  const [showDisputeDialog, setShowDisputeDialog] = useState(false)
+  const cancelDialogRef = useRef<HTMLButtonElement>(null)
 
   // Chat state
   const [messages, setMessages] = useState<TradeMessage[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
+  const [chatPhotoFile, setChatPhotoFile] = useState<File | null>(null)
+  const [chatPhotoPreview, setChatPhotoPreview] = useState<string | null>(null)
+  const [uploadingChatPhoto, setUploadingChatPhoto] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  const { isOpen: isLegsOpen, onToggle: onLegsToggle } = useDisclosure({
-    defaultIsOpen: isActiveChain,
-  })
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const [userAvatarById, setUserAvatarById] = useState<Record<number, string>>({})
+  const fetchedAvatarUserIdsRef = useRef<Set<number>>(new Set())
   const navigate = useNavigate()
   const toast = useToast()
 
@@ -182,6 +310,13 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const sectionBg = useColorModeValue('gray.50', 'gray.750')
   const legCardBg = useColorModeValue('white', 'gray.800')
+  const locationTextColor = useColorModeValue('gray.800', 'gray.100')
+  const partnerBg = useColorModeValue('orange.50', 'orange.900')
+  const nearestBg = useColorModeValue('blue.50', 'blue.950')
+  const partnerIconBg = useColorModeValue('orange.100', 'orange.800')
+  const defaultIconBg = useColorModeValue('gray.100', 'gray.700')
+  const meetupInfoBg = useColorModeValue('blue.50', 'blue.900')
+  const meetupInfoTextColor = useColorModeValue('blue.700', 'blue.200')
 
   // Countdown timer
   useEffect(() => {
@@ -192,37 +327,31 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     return () => clearInterval(id)
   }, [multiWayTrade.expires_at])
 
-  // Fetch legs when chain is active
   useEffect(() => {
-    if (!isOpen) return
-    const chainId = multiWayTrade.loop_id
-    if (!chainId || !['active', 'user3_accepted'].includes(multiWayTrade.status as string)) return
-    getChainLegs(chainId)
-      .then((data) => {
-        const legList: any[] = data?.legs || []
-        setLegs(legList)
-        const forms: Record<
-          number,
-          { method: 'meetup' | 'delivery'; location: string; time: string }
-        > = {}
-        legList.forEach((leg: any) => {
-          forms[leg.id] = {
-            method: leg.handoff_method || 'meetup',
-            location: leg.handoff_location || '',
-            time: leg.handoff_time || '',
-          }
-        })
-        setLegForms(forms)
-        if (legList.length > 0) {
-          setSharedForm({
-            method: legList[0].handoff_method || 'meetup',
-            location: legList[0].handoff_location || '',
-            time: legList[0].handoff_time || '',
-          })
-        }
-      })
-      .catch(() => {})
-  }, [isOpen, multiWayTrade.loop_id, multiWayTrade.status])
+    if (isOpen && activeTab === 2) {
+      setMapInitKey(prev => prev + 1)
+    }
+  }, [isOpen, activeTab])
+
+  const fetchMeetupStatus = async () => {
+    if (!multiWayTrade.loop_id) return
+    setLoadingMeetupStatus(true)
+    try {
+      const data = await fetchTradeLoopMeetup(multiWayTrade.loop_id)
+      setMeetupStatus(data as any)
+    } catch {
+      setMeetupStatus(null)
+    } finally {
+      setLoadingMeetupStatus(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen || !multiWayTrade.loop_id) return
+    if (activeTab !== 2) return
+    fetchMeetupStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab, multiWayTrade.loop_id])
 
   // Fetch chat messages for loop
   useEffect(() => {
@@ -256,77 +385,174 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     [multiWayTrade.participants]
   )
 
-  /** Map userId → userName for quick lookup in leg labels */
-  const userNameMap = useMemo(() => {
-    const map: Record<number, string> = {}
-    sortedParticipants.forEach((p) => {
-      map[p.user_id] = p.user_name
+  const meetupByUserId = useMemo(() => {
+    const map: Record<
+      number,
+      {
+        meetup_location: string
+        meetup_date: string
+        meetup_time: string
+        meetup_confirmed: boolean
+        met_confirmed: boolean
+      }
+    > = {}
+    meetupStatus?.participants?.forEach((p) => {
+      map[p.user_id] = {
+        meetup_location: p.meetup_location,
+        meetup_date: p.meetup_date,
+        meetup_time: p.meetup_time,
+        meetup_confirmed: !!p.meetup_confirmed,
+        met_confirmed: !!p.met_confirmed,
+      }
     })
     return map
-  }, [sortedParticipants])
+  }, [meetupStatus])
+
+  const participantIds = useMemo(() => sortedParticipants.map((p) => p.user_id), [sortedParticipants])
+
+  const myMeetup = useMemo(() => {
+    if (!viewerUserId) return null
+    return meetupByUserId[viewerUserId] || null
+  }, [meetupByUserId, viewerUserId])
+
+  const myMeetupConfirmed = !!myMeetup?.meetup_confirmed
+  const myMetConfirmed = !!myMeetup?.met_confirmed
+
+  const anyMeetupConfirmed = useMemo(() => {
+    return participantIds.some((uid) => meetupByUserId[uid]?.meetup_confirmed)
+  }, [participantIds, meetupByUserId])
+
+  const allMeetupConfirmed = useMemo(() => {
+    if (participantIds.length === 0) return false
+    return participantIds.every((uid) => meetupByUserId[uid]?.meetup_confirmed)
+  }, [participantIds, meetupByUserId])
+
+  const meetupAgreed = useMemo(() => {
+    if (!allMeetupConfirmed) return false
+    const keys = new Set<string>()
+    for (const uid of participantIds) {
+      const sel = meetupByUserId[uid]
+      const key = buildMeetupKey(sel?.meetup_location, sel?.meetup_date, sel?.meetup_time)
+      if (!key) return false
+      keys.add(key)
+    }
+    return keys.size === 1
+  }, [allMeetupConfirmed, meetupByUserId, participantIds])
+
+  const meetupMismatch = allMeetupConfirmed && !meetupAgreed
+
+  const allMetConfirmed = useMemo(() => {
+    if (!meetupAgreed) return false
+    return participantIds.every((uid) => meetupByUserId[uid]?.met_confirmed)
+  }, [meetupAgreed, meetupByUserId, participantIds])
+
+  const proposedMeetup = useMemo(() => {
+    const list = meetupStatus?.participants || []
+    const otherFirst = viewerUserId
+      ? list.find((p) => p.user_id !== viewerUserId && p.meetup_confirmed)
+      : undefined
+    return otherFirst || list.find((p) => p.meetup_confirmed) || null
+  }, [meetupStatus, viewerUserId])
+
+  const agreedMeetup = useMemo(() => {
+    if (!meetupAgreed) return null
+    return (meetupStatus?.participants || []).find((p) => p.meetup_confirmed) || null
+  }, [meetupAgreed, meetupStatus])
+
+  const resolveAvatarSrc = (raw?: string | null): string | undefined => {
+    if (!raw) return undefined
+    return getImageUrl(raw)
+  }
+
+  // Fetch participant avatars for chat
+  useEffect(() => {
+    if (!isOpen) return
+    if (!sortedParticipants.length) return
+
+    let cancelled = false
+
+    const fetchAvatarForUser = async (id: number) => {
+      if (!id) return
+      if (fetchedAvatarUserIdsRef.current.has(id)) return
+      fetchedAvatarUserIdsRef.current.add(id)
+
+      try {
+        const res = await api.get(`/api/users/${id}`)
+        const payload = res.data?.data || res.data
+        const apiUser = (payload?.user || payload) as any
+        const rawPic = apiUser?.profile_picture || apiUser?.avatar_url || apiUser?.org_logo_url || apiUser?.logo_url
+        if (!rawPic) return
+
+        if (!cancelled) {
+          setUserAvatarById(prev => ({ ...prev, [id]: rawPic }))
+        }
+      } catch (_) {
+        // Best-effort: fall back to initials
+      }
+    }
+
+    sortedParticipants.forEach((p) => fetchAvatarForUser(Number(p.user_id)))
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, sortedParticipants])
 
   const completedLegs = multiWayTrade.edges.filter((e) => e.status === 'completed').length
   const totalLegs = multiWayTrade.edges.length
   const healthPct = totalLegs > 0 ? Math.round((completedLegs / totalLegs) * 100) : 0
 
   // Show Execute button only when the overall trade is active AND every participant has accepted.
-  const canExecute = multiWayTrade.status === 'active' && sortedParticipants.every(p => p.trade_status === 'accepted')
+  const canExecute =
+    ['active', 'confirmed', 'multiway_active', 'in_progress'].includes(multiWayTrade.status as string) &&
+    sortedParticipants.every((p) =>
+      ['accepted', 'confirmed', 'active', 'multiway_active', 'user3_accepted'].includes(p.trade_status)
+    ) &&
+    meetupAgreed &&
+    allMetConfirmed
+
+  const viewerParticipant = useMemo(() => {
+    if (!viewerUserId) return null
+    return sortedParticipants.find((p) => p.user_id === viewerUserId) || null
+  }, [sortedParticipants, viewerUserId])
+
+  const viewerHasAccepted = !!viewerParticipant &&
+    ['accepted', 'confirmed', 'active', 'multiway_active', 'user3_accepted'].includes(viewerParticipant.trade_status)
+
+  const canAcceptLoopTrade = (multiWayTrade.status as string) === 'pending' && !!viewerUserId && !viewerHasAccepted
 
   // ── handlers ──────────────────────────────────────────────────────────────
 
-  const handleSaveSharedHandoff = async () => {
-    if (legs.length === 0) return
-    const legId = legs[0].id
-    setSavingLeg(-1)
-    try {
-      await updateLegHandoff(legId, sharedForm.method, sharedForm.location, sharedForm.time)
-      toast({ id: `shared-handoff-saved`, title: 'Shared Handoff saved', status: 'success', duration: 2000 })
-      
-      const data = await getChainLegs(multiWayTrade.loop_id)
-      setLegs(data?.legs || [])
-    } catch {
-      toast({ id: `shared-handoff-err`, title: 'Failed to save', status: 'error', duration: 3000 })
-    } finally {
-      setSavingLeg(null)
+  const handleRaiseDispute = async () => {
+    if (!meetupDisputeReason) {
+      toast({
+        title: 'Please select a reason',
+        status: 'warning',
+        position: 'top',
+      })
+      return
     }
+
+    setMeetupInDispute(true)
+    setShowDisputeDialog(false)
+    setMeetupDisputeReason(null)
+    setDisputeNotes('')
+
+    toast({
+      title: 'Meetup marked as in dispute',
+      description: 'You can propose alternative times or discuss the issue in chat.',
+      status: 'info',
+      position: 'top',
+      duration: 3000,
+    })
   }
 
-  const handleSaveLegHandoff = async (legId: number) => {
-    // kept for legacy API compatibility
-    const form = legForms[legId]
-    if (!form) return
-    setSavingLeg(legId)
-    try {
-      await updateLegHandoff(legId, form.method, form.location, form.time)
-    } finally {
-      setSavingLeg(null)
-    }
-  }
-
-  const handleCompleteLeg = async (legId: number) => {
-    setCompletingLeg(legId)
-    try {
-      await completeLeg(legId)
-      toast({
-        id: `leg-${legId}-complete`,
-        title: 'Confirmed!',
-        description: 'Handoff marked as received.',
-        status: 'success',
-        duration: 3000,
-      })
-      const data = await getChainLegs(multiWayTrade.loop_id)
-      setLegs(data?.legs || [])
-      onTradeCompleted?.()
-    } catch {
-      toast({
-        id: `leg-${legId}-complete-err`,
-        title: 'Failed to confirm',
-        status: 'error',
-        duration: 3000,
-      })
-    } finally {
-      setCompletingLeg(null)
-    }
+  const getMeetupState = (): 'proposed' | 'dispute' | 'finalized' | 'none' | 'mismatch' => {
+    if (meetupInDispute) return 'dispute'
+    if (meetupAgreed) return 'finalized'
+    if (meetupMismatch) return 'mismatch'
+    if (anyMeetupConfirmed) return 'proposed'
+    return 'none'
   }
 
   const handleAccept = async () => {
@@ -433,15 +659,95 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     }
   }
 
+  const handleChatPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast({ id: 'mwt-photo-type', title: 'Photo only', description: 'Please select an image file.', status: 'warning' })
+      e.target.value = ''
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ id: 'mwt-photo-size', title: 'File too large', description: 'Photo must be under 10MB.', status: 'warning' })
+      e.target.value = ''
+      return
+    }
+    if (chatPhotoPreview) {
+      URL.revokeObjectURL(chatPhotoPreview)
+    }
+    setChatPhotoFile(file)
+    setChatPhotoPreview(URL.createObjectURL(file))
+    e.target.value = ''
+  }
+
+  const clearChatPhoto = () => {
+    if (chatPhotoPreview) {
+      URL.revokeObjectURL(chatPhotoPreview)
+    }
+    setChatPhotoPreview(null)
+    setChatPhotoFile(null)
+  }
+
+  const uploadChatPhoto = async (): Promise<string | null> => {
+    if (!chatPhotoFile) return null
+    setUploadingChatPhoto(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', chatPhotoFile)
+      const uploadRes = await api.post('/api/upload', formData)
+      const uploadedUrl = uploadRes.data?.data?.url
+      if (!uploadedUrl) throw new Error('No image URL returned')
+      return uploadedUrl
+    } catch (error: any) {
+      toast({
+        id: 'mwt-photo-upload',
+        title: 'Photo upload failed',
+        description: error?.response?.data?.error || 'Please try again.',
+        status: 'error',
+      })
+      return null
+    } finally {
+      setUploadingChatPhoto(false)
+    }
+  }
+
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !multiWayTrade.loop_id) return
+    if (!multiWayTrade.loop_id || sendingMessage) return
+    const trimmed = newMessage.trim()
+    const hasText = trimmed.length > 0
+    const hasPhoto = !!chatPhotoFile
+
+    if (!hasText && !hasPhoto) return
+
+    if (hasText && isBlockedMessage(trimmed)) {
+      toast({
+        id: 'mwt-link-block',
+        title: 'Links are not allowed',
+        description: 'Please remove links. You can send photos instead.',
+        status: 'warning',
+      })
+      return
+    }
+
     setSendingMessage(true)
     try {
-      await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/messages`, {
-        content: newMessage.trim(),
-      })
-      setNewMessage('')
-      // Refresh messages
+      if (hasText) {
+        await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/messages`, {
+          content: trimmed,
+        })
+        setNewMessage('')
+      }
+
+      if (hasPhoto) {
+        const uploadedUrl = await uploadChatPhoto()
+        if (uploadedUrl) {
+          await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/messages`, {
+            content: `photo:${uploadedUrl}`,
+          })
+          clearChatPhoto()
+        }
+      }
+
       const res = await api.get(`/api/trades/loops/${multiWayTrade.loop_id}/messages`)
       setMessages(Array.isArray(res.data?.data) ? res.data.data : [])
     } catch (error: any) {
@@ -456,16 +762,411 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     }
   }
 
+  const confirmMeetup = async () => {
+    if (!multiWayTrade.loop_id || confirmingMeetup || myMeetupConfirmed) return
+    if (!selectedLocation) {
+      setValidationError('Please select a meetup location')
+      return
+    }
+
+    const error = validateDateTimeSelection(selectedDate, selectedTime)
+    if (error) {
+      setValidationError(error)
+      toast({
+        id: 'mwt-meetup-validation',
+        title: 'Invalid Selection',
+        description: error,
+        status: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+
+    try {
+      setConfirmingMeetup(true)
+      setValidationError(null)
+      const updated = await updateTradeLoopMeetup(multiWayTrade.loop_id, 'confirm_meetup', {
+        meetup_location: selectedLocation,
+        meetup_date: selectedDate || undefined,
+        meetup_time: selectedTime || undefined,
+      })
+      setMeetupStatus(updated as any)
+
+      // Determine whether we agreed/mismatched with existing confirmed selections.
+      const byUser: Record<number, any> = {}
+      ;(updated as any)?.participants?.forEach((p: any) => {
+        byUser[p.user_id] = p
+      })
+      const confirmed = (updated as any)?.participants?.filter((p: any) => p.meetup_confirmed) || []
+      if (confirmed.length >= 2) {
+        const keys = new Set<string>()
+        confirmed.forEach((p: any) => {
+          const k = buildMeetupKey(p.meetup_location, p.meetup_date, p.meetup_time)
+          if (k) keys.add(k)
+        })
+        if (keys.size === 1 && confirmed.length === participantIds.length) {
+          toast({
+            id: 'mwt-meetup-agreed',
+            title: 'Meetup Agreed!',
+            description: 'All participants agreed on the same location and time.',
+            status: 'success',
+            duration: 5000,
+          })
+        } else if (confirmed.length === participantIds.length) {
+          toast({
+            id: 'mwt-meetup-mismatch',
+            title: 'Selection Mismatch',
+            description: 'Selections differ. Please coordinate to agree on the same location and time.',
+            status: 'warning',
+            duration: 5000,
+          })
+        } else {
+          toast({
+            id: 'mwt-meetup-submitted',
+            title: 'Meetup selection submitted',
+            description: 'Waiting for others to confirm...',
+            status: 'info',
+            duration: 3000,
+          })
+        }
+      } else {
+        toast({
+          id: 'mwt-meetup-submitted',
+          title: 'Meetup selection submitted',
+          description: 'Waiting for other participants to select their preferences...',
+          status: 'info',
+          duration: 3000,
+        })
+      }
+
+      await fetchMeetupStatus()
+    } catch (error: any) {
+      toast({
+        id: 'mwt-meetup-confirm-err',
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to confirm meetup',
+        status: 'error',
+      })
+      await fetchMeetupStatus()
+    } finally {
+      setConfirmingMeetup(false)
+    }
+  }
+
+  const resetMeetupSelection = async () => {
+    if (!multiWayTrade.loop_id || resettingMeetup) return
+    try {
+      setResettingMeetup(true)
+      await updateTradeLoopMeetup(multiWayTrade.loop_id, 'reset_meetup_selection')
+      setSelectedLocation(null)
+      setSelectedTime(null)
+      setSelectedDate(null)
+      toast({
+        id: 'mwt-meetup-reset',
+        title: 'Selection Reset',
+        description: 'Your meetup selection has been cleared. You can now select new options.',
+        status: 'info',
+        duration: 3000,
+      })
+      await fetchMeetupStatus()
+    } catch (error: any) {
+      toast({
+        id: 'mwt-meetup-reset-err',
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to reset selection',
+        status: 'error',
+      })
+    } finally {
+      setResettingMeetup(false)
+    }
+  }
+
+  const acceptSchedule = async () => {
+    if (!multiWayTrade.loop_id || agreeingToSchedule || !proposedMeetup) return
+    try {
+      setAgreeingToSchedule(true)
+      await updateTradeLoopMeetup(multiWayTrade.loop_id, 'confirm_meetup', {
+        meetup_location: proposedMeetup.meetup_location,
+        meetup_date: proposedMeetup.meetup_date,
+        meetup_time: proposedMeetup.meetup_time,
+      })
+      toast({
+        title: 'Schedule Accepted!',
+        description: 'You have agreed to the proposed date and time.',
+        status: 'success',
+        duration: 3000,
+      })
+      await fetchMeetupStatus()
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to accept schedule',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setAgreeingToSchedule(false)
+    }
+  }
+
+  const confirmMeetupDone = async () => {
+    if (!multiWayTrade.loop_id || confirmingMeetupDone) return
+    try {
+      setConfirmingMeetupDone(true)
+      await updateTradeLoopMeetup(multiWayTrade.loop_id, 'confirm_meetup_done')
+      toast({
+        id: 'mwt-meetup-done',
+        title: 'Confirmed',
+        description: 'Waiting for others to confirm they met too.',
+        status: 'success',
+        duration: 3000,
+      })
+      await fetchMeetupStatus()
+    } catch (error: any) {
+      toast({
+        id: 'mwt-meetup-done-err',
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to confirm meetup completion',
+        status: 'error',
+      })
+    } finally {
+      setConfirmingMeetupDone(false)
+    }
+  }
+
+  // Debounced place search
+  useEffect(() => {
+    const q = placeQuery.trim()
+    if (q.length < 2) {
+      setPlaceResults([])
+      setPlaceSearching(false)
+      return
+    }
+    setPlaceSearching(true)
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q })
+        if (user?.latitude && user?.longitude) {
+          params.set('lat', String(user.latitude))
+          params.set('lng', String(user.longitude))
+        }
+        const res = await api.get(`/api/places/search?${params.toString()}`)
+        if (!cancelled) {
+          setPlaceResults(res.data?.results || [])
+        }
+      } catch {
+        if (!cancelled) setPlaceResults([])
+      } finally {
+        if (!cancelled) setPlaceSearching(false)
+      }
+    }, 350)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [placeQuery, user?.latitude, user?.longitude])
+
+  const defaultLocations: MeetupLocation[] = [
+    { name: 'Meet n Eat', address: 'Gov. Camins Ave, Zamboanga City', type: 'cafe', lat: 6.9150, lng: 122.0630, isPartner: true },
+    { name: 'WMSU', address: 'Normal Road, Zamboanga City', type: 'public', lat: 6.9142, lng: 122.0620 },
+    { name: 'SM Mindpro', address: 'La Purisima St, Zamboanga City', type: 'mall', lat: 6.9080, lng: 122.0745 },
+    { name: 'KCC de Zamboanga', address: 'Gov. Camins Ave, Zamboanga City', type: 'mall', lat: 6.9214, lng: 122.0790 },
+    { name: 'Amethyst Eatery', address: 'Johnston Road, Zamboanga City', type: 'cafe', lat: 6.9125, lng: 122.0720, isPartner: true },
+    { name: 'Paseo del Mar', address: 'Valderosa St, Zamboanga City', type: 'public', lat: 6.9030, lng: 122.0780 },
+  ]
+
+  const suggestedLocations: MeetupLocation[] = useMemo(
+    () => [...searchedLocations, ...defaultLocations],
+    [searchedLocations]
+  )
+
+  const getDistance = (lat1?: number, lon1?: number, lat2?: number, lon2?: number) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity
+    const R = 6371
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
+
+  const nearestLocationName = useMemo(() => {
+    if (!user?.latitude || !user?.longitude) return 'WMSU'
+    let nearest = ''
+    let minDistance = Infinity
+    for (const loc of suggestedLocations) {
+      const dist = getDistance(user.latitude, user.longitude, loc.lat, loc.lng)
+      if (dist < minDistance) {
+        minDistance = dist
+        nearest = loc.name
+      }
+    }
+    return nearest
+  }, [user?.latitude, user?.longitude, suggestedLocations])
+
+  useEffect(() => {
+    // Prefill the picker from the current user's confirmed selection
+    if (!myMeetupConfirmed) return
+    if (selectedLocation && selectedDate && selectedTime) return
+    const loc = myMeetup?.meetup_location?.trim()
+    const date = myMeetup?.meetup_date?.trim()
+    const time = myMeetup?.meetup_time?.trim()
+    if (loc && !selectedLocation) setSelectedLocation(loc)
+    if (date && !selectedDate) setSelectedDate(date)
+    if (time && !selectedTime) setSelectedTime(time)
+  }, [myMeetup, myMeetupConfirmed, selectedDate, selectedLocation, selectedTime])
+
+  const getNext7Days = (): string[] => {
+    const days: string[] = []
+    for (let i = 0; i < 7; i++) {
+      const date = new Date()
+      date.setDate(date.getDate() + i)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      days.push(`${year}-${month}-${day}`)
+    }
+    return days
+  }
+
+  const formatDateLabel = (dateStr: string): string => {
+    const date = new Date(dateStr + 'T00:00:00')
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+
+    if (date.getTime() === today.getTime()) return 'Today'
+    if (date.getTime() === tomorrow.getTime()) return 'Tomorrow'
+
+    const options = { weekday: 'short', month: 'short', day: 'numeric' } as const
+    return date.toLocaleDateString('en-US', options)
+  }
+
+  const generateTimeSlots = (dateStr: string | null): string[] => {
+    if (!dateStr) return []
+
+    const now = new Date()
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const selectedDateObj = new Date(dateStr + 'T00:00:00')
+    const isToday = selectedDateObj.getTime() === today.getTime()
+
+    const slots: string[] = []
+    const startHour = 9
+    const endHour = 18
+
+    for (let hour = startHour; hour <= endHour; hour++) {
+      for (const minute of [0, 30]) {
+        const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+        if (isToday) {
+          const [hourPart, minPart] = timeStr.split(':').map(Number)
+          const slotDate = new Date()
+          slotDate.setHours(hourPart, minPart, 0, 0)
+          if (slotDate <= now) continue
+        }
+        slots.push(timeStr)
+      }
+    }
+
+    return slots
+  }
+
+  const validateDateTimeSelection = (date: string | null, time: string | null): string | null => {
+    if (!date) return 'Please select a date'
+    if (!time) return 'Please select a time'
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const selectedDateObj = new Date(date + 'T00:00:00')
+    const maxDate = new Date(today)
+    maxDate.setDate(maxDate.getDate() + 6)
+
+    if (selectedDateObj < today) return 'Cannot select a past date'
+    if (selectedDateObj > maxDate) return 'Meetup must be scheduled within 7 days'
+
+    if (selectedDateObj.getTime() === today.getTime()) {
+      const [hour, minute] = time.split(':').map(Number)
+      const now = new Date()
+      const selectedDateTime = new Date()
+      selectedDateTime.setHours(hour, minute, 0, 0)
+
+      if (selectedDateTime <= now) {
+        return 'Cannot select a past time'
+      }
+    }
+
+    return null
+  }
+
+  const generateSmartSuggestions = useMemo(() => {
+    return (): Array<{ date: string; time: string; label: string }> => {
+      const suggestions: Array<{ date: string; time: string; label: string }> = []
+      const next7days = getNext7Days()
+
+      if (next7days[0]) {
+        suggestions.push({
+          date: next7days[0],
+          time: '11:00',
+          label: 'Today, 11:00 AM',
+        })
+        suggestions.push({
+          date: next7days[0],
+          time: '15:00',
+          label: 'Today, 3:00 PM',
+        })
+      }
+
+      if (next7days[1]) {
+        suggestions.push({
+          date: next7days[1],
+          time: '09:00',
+          label: 'Tomorrow, 9:00 AM',
+        })
+      }
+
+      if (next7days[2]) {
+        suggestions.push({
+          date: next7days[2],
+          time: '14:00',
+          label: 'Day after tomorrow, 2:00 PM',
+        })
+      }
+
+      if (next7days[3]) {
+        suggestions.push({
+          date: next7days[3],
+          time: '17:00',
+          label: 'In 3 days, 5:00 PM',
+        })
+      }
+
+      if (next7days[6]) {
+        suggestions.push({
+          date: next7days[6],
+          time: '10:00',
+          label: 'Weekend, 10:00 AM',
+        })
+      }
+
+      return suggestions
+    }
+  }, [])
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} size={["sm", "md", "lg", "6xl"]} isCentered scrollBehavior="inside">
       <ModalOverlay backdropFilter="blur(4px)" />
-      <ModalContent bg={cardBg} minH="70vh" maxH="95vh" display="flex" flexDirection="column" w="full">
-        <ModalHeader borderBottomWidth="1px" borderColor={borderColor} py={2}>
+      <ModalContent bg={cardBg} minH="70vh" maxH="92vh" display="flex" flexDirection="column" w="full">
+        <ModalHeader py={2}>
           <VStack align="start" spacing={2} w="full">
             {/* Title Row with Status Badge and Action Buttons */}
             <HStack justify="space-between" w="full" align="flex-start">
               <VStack align="start" spacing={0.5} flex={1}>
-                <Heading size="sm">{sortedParticipants.length}-Way Trade Loop</Heading>
+                <Heading size="md">{sortedParticipants.length}-Way Trade Loop</Heading>
                 {timeLeft && (
                   <HStack spacing={2}>
                     <Icon
@@ -480,47 +1181,46 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 )}
               </VStack>
 
-              {/* Top Right: Status Badge + Action Buttons */}
-              <HStack spacing={3} align="flex-start">
-                <Badge colorScheme={statusColorScheme(multiWayTrade.status)} px={3} py={1.5} borderRadius="md" fontSize="sm" fontWeight="semibold">
-                  {statusLabel(multiWayTrade.status).toUpperCase()}
-                </Badge>
-                <HStack spacing={2}>
-                  <Button
-                    size="sm"
-                    colorScheme="orange"
-                    variant="outline"
-                    leftIcon={<FaExclamationTriangle />}
-                  >
-                    Dispute
-                  </Button>
-                  <Button
-                    size="sm"
-                    colorScheme="red"
-                    variant="outline"
-                    leftIcon={<FaTimes />}
-                  >
-                    Cancel
-                  </Button>
-                </HStack>
-              </HStack>
+              {/* Top Right: Status Badge removed by request */}
             </HStack>
 
           </VStack>
           <ModalCloseButton mt={2} />
         </ModalHeader>
 
-        <ModalBody py={0} px={0} flex={1} display="flex" flexDirection="column" overflow="hidden">
+        <ModalBody py={0} px={0} flex={1} display="flex" flexDirection="column" overflow="hidden" minH={0}>
           <Tabs index={activeTab} onChange={setActiveTab} variant="soft-rounded" colorScheme="brand" display="flex" flexDirection="column" flex={1} overflow="hidden">
             <TabList px={4} pt={2} mb={0} borderBottomWidth="1px" borderColor={borderColor}>
               <Tab fontSize="sm" fontWeight="medium">Overview</Tab>
-              <Tab fontSize="sm" fontWeight="medium">Chat</Tab>
+              <Tab fontSize="sm" fontWeight="medium">
+                {sortedParticipants.length >= 3 ? 'Group Chat' : 'Chat'}
+              </Tab>
+              <Tab fontSize="sm" fontWeight="medium">Meet up</Tab>
             </TabList>
 
-            <TabPanels flex={1} minH={0} overflowY="auto">
+            <TabPanels flex={1} minH={0} overflow="hidden" display="flex" flexDirection="column">
               {/* Overview Tab - Restructured Layout */}
-              <TabPanel py={3} px={[2, 4]} overflow="auto" minH="450px">
+              <TabPanel py={3} px={[2, 4]} overflowY="auto" minH={0} flex={1} display="flex" flexDirection="column">
                 <VStack spacing={4} align="stretch">
+                  {/* Overview Actions */}
+                  <HStack spacing={2} justify="flex-end">
+                    <Button
+                      size="sm"
+                      colorScheme="orange"
+                      variant="outline"
+                      leftIcon={<FaExclamationTriangle />}
+                    >
+                      Dispute
+                    </Button>
+                    <Button
+                      size="sm"
+                      colorScheme="red"
+                      variant="outline"
+                      leftIcon={<FaTimes />}
+                    >
+                      Cancel
+                    </Button>
+                  </HStack>
                   {/* CONFIRMATION PROGRESS */}
                   <Box>
                     <HStack justify="space-between" mb={3}>
@@ -532,7 +1232,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       <VStack spacing={0} align="stretch">
                         <HStack spacing={2} align="flex-end" justify="center">
                           {sortedParticipants.map((p, idx) => {
-                            const isAccepted = ['accepted', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)
+                            const isAccepted = ['accepted', 'confirmed', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)
                             return (
                               <Box key={idx} display="flex" alignItems="center" gap={2}>
                                 <Box
@@ -565,7 +1265,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                     ) : (
                       <HStack spacing={2} align="center" justify="center">
                         {sortedParticipants.map((p, idx) => {
-                          const isAccepted = ['accepted', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)
+                          const isAccepted = ['accepted', 'confirmed', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)
                           return (
                             <Box key={idx} display="flex" alignItems="center" gap={2}>
                               <Box
@@ -768,7 +1468,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       <Box overflowX="auto" pb={2}>
                         <HStack spacing={2} minW="min-content" justify="center" px={2}>
                           {sortedParticipants.map((participant, idx) => {
-                            const isAccepted = ['accepted', 'user3_accepted', 'active', 'multiway_active'].includes(participant.trade_status)
+                            const isAccepted = ['accepted', 'confirmed', 'user3_accepted', 'active', 'multiway_active'].includes(participant.trade_status)
                             return (
                               <Box key={idx} display="flex" alignItems="center" gap={2} flexShrink={0}>
                                 {/* Participant Avatar */}
@@ -852,7 +1552,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                         Exchange type
                       </Text>
                       <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.900', 'gray.100')}>
-                        {sharedForm?.method === 'delivery' ? 'Delivery' : 'In-person meetup'}
+                        In-person meetup
                       </Text>
                     </Box>
 
@@ -886,7 +1586,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                     </Heading>
                     <VStack spacing={2} align="stretch">
                       {sortedParticipants.map((participant, idx) => {
-                        const isAccepted = ['accepted', 'user3_accepted', 'active', 'multiway_active'].includes(participant.trade_status)
+                        const isAccepted = ['accepted', 'confirmed', 'user3_accepted', 'active', 'multiway_active'].includes(participant.trade_status)
                         const isCurrentUser = participant.user_id === user?.id
                         
                         return (
@@ -934,17 +1634,19 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
               </TabPanel>
 
         {/* Chat Tab */}
-        <TabPanel px={[2, 4]} py={3} overflow="auto" minH="450px">
-          <VStack spacing={2} align="stretch" h="full" display="flex" flexDirection="column">
+        <TabPanel px={[2, 4]} py={3} overflow="hidden" minH={0} flex={1} display="flex" flexDirection="column">
+          <VStack spacing={2} align="stretch" h="full" display="flex" flexDirection="column" minH={0}>
             {/* Messages Area */}
             <Box
               flex={1}
               overflowY="auto"
-              p={[2, 3]}
+              p={[2, 2.5]}
               bg={sectionBg}
               borderRadius="md"
               borderWidth="1px"
               borderColor={borderColor}
+              minH={0}
+              maxH={{ base: '54vh', md: '60vh' }}
             >
               {loadingMessages ? (
                 <Flex justify="center" align="center" h="full">
@@ -959,6 +1661,11 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 <VStack spacing={12} align="stretch">
                   {messages.map((msg) => {
                     const isOwnMessage = msg.sender_id === user?.id
+                    const isPhotoMessage = typeof msg.content === 'string' && msg.content.startsWith('photo:')
+                    const photoUrl = isPhotoMessage ? msg.content.slice('photo:'.length).trim() : ''
+                    const senderAvatarSrc = isOwnMessage
+                      ? resolveAvatarSrc((user as any)?.profile_picture)
+                      : resolveAvatarSrc(userAvatarById[Number(msg.sender_id)])
                     return (
                       <HStack
                         key={`msg-${msg.id}`}
@@ -969,6 +1676,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                         {!isOwnMessage && (
                           <Avatar
                             name={msg.sender_name || 'User'}
+                            src={senderAvatarSrc}
                             size="sm"
                             bg="brand.500"
                             color="white"
@@ -989,9 +1697,19 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               {msg.sender_name}
                             </Text>
                           )}
-                          <Text fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-word">
-                            {msg.content}
-                          </Text>
+                          {isPhotoMessage ? (
+                            <Image
+                              src={getImageUrl(photoUrl)}
+                              alt="Shared photo"
+                              borderRadius="md"
+                              maxH="220px"
+                              objectFit="cover"
+                            />
+                          ) : (
+                            <Text fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-word">
+                              {msg.content}
+                            </Text>
+                          )}
                           <Text
                             fontSize="2xs"
                             opacity={0.7}
@@ -1010,7 +1728,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                             size="sm"
                             bg="brand.500"
                             color="white"
-                            src={user?.profile_picture}
+                            src={senderAvatarSrc}
                           />
                         )}
                       </HStack>
@@ -1023,6 +1741,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
             {/* Message Input */}
             <Box borderTopWidth="1px" borderColor={borderColor} pt={3}>
+              {chatPhotoPreview && (
+                <HStack spacing={2} mb={2} align="center">
+                  <Image src={chatPhotoPreview} alt="Photo preview" maxH="60px" borderRadius="md" />
+                  <Button size="xs" variant="ghost" onClick={clearChatPhoto}>Remove</Button>
+                </HStack>
+              )}
               <HStack spacing={2} align="flex-end">
                 <Textarea
                   value={newMessage}
@@ -1037,16 +1761,30 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                   minH="60px"
                   maxH="120px"
                   resize="none"
-                  isDisabled={sendingMessage}
+                  isDisabled={sendingMessage || uploadingChatPhoto}
                   fontSize="sm"
                   borderRadius="md"
                   flex={1}
                 />
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleChatPhotoSelect}
+                  style={{ display: 'none' }}
+                />
+                <IconButton
+                  aria-label="Attach photo"
+                  icon={<FaCamera />}
+                  variant="outline"
+                  onClick={() => photoInputRef.current?.click()}
+                  isDisabled={sendingMessage || uploadingChatPhoto}
+                />
                 <Button
                   colorScheme="brand"
                   onClick={handleSendMessage}
-                  isLoading={sendingMessage}
-                  isDisabled={!newMessage.trim()}
+                  isLoading={sendingMessage || uploadingChatPhoto}
+                  isDisabled={!newMessage.trim() && !chatPhotoFile}
                   leftIcon={<FaPaperPlane />}
                   h="48px"
                   px={4}
@@ -1059,6 +1797,675 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
             </Box>
           </VStack>
         </TabPanel>
+
+              {/* Meet up Tab */}
+              <TabPanel px={[2, 4]} py={3} overflowY="auto" minH={0} flex={1} display="flex" flexDirection="column">
+                <VStack spacing={4} align="stretch">
+                  <Box p={3} bg={meetupInfoBg} borderLeft="4px" borderColor="brand.500" borderRadius="md">
+                    <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
+                      {loadingMeetupStatus
+                        ? 'Current Stage: Loading meetup status...'
+                        : getMeetupState() === 'dispute'
+                          ? 'Current Stage: Meetup in dispute'
+                          : getMeetupState() === 'finalized'
+                            ? 'Current Stage: Meetup agreed — confirm you met'
+                            : getMeetupState() === 'mismatch'
+                              ? 'Current Stage: Selection mismatch — coordinate to match'
+                              : getMeetupState() === 'proposed'
+                                ? 'Current Stage: Waiting for everyone to confirm'
+                                : 'Current Stage: Select a location and time'}
+                    </Text>
+                  </Box>
+
+                  {meetupAgreed && agreedMeetup && (
+                    <Card bg="green.50" borderWidth="2px" borderColor="green.200">
+                      <CardBody>
+                        <VStack spacing={3} align="stretch">
+                          <HStack>
+                            <Icon as={FaCheckCircle} color="green.500" boxSize={5} />
+                            <Text fontWeight="semibold" fontSize="md" color="green.700">
+                              Meetup Agreed
+                            </Text>
+                          </HStack>
+
+                          <VStack spacing={2} align="start" fontSize="sm">
+                            <HStack spacing={2} w="full">
+                              <Icon as={FaMapMarkerAlt} boxSize={4} color="green.600" />
+                              <VStack align="start" spacing={0} flex={1}>
+                                <Text fontWeight="semibold" color="green.900">Location</Text>
+                                <Text color="green.800">{agreedMeetup.meetup_location}</Text>
+                              </VStack>
+                            </HStack>
+                            <HStack spacing={2} w="full">
+                              <Icon as={FaCalendarAlt} boxSize={4} color="green.600" />
+                              <VStack align="start" spacing={0} flex={1}>
+                                <Text fontWeight="semibold" color="green.900">Date</Text>
+                                <Text color="green.800">{new Date(agreedMeetup.meetup_date + 'T00:00:00').toLocaleDateString()}</Text>
+                              </VStack>
+                            </HStack>
+                            <HStack spacing={2} w="full">
+                              <Icon as={FaClock} boxSize={4} color="green.600" />
+                              <VStack align="start" spacing={0} flex={1}>
+                                <Text fontWeight="semibold" color="green.900">Time</Text>
+                                <Text color="green.800">{formatTimePH(agreedMeetup.meetup_time)}</Text>
+                              </VStack>
+                            </HStack>
+                          </VStack>
+                        </VStack>
+                      </CardBody>
+                    </Card>
+                  )}
+
+                  <Box>
+                    <Text fontWeight="semibold" mb={1} fontSize="md">
+                      Suggested Meetup Locations
+                    </Text>
+                    <Text fontSize="sm" color="gray.600" mb={3}>
+                      Select a safe, public location. Everyone must confirm the same selection to proceed.
+                    </Text>
+
+                    <Box mb={4} position="relative" zIndex={1500}>
+                      <InputGroup size="sm">
+                        <InputLeftElement pointerEvents="none">
+                          <Icon as={FaMapMarkerAlt} color="gray.400" />
+                        </InputLeftElement>
+                        <Input
+                          placeholder='Search any place in PH (e.g. "claret jollibee")'
+                          value={placeQuery}
+                          onChange={(e) => setPlaceQuery(e.target.value)}
+                          pr={placeSearching ? '2rem' : undefined}
+                        />
+                        {placeSearching && (
+                          <Box position="absolute" right={2} top="50%" transform="translateY(-50%)" zIndex={2}>
+                            <Spinner size="xs" />
+                          </Box>
+                        )}
+                      </InputGroup>
+                      {placeResults.length > 0 && (
+                        <Box
+                          position="absolute"
+                          top="100%"
+                          left={0}
+                          right={0}
+                          zIndex={1500}
+                          bg="white"
+                          borderWidth="1px"
+                          borderColor={borderColor}
+                          borderRadius="md"
+                          boxShadow="lg"
+                          maxH="240px"
+                          overflowY="auto"
+                          mt={1}
+                        >
+                          {placeResults.map((r, idx) => (
+                            <Box
+                              key={`${r.name}-${idx}`}
+                              px={3}
+                              py={2}
+                              cursor="pointer"
+                              _hover={{ bg: 'brand.50' }}
+                              borderBottomWidth={idx < placeResults.length - 1 ? '1px' : 0}
+                              borderColor="gray.100"
+                              onClick={() => {
+                                const loc: MeetupLocation = {
+                                  name: r.name,
+                                  address: r.address,
+                                  type: 'other',
+                                  lat: r.latitude,
+                                  lng: r.longitude,
+                                }
+                                setSearchedLocations((prev) => {
+                                  if (prev.find((p) => p.name === loc.name)) return prev
+                                  return [loc, ...prev].slice(0, 5)
+                                })
+                                setSelectedLocation(loc.name)
+                                setValidationError(null)
+                                setPlaceResults([])
+                                setPlaceQuery('')
+                              }}
+                            >
+                              <Text fontSize="sm" fontWeight="medium" noOfLines={1}>
+                                {r.name}
+                              </Text>
+                              <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                                {r.address}
+                              </Text>
+                            </Box>
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
+
+                    <Box h={['150px', '180px', '200px']} mb={3} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
+                      <MapContainer
+                        key={mapInitKey}
+                        center={[6.9214, 122.0790]}
+                        zoom={14}
+                        scrollWheelZoom={false}
+                        style={{ height: '100%', width: '100%' }}
+                        // @ts-ignore
+                        attributionControl={false}
+                      >
+                        <ModalMapFix />
+                        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                        {selectedLocation && suggestedLocations.find((l) => l.name === selectedLocation)?.lat && (
+                          <MapUpdater
+                            lat={suggestedLocations.find((l) => l.name === selectedLocation)!.lat!}
+                            lng={suggestedLocations.find((l) => l.name === selectedLocation)!.lng!}
+                          />
+                        )}
+                        {suggestedLocations
+                          .filter((loc) => loc.lat && loc.lng)
+                          .map((loc, idx) => (
+                            <Marker
+                              key={idx}
+                              position={[loc.lat!, loc.lng!]}
+                              eventHandlers={{ click: () => setSelectedLocation(loc.name) }}
+                            >
+                              <Popup>
+                                <b>{loc.name}</b>
+                                <br />
+                                {loc.address}
+                              </Popup>
+                            </Marker>
+                          ))}
+                      </MapContainer>
+                    </Box>
+
+                    <SimpleGrid
+                      columns={[1, 2]}
+                      spacing={[1, 1.5]}
+                      maxH={['280px', '350px']}
+                      overflowY="auto"
+                      pr={2}
+                      css={{
+                        '&::-webkit-scrollbar': {
+                          width: '4px',
+                        },
+                        '&::-webkit-scrollbar-track': {
+                          width: '6px',
+                        },
+                        '&::-webkit-scrollbar-thumb': {
+                          background: 'brand.500',
+                          borderRadius: '24px',
+                        },
+                      }}
+                    >
+                      {suggestedLocations.map((location) => {
+                        const isSelected = selectedLocation === location.name
+                        const isPartner = location.isPartner
+                        const isNearest = location.name === nearestLocationName
+
+                        return (
+                          <Card
+                            key={`location-${location.name}`}
+                            variant="outline"
+                            cursor="pointer"
+                            borderWidth={isPartner ? '2px' : isSelected ? '2px' : '1px'}
+                            borderColor={
+                              isPartner
+                                ? 'orange.400'
+                                : isSelected
+                                  ? 'brand.500'
+                                  : isNearest
+                                    ? 'blue.300'
+                                    : borderColor
+                            }
+                            bg={isSelected ? 'brand.50' : isPartner ? partnerBg : isNearest ? nearestBg : 'white'}
+                            onClick={() => {
+                              setSelectedLocation(location.name)
+                              setValidationError(null)
+                            }}
+                            transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                            _hover={{
+                              borderColor: isPartner ? 'orange.500' : isSelected ? 'brand.600' : 'brand.400',
+                              shadow: 'md',
+                              transform: 'translateY(-2px)',
+                            }}
+                          >
+                            <CardBody p={[1.5, 2]}>
+                              <VStack spacing={0.5} align="stretch">
+                                <HStack spacing={1.5} flex={1}>
+                                  <Box
+                                    p={1}
+                                    bg={isPartner ? partnerIconBg : defaultIconBg}
+                                    borderRadius="sm"
+                                    display="flex"
+                                    alignItems="center"
+                                    justifyContent="center"
+                                    flexShrink={0}
+                                  >
+                                    <Icon
+                                      as={isPartner ? FaStore : FaMapMarkerAlt}
+                                      color={
+                                        isPartner
+                                          ? 'orange.500'
+                                          : isSelected
+                                            ? 'brand.500'
+                                            : isNearest
+                                              ? 'blue.500'
+                                              : 'gray.500'
+                                      }
+                                      boxSize={isPartner ? 4 : 3.5}
+                                    />
+                                  </Box>
+
+                                  <VStack align="start" spacing={0.25} flex={1} minW={0}>
+                                    <Text fontWeight="semibold" fontSize={['10px', 'xs']} color={locationTextColor} noOfLines={1}>
+                                      {location.name}
+                                    </Text>
+                                    <Text fontSize={['2xs', '2xs']} color="gray.600" noOfLines={1}>
+                                      {location.address}
+                                    </Text>
+                                    <Badge
+                                      colorScheme={
+                                        location.type === 'cafe'
+                                          ? 'orange'
+                                          : location.type === 'mall'
+                                            ? 'blue'
+                                            : 'green'
+                                      }
+                                      variant="subtle"
+                                      fontSize="2xs"
+                                      px={0.5}
+                                      py={0}
+                                      w="fit-content"
+                                    >
+                                      {location.type}
+                                    </Badge>
+                                  </VStack>
+                                </HStack>
+
+                                {isSelected && (
+                                  <HStack justify="center" flexShrink={0}>
+                                    <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />
+                                  </HStack>
+                                )}
+                              </VStack>
+                            </CardBody>
+                          </Card>
+                        )
+                      })}
+                    </SimpleGrid>
+                  </Box>
+
+                  {showSuggestionsPanel && (
+                    <Box p={3} bg="blue.50" borderRadius="md" borderLeft="4px" borderColor="blue.400">
+                      <HStack justify="space-between" mb={2}>
+                        <Text fontSize="sm" fontWeight="medium" color="blue.700">
+                          Suggested Alternative Times
+                        </Text>
+                        <Button size="xs" variant="ghost" onClick={() => setShowSuggestionsPanel(false)}>
+                          Close
+                        </Button>
+                      </HStack>
+                      <VStack align="stretch" spacing={2}>
+                        {generateSmartSuggestions().map((suggestion, idx) => (
+                          <Button
+                            key={idx}
+                            size="sm"
+                            variant="outline"
+                            colorScheme="blue"
+                            justifyContent="flex-start"
+                            onClick={() => {
+                              setSelectedDate(suggestion.date)
+                              setSelectedTime(suggestion.time)
+                              setValidationError(null)
+                              setShowSuggestionsPanel(false)
+                            }}
+                          >
+                            {suggestion.label}
+                          </Button>
+                        ))}
+                      </VStack>
+                    </Box>
+                  )}
+
+                  <Box>
+                    <HStack justify="space-between" mb={2}>
+                      <VStack align="start" spacing={0}>
+                        <Text fontWeight="semibold" fontSize="md">
+                          Schedule a Meetup
+                        </Text>
+                        <Text fontSize="sm" color="gray.600">
+                          Pick a date within the next 7 days and a time that works for everyone.
+                        </Text>
+                      </VStack>
+                      <HStack spacing={2}>
+                        <Button size="xs" variant="ghost" onClick={() => setShowSuggestionsPanel(true)}>
+                          Suggestions
+                        </Button>
+                        {(selectedDate || selectedTime) && (
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            colorScheme="blue"
+                            onClick={() => {
+                              setSelectedDate(null)
+                              setSelectedTime(null)
+                              setValidationError(null)
+                            }}
+                          >
+                            Change
+                          </Button>
+                        )}
+                      </HStack>
+                    </HStack>
+
+                    <VStack spacing={4} align="stretch" data-meetup-picker>
+                      {validationError && (
+                        <Box p={3} bg="red.50" borderRadius="md" borderLeft="4px" borderColor="red.500">
+                          <Text fontSize="sm" color="red.700">
+                            {validationError}
+                          </Text>
+                        </Box>
+                      )}
+
+                      <Box>
+                        <Text fontSize="sm" fontWeight="medium" mb={2}>
+                          Select Date
+                        </Text>
+                        <HStack spacing={2} flexWrap="wrap">
+                          {getNext7Days().map((dateStr) => (
+                            <Button
+                              key={dateStr}
+                              size="sm"
+                              variant={selectedDate === dateStr ? 'solid' : 'outline'}
+                              colorScheme={selectedDate === dateStr ? 'brand' : 'gray'}
+                              onClick={() => {
+                                setSelectedDate(dateStr)
+                                setSelectedTime(null)
+                                setValidationError(null)
+                              }}
+                              fontWeight="medium"
+                              px={3}
+                            >
+                              {formatDateLabel(dateStr)}
+                            </Button>
+                          ))}
+                        </HStack>
+                      </Box>
+
+                      <Box>
+                        <Text fontSize="sm" fontWeight="medium" mb={2}>
+                          Select Time
+                        </Text>
+                        {selectedDate ? (
+                          <VStack align="start" spacing={2}>
+                            <Text fontSize="xs" color="gray.600">
+                              Available times (30-minute intervals):
+                            </Text>
+                            <SimpleGrid columns={[3, 4, 5]} spacing={2} w="full">
+                              {generateTimeSlots(selectedDate).map((time) => (
+                                <Button
+                                  key={time}
+                                  size="sm"
+                                  variant={selectedTime === time ? 'solid' : 'outline'}
+                                  colorScheme={selectedTime === time ? 'brand' : 'gray'}
+                                  onClick={() => {
+                                    setSelectedTime(time)
+                                    setValidationError(null)
+                                  }}
+                                  fontWeight="medium"
+                                  fontSize="xs"
+                                >
+                                  {formatTimePH(time)}
+                                </Button>
+                              ))}
+                            </SimpleGrid>
+                            {generateTimeSlots(selectedDate).length === 0 && (
+                              <Text fontSize="xs" color="orange.600">
+                                No available times remaining today. Please select tomorrow or a later date.
+                              </Text>
+                            )}
+                          </VStack>
+                        ) : (
+                          <Text fontSize="sm" color="gray.500">
+                            Select a date first to see available times
+                          </Text>
+                        )}
+                      </Box>
+
+                      <Button
+                        colorScheme="green"
+                        size="lg"
+                        onClick={confirmMeetup}
+                        isLoading={confirmingMeetup}
+                        isDisabled={!selectedLocation || !selectedDate || !selectedTime || myMeetupConfirmed}
+                        w="full"
+                        fontWeight="semibold"
+                        mt={3}
+                        _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                        transition="all 0.2s"
+                      >
+                        Confirm Schedule
+                      </Button>
+                    </VStack>
+                  </Box>
+
+                  <Box pt={4}>
+                    <Divider />
+                    <Box p={[2, 3]} bg={meetupInfoBg} borderRadius="lg" borderWidth="1px" borderColor="blue.200">
+                      <VStack spacing={[2, 3]} align="stretch">
+                        <HStack justify="center" spacing={2} py={[1, 2]}>
+                          <Icon as={FaHandshake} color="blue.500" boxSize={4} />
+                          <Text fontWeight="bold" fontSize={['sm', 'md']} color="blue.700">
+                            Meetup Agreement
+                          </Text>
+                        </HStack>
+
+                        {getMeetupState() === 'none' && (
+                          <Box textAlign="center" py={1}>
+                            <Text fontSize={['xs', 'sm']} color="gray.600">
+                              Use the Confirm button above to submit your selection.
+                            </Text>
+                          </Box>
+                        )}
+
+                        {getMeetupState() === 'dispute' && (
+                          <Box p={3} bg={useColorModeValue('orange.50', 'orange.900')} borderRadius="md" borderWidth="1px" borderColor={useColorModeValue('orange.200', 'orange.700')}>
+                            <Text fontWeight="semibold">In Dispute</Text>
+                            <Text fontSize="sm" color={useColorModeValue('gray.700', 'gray.300')}>
+                              This meetup is marked as disputed. Coordinate in chat to resolve and then submit matching selections.
+                            </Text>
+                          </Box>
+                        )}
+
+                        {getMeetupState() === 'proposed' && proposedMeetup && (
+                          <VStack spacing={3} align="stretch">
+                            <Box p={3} bg={useColorModeValue('white', 'gray.800')} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
+                              <Text fontWeight="semibold" mb={1}>
+                                Proposed Schedule
+                              </Text>
+                              <Text fontSize="sm" color={useColorModeValue('gray.700', 'gray.300')}>
+                                {proposedMeetup.meetup_location}
+                              </Text>
+                              <Text fontSize="sm" color={useColorModeValue('gray.700', 'gray.300')}>
+                                {new Date(proposedMeetup.meetup_date + 'T00:00:00').toLocaleDateString()} · {formatTimePH(proposedMeetup.meetup_time)}
+                              </Text>
+                            </Box>
+
+                            {!myMeetupConfirmed ? (
+                              <HStack spacing={2} justify="center">
+                                <Button size="sm" colorScheme="green" onClick={acceptSchedule} isLoading={agreeingToSchedule}>
+                                  Accept This Time
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => setShowSuggestionsPanel(true)}>
+                                  Suggest different time
+                                </Button>
+                              </HStack>
+                            ) : (
+                              <Text fontSize="sm" textAlign="center" color={useColorModeValue('gray.600', 'gray.400')}>
+                                You already confirmed. Waiting for others.
+                              </Text>
+                            )}
+                          </VStack>
+                        )}
+
+                        {getMeetupState() === 'mismatch' && (
+                          <VStack spacing={3} align="stretch">
+                            <Box p={3} bg={useColorModeValue('orange.50', 'orange.900')} borderRadius="md" borderWidth="1px" borderColor={useColorModeValue('orange.200', 'orange.700')}>
+                              <HStack spacing={2}>
+                                <Icon as={FaExclamationTriangle} color={useColorModeValue('orange.600', 'orange.300')} />
+                                <Text fontWeight="semibold">Selection Mismatch</Text>
+                              </HStack>
+                              <Text fontSize="sm" color={useColorModeValue('gray.700', 'gray.300')} mt={1}>
+                                Everyone confirmed different selections. Click "Change My Selection" to modify yours, or message others to coordinate.
+                              </Text>
+                            </Box>
+
+                            <SimpleGrid columns={[1, 2, 3]} spacing={2}>
+                              {sortedParticipants.map((p) => {
+                                const sel = meetupByUserId[p.user_id]
+                                const has = !!sel?.meetup_confirmed
+                                return (
+                                  <Box key={p.user_id} p={3} bg={useColorModeValue('white', 'gray.800')} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
+                                    <Text fontSize="sm" fontWeight="semibold" mb={1}>
+                                      {p.user_name}
+                                    </Text>
+                                    {has ? (
+                                      <VStack spacing={1} align="start" fontSize="sm">
+                                        <Text><strong>Location:</strong> {sel.meetup_location}</Text>
+                                        <Text><strong>Date:</strong> {new Date(sel.meetup_date + 'T00:00:00').toLocaleDateString()}</Text>
+                                        <Text><strong>Time:</strong> {formatTimePH(sel.meetup_time)}</Text>
+                                      </VStack>
+                                    ) : (
+                                      <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')}>
+                                        No selection
+                                      </Text>
+                                    )}
+                                  </Box>
+                                )
+                              })}
+                            </SimpleGrid>
+                          </VStack>
+                        )}
+
+                        {getMeetupState() === 'finalized' && (
+                          <VStack spacing={3} align="stretch">
+                            <Box p={[2, 3]} bg="green.100" borderRadius="md" borderWidth="2px" borderColor="green.400" textAlign="center">
+                              <Icon as={FaCheckCircle} color="green.500" boxSize={6} mb={1} />
+                              <Text fontWeight="bold" color="green.700" fontSize={['sm', 'md']}>
+                                {participantIds.length <= 2 ? 'You Both Agreed!' : 'Everyone Agreed!'}
+                              </Text>
+                              {agreedMeetup && (
+                                <Text fontSize={['xs', 'sm']} color="green.600" mt={0.5}>
+                                  {agreedMeetup.meetup_location} · {new Date(agreedMeetup.meetup_date + 'T00:00:00').toLocaleDateString()} · {formatTimePH(agreedMeetup.meetup_time)}
+                                </Text>
+                              )}
+                            </Box>
+
+                            <Button
+                              size="sm"
+                              colorScheme="green"
+                              onClick={confirmMeetupDone}
+                              isLoading={confirmingMeetupDone}
+                              isDisabled={!meetupAgreed || myMetConfirmed}
+                            >
+                              {myMetConfirmed ? 'You already confirmed' : 'Confirm You Met'}
+                            </Button>
+
+                            {allMetConfirmed && (
+                              <Text fontSize="sm" textAlign="center" color={useColorModeValue('gray.600', 'gray.400')}>
+                                Everyone confirmed they met. You can now execute the loop.
+                              </Text>
+                            )}
+                          </VStack>
+                        )}
+
+                        <HStack justify="space-between" pt={1}>
+                          <Button size="sm" variant="outline" onClick={resetMeetupSelection} isLoading={resettingMeetup}>
+                            Change My Selection
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            colorScheme="orange"
+                            onClick={() => setShowDisputeDialog(true)}
+                            isDisabled={allMetConfirmed}
+                          >
+                            Dispute
+                          </Button>
+                        </HStack>
+
+                        <AlertDialog
+                          isOpen={showDisputeDialog}
+                          onClose={() => setShowDisputeDialog(false)}
+                          leastDestructiveRef={cancelDialogRef}
+                          isCentered
+                        >
+                          <AlertDialogOverlay>
+                            <AlertDialogContent>
+                              <AlertDialogHeader fontSize="lg" fontWeight="bold">
+                                Report Meetup Issue
+                              </AlertDialogHeader>
+                              <AlertDialogBody>
+                                <VStack spacing={4} align="stretch">
+                                  <Text fontSize="sm" color="gray.600">
+                                    What's the problem with the scheduled time?
+                                  </Text>
+                                  <VStack spacing={2}>
+                                    <Button
+                                      variant={meetupDisputeReason === 'time' ? 'solid' : 'outline'}
+                                      colorScheme="orange"
+                                      justifyContent="flex-start"
+                                      onClick={() => setMeetupDisputeReason('time')}
+                                    >
+                                      The time doesn't work for me
+                                    </Button>
+                                    <Button
+                                      variant={meetupDisputeReason === 'date' ? 'solid' : 'outline'}
+                                      colorScheme="orange"
+                                      justifyContent="flex-start"
+                                      onClick={() => setMeetupDisputeReason('date')}
+                                    >
+                                      The date is inconvenient
+                                    </Button>
+                                    <Button
+                                      variant={meetupDisputeReason === 'unresponsive' ? 'solid' : 'outline'}
+                                      colorScheme="orange"
+                                      justifyContent="flex-start"
+                                      onClick={() => setMeetupDisputeReason('unresponsive')}
+                                    >
+                                      Other person is unresponsive
+                                    </Button>
+                                    <Button
+                                      variant={meetupDisputeReason === 'conflict' ? 'solid' : 'outline'}
+                                      colorScheme="orange"
+                                      justifyContent="flex-start"
+                                      onClick={() => setMeetupDisputeReason('conflict')}
+                                    >
+                                      Schedule conflict
+                                    </Button>
+                                  </VStack>
+                                  <FormControl>
+                                    <FormLabel fontSize="sm">Additional notes (optional)</FormLabel>
+                                    <Textarea
+                                      placeholder="Explain your concern..."
+                                      value={disputeNotes}
+                                      onChange={(e) => setDisputeNotes(e.target.value)}
+                                      size="sm"
+                                      minH="80px"
+                                    />
+                                  </FormControl>
+                                </VStack>
+                              </AlertDialogBody>
+                              <AlertDialogFooter>
+                                <Button ref={cancelDialogRef} onClick={() => setShowDisputeDialog(false)}>
+                                  Cancel
+                                </Button>
+                                <Button colorScheme="orange" onClick={handleRaiseDispute} ml={3}>
+                                  Report Issue
+                                </Button>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialogOverlay>
+                        </AlertDialog>
+                      </VStack>
+                    </Box>
+                  </Box>
+                </VStack>
+              </TabPanel>
 
         </TabPanels>
       </Tabs>
@@ -1084,7 +2491,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
               <Button
                 flex={1}
                 colorScheme="green"
-                isDisabled={loading || multiWayTrade.status !== 'active'}
+                isDisabled={loading || !canAcceptLoopTrade}
                 isLoading={selectedAction === 'accept' && loading}
                 onClick={handleAccept}
                 leftIcon={<FaCheck />}

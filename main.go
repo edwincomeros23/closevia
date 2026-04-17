@@ -535,6 +535,8 @@ func main() {
 	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
 	trades.Get("/loops/:id/messages", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopMessages)
 	trades.Post("/loops/:id/messages", middleware.AuthMiddleware(), tradeHandler.SendTradeLoopMessage)
+	trades.Get("/loops/:id/meetup", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopMeetup)
+	trades.Put("/loops/:id/meetup", middleware.AuthMiddleware(), tradeHandler.UpdateTradeLoopMeetup)
 
 	// Multi-way chain specific routes
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
@@ -637,6 +639,8 @@ func main() {
 	payments.All("/remittance/sync", middleware.AuthMiddleware(), paymentHandler.SyncRemittancePayment)
 	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
 	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
+	payments.Get("/subscription", middleware.AuthMiddleware(), paymentHandler.GetUserSubscription)
+	payments.All("/subscription/sync", middleware.AuthMiddleware(), paymentHandler.SyncUserPremiumPayment)
 	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
 	payments.Post("/webhook/xendit", paymentHandler.XenditWebhook) // Public webhook endpoint
 

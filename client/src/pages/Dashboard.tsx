@@ -96,7 +96,7 @@ import {
 
 const Dashboard: React.FC = () => {
   const { user, loading, isAuthenticated, restoreAuthentication } = useAuth()
-  const { deleteProduct, updateProduct } = useProducts()
+  const { deleteProduct, updateProduct, markProductBoosted } = useProducts()
   const { refreshCounts, setRefreshCallback } = useRealtime()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -313,7 +313,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     if (user && (activeTab === 1 || activeTab === 2 || activeTab === 3)) {
       fetchMultiWayTrades()
-      if (activeTab === 2) fetchDiscoverableLoops()
+      if (activeTab === 3) fetchDiscoverableLoops()
     }
   }, [user, activeTab])
 
@@ -447,6 +447,21 @@ const Dashboard: React.FC = () => {
       completedTrades
     }
   }, [inventoryProducts, incoming, ongoingTradesData, tradeHistory])
+
+  const currentTier = (user?.premium_tier || 'free') as 'free' | 'plus' | 'pro'
+  const planMeta = {
+    free: { label: 'Free', color: 'gray', listingLimit: 10, boosts: 0, deliveryDiscount: '0%', matchPriority: 'Standard' },
+    plus: { label: 'Plus', color: 'blue', listingLimit: 30, boosts: 3, deliveryDiscount: '10%', matchPriority: 'Priority' },
+    pro: { label: 'Pro', color: 'purple', listingLimit: Infinity, boosts: 10, deliveryDiscount: '20%', matchPriority: 'Top queue' },
+  }
+  const planBenefits = {
+    free: ['10 active listings', 'Standard delivery', 'Standard matches'],
+    plus: ['30 active listings', '3 boosts', '10% delivery discount', 'Priority matches'],
+    pro: ['Unlimited listings', '10 boosts', '20% delivery discount', 'Top match priority', 'Multi-way trading'],
+  }
+  const activePlan = planMeta[currentTier] || planMeta.free
+  const activeBenefits = planBenefits[currentTier] || planBenefits.free
+  const listingLimitLabel = activePlan.listingLimit === Infinity ? 'Unlimited' : String(activePlan.listingLimit)
 
   // Get product title helper (needs to be defined before use)
   const getProductTitle = (productId: number, fallbackTitle?: string): string => {
@@ -1374,7 +1389,7 @@ const Dashboard: React.FC = () => {
       }
 
       // Switch to Multi-Way tab and always refresh multiway data
-      setActiveTab(2)
+      setActiveTab(3)
       fetchMultiWayTrades()
       setIsProcessing(false)
     } catch (error: any) {
@@ -1868,6 +1883,7 @@ const Dashboard: React.FC = () => {
               icon: FaCheckCircle,
               confirmColorScheme: 'green'
             })
+            markProductBoosted(product.id, new Date().toISOString())
             invalidateDashboard()
           } else {
             throw new Error(response.data?.error || 'Failed to boost product')
@@ -3257,8 +3273,8 @@ const Dashboard: React.FC = () => {
   const dashboardSubtitleByTab: Record<number, string> = {
     0: 'Manage your listings and keep them trade-ready.',
     1: 'Review your offers and respond quickly to pending actions.',
-    2: 'Track multi-way matches and loop opportunities for your listings.',
-    3: 'Review mutual matches where both traders liked each other.',
+    2: 'Review mutual matches where both traders liked each other.',
+    3: 'Track multi-way matches and loop opportunities for your listings.',
     4: 'Review your completed and archived trade history.',
   }
   const activeSubtitle = dashboardSubtitleByTab[activeTab] || 'Manage your products, trades, and offers.'
@@ -3663,6 +3679,27 @@ const Dashboard: React.FC = () => {
             </VStack>
           </Box>
 
+          <Box bg={cardBg} border="1px" borderColor={borderColor} borderRadius="lg" px={{ base: 3, md: 4 }} py={{ base: 3, md: 4 }}>
+            <Flex direction={{ base: 'column', md: 'row' }} gap={3} align={{ base: 'flex-start', md: 'center' }} justify="space-between">
+              <HStack spacing={2} align="center">
+                <Icon as={FaCrown} color={`${activePlan.color}.500`} />
+                <Text fontWeight="semibold">Plan: {activePlan.label}</Text>
+                <Badge colorScheme={activePlan.color} borderRadius="full" fontSize="xs">{activePlan.label}</Badge>
+              </HStack>
+              <Text fontSize="sm" color="gray.600">
+                Listings {dashboardStats.activeProducts}/{listingLimitLabel}
+              </Text>
+              <Button size="sm" variant="outline" onClick={() => navigate('/premium')}>View plan</Button>
+            </Flex>
+            <Flex mt={3} gap={2} flexWrap="wrap">
+              {activeBenefits.map((benefit) => (
+                <Badge key={benefit} colorScheme={activePlan.color} variant="subtle" borderRadius="full" px={2} py={1} fontSize="xs">
+                  {benefit}
+                </Badge>
+              ))}
+            </Flex>
+          </Box>
+
           {/* Tabs with Sticky Navigation */}
           <Box bg="white" rounded="lg" shadow="sm" position="relative">
             <Box
@@ -3756,12 +3793,11 @@ const Dashboard: React.FC = () => {
                       transition="all 0.2s"
                     >
                       <HStack spacing={1}>
-                        <Icon as={FaExchangeAlt} boxSize={{ base: 4, md: 5 }} />
-                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
-                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display="none">Trade</Text>
-                        {multiWayIndicatorCount > 0 && (
-                          <Badge colorScheme="purple" borderRadius="full" fontSize="2xs">
-                            {multiWayIndicatorCount}
+                        <Icon as={FaHandshake} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Trade Match</Text>
+                        {tradeMatchIndicatorCount > 0 && (
+                          <Badge colorScheme="blue" borderRadius="full" fontSize="2xs">
+                            {tradeMatchIndicatorCount}
                           </Badge>
                         )}
                       </HStack>
@@ -3776,11 +3812,12 @@ const Dashboard: React.FC = () => {
                       transition="all 0.2s"
                     >
                       <HStack spacing={1}>
-                        <Icon as={FaHandshake} boxSize={{ base: 4, md: 5 }} />
-                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Trade Match</Text>
-                        {tradeMatchIndicatorCount > 0 && (
-                          <Badge colorScheme="blue" borderRadius="full" fontSize="2xs">
-                            {tradeMatchIndicatorCount}
+                        <Icon as={FaExchangeAlt} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display="none">Trade</Text>
+                        {multiWayIndicatorCount > 0 && (
+                          <Badge colorScheme="purple" borderRadius="full" fontSize="2xs">
+                            {multiWayIndicatorCount}
                           </Badge>
                         )}
                       </HStack>
@@ -4582,6 +4619,7 @@ const Dashboard: React.FC = () => {
                                   const participants = Array.isArray(trade?.participants) ? trade.participants : []
                                   if (participants.length < 2) return null
                                   const summary = getMultiWayTradeSummary(trade)
+                                  const loopLabel = participants.length <= 2 ? 'Trade Match' : 'Multi-Way'
                                   
                                   const currentUserID = Number(user?.id || 0)
                                   const yourParticipantIndex = participants.findIndex((p: any) => Number(p?.id || p?.user_id) === currentUserID)
@@ -4643,11 +4681,11 @@ const Dashboard: React.FC = () => {
                                             }/>
                                           ) : (
                                             <Box w="100%" h="100%" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
-                                              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Multi-Way</Text>
+                                              <Text fontSize="xs" color="gray.600" fontWeight="semibold">{loopLabel}</Text>
                                             </Box>
                                           )}
                                           <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
-                                            Multi-Way
+                                            {loopLabel}
                                           </Badge>
                                         </Box>
                                       </Box>
@@ -4660,7 +4698,7 @@ const Dashboard: React.FC = () => {
                                                 Active Loop
                                               </Badge>
                                               <Badge colorScheme="purple" variant="solid" fontSize="xs" px={2} py={1} borderRadius="full">
-                                                Multi-Way
+                                                {loopLabel}
                                               </Badge>
                                             </HStack>
                                             {matchScore > 0 && (
@@ -4800,6 +4838,157 @@ const Dashboard: React.FC = () => {
 
                       </TabPanels>
                     </Tabs>
+                  </VStack>
+                </TabPanel>
+
+                {/* Trade Match Tab */}
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
+                  <VStack spacing={6} align="stretch">
+                    <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
+                      <VStack align="start" spacing={1}>
+                        <Text fontSize="xs" color="blue.800">
+                          Mutual likes mean both traders are interested in each other's items. Confirm to proceed.
+                        </Text>
+                      </VStack>
+                    </Box>
+
+                    {multiWayTradesLoading ? (
+                      <Center py={12}>
+                        <Spinner size="lg" color="brand.500" />
+                      </Center>
+                    ) : tradeMatchTrades.length === 0 ? (
+                      <Box textAlign="center" py={12}>
+                        <Icon as={FaHandshake} boxSize={16} color="blue.300" mb={4} />
+                        <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
+                          No trade matches yet
+                        </Text>
+                        <Text color="gray.500" fontSize="sm">
+                          Like items in Find Trades. When someone likes back, it will appear here.
+                        </Text>
+                      </Box>
+                    ) : (
+                      <VStack align="stretch" spacing={6}>
+                        {groupedTradeMatchTrades.needsAction.length > 0 && (
+                          <Box>
+                            <Heading size="sm" mb={3} color="blue.600">
+                              Needs Your Action
+                            </Heading>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+                              {groupedTradeMatchTrades.needsAction.map((trade) => {
+                                const summary = getSummary(trade)
+                                const participants = trade.participants || []
+                                const firstParticipantImage = resolveParticipantImage(participants[0])
+
+                                return (
+                                  <Card
+                                    key={trade.id || trade.loop_id || trade.chain_id}
+                                    variant="outline"
+                                    h="100%"
+                                    display="flex"
+                                    flexDirection="column"
+                                    _hover={{
+                                      shadow: 'lg',
+                                      transform: 'translateY(-4px)',
+                                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                      borderColor: 'blue.500',
+                                    }}
+                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                    borderLeftWidth="4px"
+                                    borderLeftColor="blue.400"
+                                    borderColor="blue.200"
+                                    cursor="pointer"
+                                    onClick={() => handleViewMultiWayTradeDetails(trade)}
+                                  >
+                                    <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
+                                      {firstParticipantImage ? (
+                                        <Image src={firstParticipantImage} alt="Item" w="full" h="full" objectFit="cover" />
+                                      ) : (
+                                        <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
+                                          <Text fontSize="xs" color="gray.500">Item</Text>
+                                        </Box>
+                                      )}
+                                    </Box>
+
+                                    <CardHeader pb={2} flex={1}>
+                                      <Badge colorScheme="blue" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
+                                        Your Action
+                                      </Badge>
+                                      <Heading size="sm" noOfLines={2}>
+                                        {summary.yourGive}
+                                      </Heading>
+                                      <Text fontSize="xs" color="gray.500" mt={2}>
+                                        → {summary.yourGet}
+                                      </Text>
+                                    </CardHeader>
+
+                                    <CardFooter pt={0} pb={3}>
+                                      <HStack w="full" spacing={2}>
+                                        <Button size="sm" colorScheme="green" flex={1} onClick={(e) => { e.stopPropagation(); handleJoinMultiWayTrade(trade) }} isLoading={multiWayTradeJoining}>
+                                          Accept
+                                        </Button>
+                                        <Button size="sm" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
+                                          Decline
+                                        </Button>
+                                      </HStack>
+                                    </CardFooter>
+                                  </Card>
+                                )
+                              })}
+                            </SimpleGrid>
+                          </Box>
+                        )}
+
+                        {groupedTradeMatchTrades.waitingOnOthers.length > 0 && (
+                          <Box>
+                            <Heading size="sm" mb={3} color="orange.600">
+                              Waiting on Others
+                            </Heading>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+                              {groupedTradeMatchTrades.waitingOnOthers.map((trade) => {
+                                const summary = getSummary(trade)
+
+                                return (
+                                  <Card
+                                    key={trade.id || trade.loop_id || trade.chain_id}
+                                    variant="outline"
+                                    h="100%"
+                                    display="flex"
+                                    flexDirection="column"
+                                    _hover={{
+                                      shadow: 'lg',
+                                      transform: 'translateY(-4px)',
+                                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                      borderColor: 'orange.500',
+                                    }}
+                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                    borderLeftWidth="4px"
+                                    borderLeftColor="orange.400"
+                                    borderColor="orange.200"
+                                    cursor="pointer"
+                                    onClick={() => handleViewMultiWayTradeDetails(trade)}
+                                  >
+                                    <CardHeader pb={2} flex={1}>
+                                      <Badge colorScheme="orange" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
+                                        Waiting...
+                                      </Badge>
+                                      <Heading size="sm" noOfLines={2}>
+                                        {summary.yourGive} → {summary.yourGet}
+                                      </Heading>
+                                    </CardHeader>
+
+                                    <CardFooter pt={0} pb={3}>
+                                      <Button size="sm" colorScheme="orange" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
+                                        View Trade
+                                      </Button>
+                                    </CardFooter>
+                                  </Card>
+                                )
+                              })}
+                            </SimpleGrid>
+                          </Box>
+                        )}
+                      </VStack>
+                    )}
                   </VStack>
                 </TabPanel>
 
@@ -5091,157 +5280,6 @@ const Dashboard: React.FC = () => {
                               </VStack>
                             )}
                         </VStack>
-                </TabPanel>
-
-                {/* Trade Match Tab */}
-                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
-                  <VStack spacing={6} align="stretch">
-                    <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
-                      <VStack align="start" spacing={1}>
-                        <Text fontSize="xs" color="blue.800">
-                          Mutual likes mean both traders are interested in each other's items. Confirm to proceed.
-                        </Text>
-                      </VStack>
-                    </Box>
-
-                    {multiWayTradesLoading ? (
-                      <Center py={12}>
-                        <Spinner size="lg" color="brand.500" />
-                      </Center>
-                    ) : tradeMatchTrades.length === 0 ? (
-                      <Box textAlign="center" py={12}>
-                        <Icon as={FaHandshake} boxSize={16} color="blue.300" mb={4} />
-                        <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
-                          No trade matches yet
-                        </Text>
-                        <Text color="gray.500" fontSize="sm">
-                          Like items in Find Trades. When someone likes back, it will appear here.
-                        </Text>
-                      </Box>
-                    ) : (
-                      <VStack align="stretch" spacing={6}>
-                        {groupedTradeMatchTrades.needsAction.length > 0 && (
-                          <Box>
-                            <Heading size="sm" mb={3} color="blue.600">
-                              Needs Your Action
-                            </Heading>
-                            <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
-                              {groupedTradeMatchTrades.needsAction.map((trade) => {
-                                const summary = getSummary(trade)
-                                const participants = trade.participants || []
-                                const firstParticipantImage = resolveParticipantImage(participants[0])
-
-                                return (
-                                  <Card
-                                    key={trade.id || trade.loop_id || trade.chain_id}
-                                    variant="outline"
-                                    h="100%"
-                                    display="flex"
-                                    flexDirection="column"
-                                    _hover={{
-                                      shadow: 'lg',
-                                      transform: 'translateY(-4px)',
-                                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                      borderColor: 'blue.500',
-                                    }}
-                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                                    borderLeftWidth="4px"
-                                    borderLeftColor="blue.400"
-                                    borderColor="blue.200"
-                                    cursor="pointer"
-                                    onClick={() => handleViewMultiWayTradeDetails(trade)}
-                                  >
-                                    <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
-                                      {firstParticipantImage ? (
-                                        <Image src={firstParticipantImage} alt="Item" w="full" h="full" objectFit="cover" />
-                                      ) : (
-                                        <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
-                                          <Text fontSize="xs" color="gray.500">Item</Text>
-                                        </Box>
-                                      )}
-                                    </Box>
-
-                                    <CardHeader pb={2} flex={1}>
-                                      <Badge colorScheme="blue" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
-                                        Your Action
-                                      </Badge>
-                                      <Heading size="sm" noOfLines={2}>
-                                        {summary.yourGive}
-                                      </Heading>
-                                      <Text fontSize="xs" color="gray.500" mt={2}>
-                                        → {summary.yourGet}
-                                      </Text>
-                                    </CardHeader>
-
-                                    <CardFooter pt={0} pb={3}>
-                                      <HStack w="full" spacing={2}>
-                                        <Button size="sm" colorScheme="green" flex={1} onClick={(e) => { e.stopPropagation(); handleJoinMultiWayTrade(trade) }} isLoading={multiWayTradeJoining}>
-                                          Accept
-                                        </Button>
-                                        <Button size="sm" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
-                                          Decline
-                                        </Button>
-                                      </HStack>
-                                    </CardFooter>
-                                  </Card>
-                                )
-                              })}
-                            </SimpleGrid>
-                          </Box>
-                        )}
-
-                        {groupedTradeMatchTrades.waitingOnOthers.length > 0 && (
-                          <Box>
-                            <Heading size="sm" mb={3} color="orange.600">
-                              Waiting on Others
-                            </Heading>
-                            <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
-                              {groupedTradeMatchTrades.waitingOnOthers.map((trade) => {
-                                const summary = getSummary(trade)
-
-                                return (
-                                  <Card
-                                    key={trade.id || trade.loop_id || trade.chain_id}
-                                    variant="outline"
-                                    h="100%"
-                                    display="flex"
-                                    flexDirection="column"
-                                    _hover={{
-                                      shadow: 'lg',
-                                      transform: 'translateY(-4px)',
-                                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                      borderColor: 'orange.500',
-                                    }}
-                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                                    borderLeftWidth="4px"
-                                    borderLeftColor="orange.400"
-                                    borderColor="orange.200"
-                                    cursor="pointer"
-                                    onClick={() => handleViewMultiWayTradeDetails(trade)}
-                                  >
-                                    <CardHeader pb={2} flex={1}>
-                                      <Badge colorScheme="orange" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
-                                        Waiting...
-                                      </Badge>
-                                      <Heading size="sm" noOfLines={2}>
-                                        {summary.yourGive} → {summary.yourGet}
-                                      </Heading>
-                                    </CardHeader>
-
-                                    <CardFooter pt={0} pb={3}>
-                                      <Button size="sm" colorScheme="orange" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
-                                        View Trade
-                                      </Button>
-                                    </CardFooter>
-                                  </Card>
-                                )
-                              })}
-                            </SimpleGrid>
-                          </Box>
-                        )}
-                      </VStack>
-                    )}
-                  </VStack>
                 </TabPanel>
 
                 {/* Trade History Tab */}

@@ -96,23 +96,31 @@ func (h *AIFeaturesHandler) GetProximity(c *fiber.Ctx) error {
 		// IF YOU CHANGE THIS: Proximities will diverge again (product vs seller showing different distances)
 		// =====================================================================================
 		var sellerID int
-		var productLat, productLon sql.NullFloat64
-		err = h.db.QueryRow("SELECT seller_id FROM products WHERE id = ?", targetID).Scan(&sellerID)
+		var locationType sql.NullString
+		var pickupLat, pickupLon sql.NullFloat64
+		err = h.db.QueryRow("SELECT seller_id, location_type, pickup_latitude, pickup_longitude FROM products WHERE id = ?", targetID).Scan(&sellerID, &locationType, &pickupLat, &pickupLon)
 		if err != nil {
-			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+			return c.JSON(models.APIResponse{Success: true, Data: nil, Message: "Product not found"})
 		}
 
 		// Get the seller's location (not product-specific coordinates)
+		var productLat, productLon sql.NullFloat64
 		err = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", sellerID).Scan(&productLat, &productLon)
 		if err != nil {
-			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Seller not found"})
+			return c.JSON(models.APIResponse{Success: true, Data: nil, Message: "Seller not found"})
 		}
 
 		if !productLat.Valid || !productLon.Valid {
-			return c.Status(400).JSON(models.APIResponse{
-				Success: false,
-				Error:   "Product seller location not set",
-			})
+			if locationType.Valid && locationType.String == "pickup_location" && pickupLat.Valid && pickupLon.Valid {
+				productLat = pickupLat
+				productLon = pickupLon
+			} else {
+				return c.JSON(models.APIResponse{
+					Success: true,
+					Data:    nil,
+					Message: "Product location not set",
+				})
+			}
 		}
 
 		distance, err = services.CalculateDistanceToProduct(

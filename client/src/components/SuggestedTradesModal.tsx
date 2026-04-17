@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
     Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody,
-    VStack, HStack, Text, Image, Button, Spinner, Center, Box, Icon, Badge, useToast
+    VStack, HStack, Text, Image, Button, Spinner, Center, Box, Icon, Badge, useToast, Tooltip
 } from '@chakra-ui/react';
 import { FaExchangeAlt, FaRegLightbulb, FaHeart } from 'react-icons/fa';
 import { api } from '../services/api';
@@ -24,10 +24,33 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
 
     useEffect(() => {
         if (isOpen && product) {
-            setLikedIds(new Set());
+            try {
+                const raw = localStorage.getItem(`trade-likes-${product.id}`);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        setLikedIds(new Set(parsed.map((id) => Number(id))));
+                    } else {
+                        setLikedIds(new Set());
+                    }
+                } else {
+                    setLikedIds(new Set());
+                }
+            } catch {
+                setLikedIds(new Set());
+            }
             fetchSuggestions();
         }
     }, [isOpen, product]);
+
+    useEffect(() => {
+        if (!product) return;
+        try {
+            localStorage.setItem(`trade-likes-${product.id}`, JSON.stringify(Array.from(likedIds)));
+        } catch {
+            // Ignore storage errors
+        }
+    }, [likedIds, product]);
 
     const fetchSuggestions = async () => {
         try {
@@ -36,7 +59,10 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
             const normalizeCategory = (value?: string): string => {
                 const v = (value || '').trim().toLowerCase();
                 if (!v) return '';
-                return v === 'others' ? 'other' : v;
+                if (v === 'other' || v === 'others' || v.startsWith('other')) {
+                    return 'other';
+                }
+                return v;
             };
 
             // Load full product details so we can reliably read wanted_categories (dashboard listing payload may omit it)
@@ -183,17 +209,23 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
                                                 <Text fontSize="xs" color="gray.500" noOfLines={1}>Owned by {s.seller_name}</Text>
                                             </HStack>
                                         </VStack>
-                                        <Button
-                                            size="sm"
-                                            colorScheme="pink"
-                                            leftIcon={<FaHeart />}
-                                            onClick={() => handleLike(s)}
-                                            isLoading={likingId === s.id}
-                                            loadingText="Liking"
-                                            isDisabled={likedIds.has(s.id)}
+                                        <Tooltip
+                                            label="Invite this item for Trade Match or Multi-Way loops."
+                                            hasArrow
+                                            placement="top"
                                         >
-                                            {likedIds.has(s.id) ? 'Liked' : 'Like'}
-                                        </Button>
+                                            <Button
+                                                size="sm"
+                                                colorScheme="pink"
+                                                leftIcon={<FaHeart />}
+                                                onClick={() => handleLike(s)}
+                                                isLoading={likingId === s.id}
+                                                loadingText="Inviting"
+                                                isDisabled={likedIds.has(s.id)}
+                                            >
+                                                {likedIds.has(s.id) ? 'Invited' : 'Invite'}
+                                            </Button>
+                                        </Tooltip>
                                     </HStack>
                                 </Box>
                             ))}

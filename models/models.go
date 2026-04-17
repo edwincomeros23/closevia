@@ -125,6 +125,7 @@ type User struct {
 	Longitude                   *float64   `json:"longitude,omitempty"`
 	IsPremium                   bool       `json:"is_premium"`
 	PremiumTier                 string     `json:"premium_tier"` // "free", "plus", "pro"
+	PremiumExpiresAt            *time.Time `json:"premium_expires_at,omitempty"`
 	CreatedAt                   time.Time  `json:"created_at"`
 	UpdatedAt                   time.Time  `json:"updated_at"`
 	VerificationStatus          string     `json:"verification_status,omitempty"`
@@ -204,6 +205,9 @@ type Product struct {
 	Value                *float64          `json:"value,omitempty"` // User-defined product value
 	Category             string            `json:"category,omitempty"`
 	LocationType         string            `json:"location_type,omitempty" validate:"omitempty,oneof=current_location pickup_location no_location"` // Type of product location setting
+	PickupLatitude       *float64          `json:"pickup_latitude,omitempty"`
+	PickupLongitude      *float64          `json:"pickup_longitude,omitempty"`
+	PickupAddress        string            `json:"pickup_address,omitempty"`
 	Wants                string            `json:"wants,omitempty"`
 	WantedCategories     StringArray       `json:"wanted_categories,omitempty"`
 	DesiredPrice         *float64          `json:"desired_price,omitempty"`
@@ -441,12 +445,13 @@ type TradeCreate struct {
 
 // TradeAction represents accept/decline/counter actions
 type TradeAction struct {
-	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup confirm_meetup_done update_delivery_state request_option_change approve_option_change reject_option_change"`
+	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup confirm_meetup_done reset_meetup_selection update_delivery_state request_option_change approve_option_change reject_option_change convert_to_multiway"`
 	Message                  string   `json:"message,omitempty"`
 	CounterOfferedProductIDs []int    `json:"counter_offered_product_ids,omitempty"`
 	CounterOfferedCashAmount *float64 `json:"counter_offered_cash_amount,omitempty"`
 	MeetupLocation           string   `json:"meetup_location,omitempty"`
 	MeetupTime               string   `json:"meetup_time,omitempty"`
+	MeetupDate               string   `json:"meetup_date,omitempty"`
 	RequestedOption          string   `json:"requested_option,omitempty"`
 	DeliveryAddress          string   `json:"delivery_address,omitempty"`
 	CancellationReason       string   `json:"cancellation_reason,omitempty"`

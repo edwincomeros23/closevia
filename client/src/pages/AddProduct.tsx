@@ -313,8 +313,6 @@ const AddProduct: React.FC = () => {
       async (pos) => {
         const { latitude, longitude } = pos.coords
         setFormData(prev => ({ ...prev, latitude, longitude }))
-        // Persist user's coords so distance from other users stays fresh.
-        api.put('/api/users/location', { latitude, longitude }).catch(() => {})
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${latitude}&lon=${longitude}`
@@ -355,16 +353,25 @@ const AddProduct: React.FC = () => {
     if (!q) return
     setManualLocationSaving(true)
     try {
-      const res = await api.put('/api/users/location', { location: q })
-      const coords = res.data?.data || res.data
-      const lat = Number(coords?.latitude)
-      const lng = Number(coords?.longitude)
-      if (!isNaN(lat) && !isNaN(lng)) {
-        setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: q }))
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`
+      )
+      const results = await response.json()
+      const bestMatch = Array.isArray(results) && results.length > 0 ? results[0] : null
+      if (bestMatch) {
+        const lat = parseFloat(bestMatch.lat)
+        const lng = parseFloat(bestMatch.lon)
+        const label = bestMatch.display_name || q
+        if (!isNaN(lat) && !isNaN(lng)) {
+          setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: label }))
+        } else {
+          setFormData(prev => ({ ...prev, location: label }))
+        }
+        setLocationText(label)
       } else {
         setFormData(prev => ({ ...prev, location: q }))
+        setLocationText(q)
       }
-      setLocationText(q)
       setLocationDetected(true)
       setManualLocationOpen(false)
       setManualLocationInput('')
@@ -1684,6 +1691,7 @@ const AddProduct: React.FC = () => {
                   onChange={() => {
                     setFormData(prev => ({ ...prev, location_type: 'current_location' }))
                     setCustomPickupLocationSet(false)
+                    detectLocation()
                   }}
                   colorScheme="blue"
                   flex="0 0 auto"
@@ -1693,6 +1701,7 @@ const AddProduct: React.FC = () => {
                 <VStack align="start" spacing={0} flex={1} cursor="pointer" onClick={() => {
                   setFormData(prev => ({ ...prev, location_type: 'current_location' }))
                   setCustomPickupLocationSet(false)
+                  detectLocation()
                 }}>
                   <Text fontWeight="600" fontSize="xs">✓ Use My Current Location</Text>
                   <Text fontSize="10px" color="gray.600">Buyers pick up from your detected location</Text>
