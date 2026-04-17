@@ -58,18 +58,17 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
 
-  // Status progression
-  const statusSteps: { status: DeliveryStatus; label: string; icon: any }[] = [
+  const getStatusSteps = (isBuyout: boolean): { status: DeliveryStatus; label: string; icon: any }[] => [
     { status: 'pending', label: 'Pending', icon: FaClock },
-    { status: 'claimed', label: 'Claimed', icon: FaTruck },
-    { status: 'picked_up', label: 'Picked Up', icon: FaTruck },
+    { status: 'claimed', label: 'Rider Assigned', icon: FaTruck },
+    { status: 'picked_up', label: isBuyout ? 'Seller Paid & Picked Up' : 'Picked Up', icon: FaTruck },
     { status: 'in_transit', label: 'In Transit', icon: FaTruck },
     { status: 'delivered', label: 'Delivered', icon: FaCheckCircle },
   ]
 
-  const getCurrentStepIndex = () => {
+  const getCurrentStepIndex = (steps: { status: DeliveryStatus; label: string; icon: any }[]) => {
     if (!delivery) return 0
-    const idx = statusSteps.findIndex((step) => step.status === delivery.status)
+    const idx = steps.findIndex((step) => step.status === delivery.status)
     return idx >= 0 ? idx : 0
   }
 
@@ -206,7 +205,8 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
     )
   }
 
-  const currentStep = getCurrentStepIndex()
+  const statusSteps = getStatusSteps(!!delivery.trade_id)
+  const currentStep = getCurrentStepIndex(statusSteps)
   const progress = ((currentStep + 1) / statusSteps.length) * 100
 
   return (

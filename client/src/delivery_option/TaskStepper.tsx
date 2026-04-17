@@ -28,13 +28,15 @@ import {
 import { CheckCircleIcon, WarningIcon, CloseIcon } from '@chakra-ui/icons'
 import { FaMapMarkerAlt, FaCamera, FaPhone, FaSync, FaRedo } from 'react-icons/fa'
 import { api } from '../services/api'
-import { Delivery } from '../types'
+import { Delivery, DeliveryStop, Trade } from '../types'
 
 // The status progression for a delivery
 const STATUS_PROGRESSION: Array<Delivery['status']> = ['claimed', 'picked_up', 'in_transit', 'delivered']
 
 interface Task {
   id: string
+  stopId?: number
+  stopType?: string
   type: 'pickup' | 'delivery'
   status: 'pending' | 'in-progress' | 'completed'
   recipientName: string
@@ -51,6 +53,8 @@ const TaskStepper: React.FC = () => {
   const toast = useToast()
 
   const [delivery, setDelivery] = useState<Delivery | null>(null)
+  const [stops, setStops] = useState<DeliveryStop[]>([])
+  const [trade, setTrade] = useState<Trade | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [photoCaptured, setPhotoCaptured] = useState(false)
@@ -63,11 +67,38 @@ const TaskStepper: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch delivery data from API
+  const fetchStops = async (deliveryId: string) => {
+    try {
+      const res = await api.get(`/api/deliveries/${deliveryId}/stops`)
+      setStops(res.data?.data || [])
+    } catch {
+      setStops([])
+    }
+  }
+
+  const fetchTrade = async (tradeId?: number) => {
+    if (!tradeId) {
+      setTrade(null)
+      return
+    }
+    try {
+      const res = await api.get(`/api/trades/${tradeId}`)
+      setTrade(res.data?.data || null)
+    } catch {
+      setTrade(null)
+    }
+  }
+
   const fetchDelivery = async () => {
     if (!batchId) return
     try {
       const response = await api.get(`/api/deliveries/${batchId}`)
-      setDelivery(response.data?.data || null)
+      const deliveryData = response.data?.data || null
+      setDelivery(deliveryData)
+      await Promise.all([
+        fetchStops(batchId),
+        fetchTrade(deliveryData?.trade_id),
+      ])
     } catch (error) {
       console.error('Failed to fetch delivery:', error)
       toast({
@@ -86,9 +117,47 @@ const TaskStepper: React.FC = () => {
     fetchDelivery()
   }, [batchId])
 
-  // Build task steps from the delivery data
+  // Build task steps from delivery stops when available
   const buildTasks = (): Task[] => {
     if (!delivery) return []
+
+    if (stops.length > 0) {
+      const ordered = [...stops].sort((a, b) => a.stop_number - b.stop_number)
+      const firstIncompleteIndex = ordered.findIndex((s) => s.status !== 'completed')
+
+      const labelForStop = (stopType?: string) => {
+        switch (stopType) {
+          case 'buyer_payment':
+            return 'Collect Buyer Payment'
+          case 'pickup':
+            return 'Pay Seller & Pick Up'
+          case 'delivery':
+            return 'Deliver to Buyer'
+          default:
+            return 'Stop'
+        }
+      }
+
+      return ordered.map((stop, index) => {
+        const isCompleted = stop.status === 'completed'
+        const isActive = !isCompleted && index === (firstIncompleteIndex === -1 ? 0 : firstIncompleteIndex)
+        return {
+          id: `stop-${stop.id}`,
+          stopId: stop.id,
+          stopType: stop.stop_type,
+          type: stop.stop_type === 'delivery' ? 'delivery' : 'pickup',
+          status: isCompleted ? 'completed' : isActive ? 'in-progress' : 'pending',
+          recipientName: stop.contact_name || labelForStop(stop.stop_type),
+          address: stop.address,
+          contact: stop.contact_phone || '',
+          itemCount: delivery.item_count,
+          notes: delivery.special_instructions || '',
+          timestamp: stop.completed_at
+            ? new Date(stop.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : '',
+        }
+      })
+    }
 
     const tasks: Task[] = [
       {
@@ -134,12 +203,54 @@ const TaskStepper: React.FC = () => {
   const totalTasks = tasks.length
   const allDone = delivery?.status === 'delivered'
 
+  const getTaskTitle = (task: Task) => {
+    switch (task.stopType) {
+      case 'buyer_payment':
+        return 'Collect Buyer Payment'
+      case 'pickup':
+        return 'Pay Seller & Pick Up'
+      case 'delivery':
+        return 'Deliver to Buyer'
+      default:
+        return task.type === 'pickup' ? 'Pickup' : 'Delivery'
+    }
+  }
+
+  const productCash = trade?.offered_cash_amount || 0
+  const deliveryFee = delivery?.total_cost || 0
+  const buyerTotal = productCash + deliveryFee
+
   // Get the next status in the progression
   const getNextStatus = (): Delivery['status'] | null => {
     if (!delivery) return null
     const currentIdx = STATUS_PROGRESSION.indexOf(delivery.status as any)
     if (currentIdx < 0 || currentIdx >= STATUS_PROGRESSION.length - 1) return null
     return STATUS_PROGRESSION[currentIdx + 1]
+  }
+
+  const getStopAction = (stop: DeliveryStop | null) => {
+    if (!stop) return null
+    if (stop.status === 'completed') return null
+
+    if (stop.status === 'pending') {
+      return { action: 'arrived', label: 'Arrived at Stop' }
+    }
+
+    if (stop.status === 'arrived' || stop.status === 'qr_scanned') {
+      if (stop.stop_type === 'buyer_payment') {
+        return { action: 'collect_fee', label: 'Collect Buyer Payment' }
+      }
+      if (stop.stop_type === 'pickup') {
+        return { action: 'collect_fee', label: 'Pay Seller & Pick Up' }
+      }
+      return { action: 'collect_fee', label: 'Confirm Drop-off' }
+    }
+
+    if (stop.status === 'fee_collected') {
+      return { action: 'complete', label: stop.stop_type === 'delivery' ? 'Complete Delivery' : 'Complete Stop' }
+    }
+
+    return null
   }
 
 
@@ -240,6 +351,67 @@ const TaskStepper: React.FC = () => {
   const handleCompleteTask = async () => {
     if (!delivery) return
 
+    const currentStop = currentTask?.stopId
+      ? stops.find((s) => s.id === currentTask.stopId) || null
+      : null
+    const stopAction = getStopAction(currentStop)
+
+    if (currentStop && stopAction) {
+      if (stopAction.action === 'complete' && currentStop.stop_type === 'delivery' && !photoCaptured && !capturedPhotoUrl) {
+        toast({
+          id: "taskstepper-missing-photo",
+          title: 'Photo Required',
+          description: 'Please capture a photo proof to complete delivery',
+          status: 'warning',
+          duration: 3000,
+        })
+        return
+      }
+
+      setUpdating(true)
+      try {
+        const payload: Record<string, any> = { action: stopAction.action }
+        if (stopAction.action === 'complete' && photoCaptured && capturedPhotoUrl) {
+          payload.photo_url = capturedPhotoUrl
+        }
+
+        await api.put(`/api/deliveries/stops/${currentStop.id}/status`, payload)
+
+        toast({
+          id: "taskstepper-stop-updated",
+          title: 'Stop Updated',
+          status: 'success',
+          duration: 2000,
+        })
+
+        setPhotoCaptured(false)
+        setCapturedPhotoUrl('')
+        setDeliveryNotes('')
+        if (photoPreview) {
+          URL.revokeObjectURL(photoPreview)
+          setPhotoPreview(null)
+        }
+
+        await fetchDelivery()
+
+        if (currentStop.stop_type === 'delivery' && stopAction.action === 'complete') {
+          setTimeout(() => navigate('/rider'), 2000)
+        }
+      } catch (error: any) {
+        const errMsg = error?.response?.data?.error || 'Failed to update stop'
+        toast({
+          id: "taskstepper-stop-error",
+          title: 'Error',
+          description: errMsg,
+          status: 'error',
+          duration: 3000,
+        })
+      } finally {
+        setUpdating(false)
+      }
+      return
+    }
+
     const nextStatus = getNextStatus()
     if (!nextStatus) {
       toast({
@@ -314,6 +486,11 @@ const TaskStepper: React.FC = () => {
 
   // Get the label for the complete button based on current status
   const getButtonLabel = (): string => {
+    const currentStop = currentTask?.stopId
+      ? stops.find((s) => s.id === currentTask.stopId) || null
+      : null
+    const stopAction = getStopAction(currentStop)
+    if (stopAction) return stopAction.label
     const nextStatus = getNextStatus()
     switch (nextStatus) {
       case 'picked_up': return 'Confirm Pickup'
@@ -412,7 +589,7 @@ const TaskStepper: React.FC = () => {
 
                     <VStack align="start" spacing={0} flex={1}>
                       <Text fontWeight="bold" fontSize="sm" color="gray.800">
-                        {task.type === 'pickup' ? 'Pickup' : 'Delivery'}
+                        {getTaskTitle(task)}
                       </Text>
                       <Text fontSize="xs" color="gray.600" noOfLines={1}>
                         {task.address}
@@ -446,7 +623,7 @@ const TaskStepper: React.FC = () => {
                       Current Step
                     </Badge>
                     <Text fontWeight="bold" fontSize="lg" color="gray.800">
-                      {currentTask.type === 'pickup' ? 'Pickup Items' : 'Deliver Items'}
+                      {getTaskTitle(currentTask)}
                     </Text>
                   </VStack>
                 </HStack>
@@ -476,6 +653,24 @@ const TaskStepper: React.FC = () => {
                       <Text fontSize="sm" color="gray.600">Notes:</Text>
                       <Text fontSize="sm" color="gray.700" fontStyle="italic">
                         "{currentTask.notes}"
+                      </Text>
+                    </HStack>
+                  )}
+                  {currentTask.stopType === 'buyer_payment' && (
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" color="gray.600">Collect:</Text>
+                      <Text fontWeight="bold" fontSize="sm" color="gray.800">
+                        {buyerTotal > 0
+                          ? `₱${buyerTotal.toFixed(2)} (₱${productCash.toFixed(2)} product + ₱${deliveryFee.toFixed(2)} fee)`
+                          : 'Payment amount not available'}
+                      </Text>
+                    </HStack>
+                  )}
+                  {currentTask.stopType === 'pickup' && productCash > 0 && (
+                    <HStack justify="space-between">
+                      <Text fontSize="sm" color="gray.600">Pay seller:</Text>
+                      <Text fontWeight="bold" fontSize="sm" color="gray.800">
+                        ₱{productCash.toFixed(2)}
                       </Text>
                     </HStack>
                   )}
@@ -626,7 +821,16 @@ const TaskStepper: React.FC = () => {
                   onClick={handleCompleteTask}
                   isLoading={updating}
                   loadingText="Updating..."
-                  isDisabled={currentTask.type === 'delivery' && getNextStatus() === 'delivered' && !photoCaptured}
+                  isDisabled={(() => {
+                    const currentStop = currentTask?.stopId
+                      ? stops.find((s) => s.id === currentTask.stopId) || null
+                      : null
+                    const stopAction = getStopAction(currentStop)
+                    if (stopAction && stopAction.action === 'complete' && currentStop?.stop_type === 'delivery') {
+                      return !photoCaptured
+                    }
+                    return currentTask.type === 'delivery' && getNextStatus() === 'delivered' && !photoCaptured
+                  })()}
                 >
                   {getButtonLabel()}
                 </Button>

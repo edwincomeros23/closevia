@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
     Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody,
-    VStack, HStack, Text, Image, Button, Spinner, Center, Box, Icon, Badge, useToast
+    VStack, HStack, Text, Image, Button, Spinner, Center, Box, Icon, Badge, useToast, Tooltip
 } from '@chakra-ui/react';
 import { FaExchangeAlt, FaRegLightbulb, FaHeart } from 'react-icons/fa';
 import { api } from '../services/api';
@@ -183,17 +183,23 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
                                                 <Text fontSize="xs" color="gray.500" noOfLines={1}>Owned by {s.seller_name}</Text>
                                             </HStack>
                                         </VStack>
-                                        <Button
-                                            size="sm"
-                                            colorScheme="pink"
-                                            leftIcon={<FaHeart />}
-                                            onClick={() => handleLike(s)}
-                                            isLoading={likingId === s.id}
-                                            loadingText="Liking"
-                                            isDisabled={likedIds.has(s.id)}
+                                        <Tooltip
+                                            label="Invite this item for Trade Match or Multi-Way loops."
+                                            hasArrow
+                                            placement="top"
                                         >
-                                            {likedIds.has(s.id) ? 'Liked' : 'Like'}
-                                        </Button>
+                                            <Button
+                                                size="sm"
+                                                colorScheme="pink"
+                                                leftIcon={<FaHeart />}
+                                                onClick={() => handleLike(s)}
+                                                isLoading={likingId === s.id}
+                                                loadingText="Inviting"
+                                                isDisabled={likedIds.has(s.id)}
+                                            >
+                                                {likedIds.has(s.id) ? 'Invited' : 'Invite'}
+                                            </Button>
+                                        </Tooltip>
                                     </HStack>
                                 </Box>
                             ))}
