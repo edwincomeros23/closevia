@@ -459,13 +459,13 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size={["sm", "md", "lg", "6xl"]} isCentered scrollBehavior="inside">
       <ModalOverlay backdropFilter="blur(4px)" />
-      <ModalContent bg={cardBg} minH="70vh" maxH="95vh" display="flex" flexDirection="column" w="full">
-        <ModalHeader borderBottomWidth="1px" borderColor={borderColor} py={2}>
+      <ModalContent bg={cardBg} minH="70vh" maxH="92vh" display="flex" flexDirection="column" w="full">
+        <ModalHeader py={2}>
           <VStack align="start" spacing={2} w="full">
             {/* Title Row with Status Badge and Action Buttons */}
             <HStack justify="space-between" w="full" align="flex-start">
               <VStack align="start" spacing={0.5} flex={1}>
-                <Heading size="sm">{sortedParticipants.length}-Way Trade Loop</Heading>
+                <Heading size="md">{sortedParticipants.length}-Way Trade Loop</Heading>
                 {timeLeft && (
                   <HStack spacing={2}>
                     <Icon
@@ -480,47 +480,43 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 )}
               </VStack>
 
-              {/* Top Right: Status Badge + Action Buttons */}
-              <HStack spacing={3} align="flex-start">
-                <Badge colorScheme={statusColorScheme(multiWayTrade.status)} px={3} py={1.5} borderRadius="md" fontSize="sm" fontWeight="semibold">
-                  {statusLabel(multiWayTrade.status).toUpperCase()}
-                </Badge>
-                <HStack spacing={2}>
-                  <Button
-                    size="sm"
-                    colorScheme="orange"
-                    variant="outline"
-                    leftIcon={<FaExclamationTriangle />}
-                  >
-                    Dispute
-                  </Button>
-                  <Button
-                    size="sm"
-                    colorScheme="red"
-                    variant="outline"
-                    leftIcon={<FaTimes />}
-                  >
-                    Cancel
-                  </Button>
-                </HStack>
-              </HStack>
+              {/* Top Right: Status Badge removed by request */}
             </HStack>
 
           </VStack>
           <ModalCloseButton mt={2} />
         </ModalHeader>
 
-        <ModalBody py={0} px={0} flex={1} display="flex" flexDirection="column" overflow="hidden">
+        <ModalBody py={0} px={0} flex={1} display="flex" flexDirection="column" overflow="hidden" minH={0}>
           <Tabs index={activeTab} onChange={setActiveTab} variant="soft-rounded" colorScheme="brand" display="flex" flexDirection="column" flex={1} overflow="hidden">
             <TabList px={4} pt={2} mb={0} borderBottomWidth="1px" borderColor={borderColor}>
               <Tab fontSize="sm" fontWeight="medium">Overview</Tab>
               <Tab fontSize="sm" fontWeight="medium">Chat</Tab>
             </TabList>
 
-            <TabPanels flex={1} minH={0} overflowY="auto">
+            <TabPanels flex={1} minH={0} overflow="hidden">
               {/* Overview Tab - Restructured Layout */}
-              <TabPanel py={3} px={[2, 4]} overflow="auto" minH="450px">
+              <TabPanel py={3} px={[2, 4]} overflowY="auto" minH={0} flex={1}>
                 <VStack spacing={4} align="stretch">
+                  {/* Overview Actions */}
+                  <HStack spacing={2} justify="flex-end">
+                    <Button
+                      size="sm"
+                      colorScheme="orange"
+                      variant="outline"
+                      leftIcon={<FaExclamationTriangle />}
+                    >
+                      Dispute
+                    </Button>
+                    <Button
+                      size="sm"
+                      colorScheme="red"
+                      variant="outline"
+                      leftIcon={<FaTimes />}
+                    >
+                      Cancel
+                    </Button>
+                  </HStack>
                   {/* CONFIRMATION PROGRESS */}
                   <Box>
                     <HStack justify="space-between" mb={3}>
@@ -934,17 +930,19 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
               </TabPanel>
 
         {/* Chat Tab */}
-        <TabPanel px={[2, 4]} py={3} overflow="auto" minH="450px">
-          <VStack spacing={2} align="stretch" h="full" display="flex" flexDirection="column">
+        <TabPanel px={[2, 4]} py={3} overflow="hidden" minH={0} flex={1}>
+          <VStack spacing={2} align="stretch" h="full" display="flex" flexDirection="column" minH={0}>
             {/* Messages Area */}
             <Box
               flex={1}
               overflowY="auto"
-              p={[2, 3]}
+              p={[2, 2.5]}
               bg={sectionBg}
               borderRadius="md"
               borderWidth="1px"
               borderColor={borderColor}
+              minH={0}
+              maxH={{ base: '54vh', md: '60vh' }}
             >
               {loadingMessages ? (
                 <Flex justify="center" align="center" h="full">
