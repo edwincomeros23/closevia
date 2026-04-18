@@ -168,6 +168,10 @@ const TaskStepper: React.FC = () => {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
+  // Detect if this is a buyout delivery (only cash-for-product, no buyer items)
+  const isBuyoutDelivery = trade && (trade.offered_cash_amount || 0) > 0 && 
+                          (!trade.items || !trade.items.some(i => i.offered_by === 'buyer'))
+
   // Build task steps from delivery stops when available
   const buildTasks = (): Task[] => {
     if (!delivery) return []
@@ -179,11 +183,15 @@ const TaskStepper: React.FC = () => {
       const labelForStop = (stopType?: string) => {
         switch (stopType) {
           case 'buyer_payment':
-            return 'Collect Buyer Payment'
+            return 'Collect Product Payment & Initial Fee'
           case 'pickup':
-            return 'Pay Seller, Collect Return Fee & Pick Up'
+            return isBuyoutDelivery 
+              ? 'Hand over Payment, Collect Item & Second Fee' 
+              : 'Pick up Item(s) at Seller'
           case 'delivery':
-            return 'Deliver to Buyer'
+            return isBuyoutDelivery 
+              ? 'Deliver Final Product to Buyer'
+              : 'Deliver Item(s) to Buyer'
           default:
             return 'Stop'
         }
@@ -260,20 +268,25 @@ const TaskStepper: React.FC = () => {
   const getTaskTitle = (task: Task) => {
     switch (task.stopType) {
       case 'buyer_payment':
-        return 'Collect Buyer Payment'
+        return 'Collect Product Payment & Initial Fee'
       case 'pickup':
-        return 'Pay Seller, Collect Return Fee & Pick Up'
+        return isBuyoutDelivery 
+          ? 'Hand over Payment, Collect Item & Second Fee' 
+          : 'Pick up Item(s) at Seller'
       case 'delivery':
-        return 'Deliver to Buyer'
+        return isBuyoutDelivery 
+          ? 'Deliver Final Product to Buyer'
+          : 'Deliver Item(s) to Buyer'
       default:
         return task.type === 'pickup' ? 'Pickup' : 'Delivery'
     }
   }
 
   const productCash = trade?.offered_cash_amount || 0
-  const deliveryFee = delivery?.total_cost || 0
-  const returnFee = deliveryFee
-  const buyerTotal = productCash + deliveryFee
+  const totalDeliveryCost = delivery?.total_cost || 0
+  const leg1Fee = totalDeliveryCost * 0.5
+  const leg2Fee = totalDeliveryCost * 0.5
+  const buyerTotal = productCash + leg1Fee
 
   const destinationLat = currentStop?.latitude
     ?? (currentTask?.type === 'pickup' ? delivery?.pickup_latitude : delivery?.delivery_latitude)
@@ -380,12 +393,12 @@ const TaskStepper: React.FC = () => {
 
     if (stop.status === 'arrived' || stop.status === 'qr_scanned') {
       if (stop.stop_type === 'buyer_payment') {
-        return { action: 'collect_fee', label: 'Collect Buyer Payment' }
+        return { action: 'collect_fee', label: 'Collect From Buyer' }
       }
       if (stop.stop_type === 'pickup') {
-        return { action: 'collect_fee', label: 'Pay Seller, Collect Return Fee & Pick Up' }
+        return { action: 'collect_fee', label: 'Confirm Handover & Collection' }
       }
-      return { action: 'collect_fee', label: 'Confirm Drop-off' }
+      return { action: 'collect_fee', label: 'Confirm Final Drop-off' }
     }
 
     if (stop.status === 'fee_collected') {
@@ -841,29 +854,36 @@ const TaskStepper: React.FC = () => {
                   )}
                     {currentTask.stopType === 'buyer_payment' && (
                     <HStack justify="space-between">
-                      <Text fontSize="sm" color="gray.600">Collect:</Text>
-                      <Text fontWeight="bold" fontSize="sm" color="gray.800">
-                        {buyerTotal > 0
-                          ? `₱${buyerTotal.toFixed(2)} (₱${productCash.toFixed(2)} product + ₱${deliveryFee.toFixed(2)} outbound fee)`
-                          : 'Payment amount not available'}
+                      <VStack align="start" spacing={1}>
+                        <Text fontSize="sm" color="gray.600">Collect from Buyer:</Text>
+                        <Text fontSize="2xs" color="blue.600">Initial Fee + Product Payment</Text>
+                      </VStack>
+                      <Text fontWeight="bold" fontSize="md" color="green.600">
+                        ₱{buyerTotal.toLocaleString()}
                       </Text>
                     </HStack>
                   )}
-                  {currentTask.stopType === 'pickup' && productCash > 0 && (
-                    <HStack justify="space-between">
-                      <Text fontSize="sm" color="gray.600">Pay seller:</Text>
-                      <Text fontWeight="bold" fontSize="sm" color="gray.800">
-                        ₱{productCash.toFixed(2)}
-                      </Text>
-                    </HStack>
-                  )}
-                  {currentTask.stopType === 'pickup' && returnFee > 0 && (
-                    <HStack justify="space-between">
-                      <Text fontSize="sm" color="gray.600">Collect return fee:</Text>
-                      <Text fontWeight="bold" fontSize="sm" color="gray.800">
-                        ₱{returnFee.toFixed(2)}
-                      </Text>
-                    </HStack>
+                  {currentTask.stopType === 'pickup' && (
+                    <VStack align="stretch" spacing={2}>
+                      <HStack justify="space-between">
+                        <VStack align="start" spacing={0}>
+                          <Text fontSize="sm" color="red.600">Hand over Cash:</Text>
+                          <Text fontSize="2xs" color="gray.500">(To the seller)</Text>
+                        </VStack>
+                        <Text fontWeight="bold" fontSize="md" color="red.600">
+                          - ₱{productCash.toLocaleString()}
+                        </Text>
+                      </HStack>
+                      <HStack justify="space-between">
+                        <VStack align="start" spacing={0}>
+                          <Text fontSize="sm" color="gray.600">Collect Second Fee:</Text>
+                          <Text fontSize="2xs" color="blue.600">(From the seller)</Text>
+                        </VStack>
+                        <Text fontWeight="bold" fontSize="md" color="green.600">
+                          + ₱{leg2Fee.toLocaleString()}
+                        </Text>
+                      </HStack>
+                    </VStack>
                   )}
                 </VStack>
 
