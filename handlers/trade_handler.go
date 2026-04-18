@@ -682,9 +682,9 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	log.Printf("Executing single-step trade insert for trade from %d to %d (seller)", userID, sellerID)
 	res, err := tx.Exec(`
 		INSERT INTO trades 
-		(buyer_id, seller_id, target_product_id, status, trade_option, meeting_type, delivery_address, message, offered_cash_amount, payment_method) 
-		VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
-		userID, sellerID, payload.TargetProductID, payload.TradeOption, payload.MeetingType, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod)
+		(buyer_id, seller_id, target_product_id, status, trade_option, meeting_type, delivery_address, delivery_type, delivery_instructions, message, offered_cash_amount, payment_method) 
+		VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, sellerID, payload.TargetProductID, payload.TradeOption, payload.MeetingType, payload.DeliveryAddress, payload.DeliveryType, payload.DeliveryInstructions, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod)
 
 	if err != nil {
 		log.Printf("Trade creation failed: %v", err)

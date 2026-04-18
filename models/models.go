@@ -433,14 +433,16 @@ type ReviewSummary struct {
 
 // TradeCreate represents payload to create a trade
 type TradeCreate struct {
-	TargetProductID   int      `json:"target_product_id" validate:"required"`
-	OfferedProductIDs []int    `json:"offered_product_ids" validate:"omitempty,dive,gt=0"`
-	Message           string   `json:"message"`
-	OfferedCashAmount *float64 `json:"offered_cash_amount,omitempty"`
-	TradeOption       string   `json:"trade_option" validate:"required,oneof=meetup delivery"`
-	MeetingType       string   `json:"meeting_type" validate:"omitempty,oneof=meetup pickup"`
-	DeliveryAddress   string   `json:"delivery_address,omitempty"`
-	PaymentMethod     string   `json:"payment_method,omitempty" validate:"omitempty,oneof=cod upfront"`
+	TargetProductID      int      `json:"target_product_id" validate:"required"`
+	OfferedProductIDs    []int    `json:"offered_product_ids" validate:"omitempty,dive,gt=0"`
+	Message              string   `json:"message"`
+	OfferedCashAmount    *float64 `json:"offered_cash_amount,omitempty"`
+	TradeOption          string   `json:"trade_option" validate:"required,oneof=meetup delivery"`
+	MeetingType          string   `json:"meeting_type" validate:"omitempty,oneof=meetup pickup"`
+	DeliveryAddress      string   `json:"delivery_address,omitempty"`
+	DeliveryType         string   `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express"`
+	DeliveryInstructions string   `json:"delivery_instructions,omitempty"`
+	PaymentMethod        string   `json:"payment_method,omitempty" validate:"omitempty,oneof=cod upfront"`
 }
 
 // TradeAction represents accept/decline/counter actions
