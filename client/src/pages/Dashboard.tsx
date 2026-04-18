@@ -1625,7 +1625,7 @@ const Dashboard: React.FC = () => {
   // Do NOT show 'user3_accepted' status - that means only User 3 has responded
   const ongoingMultiWayTrades = useMemo(() => {
     return (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'pending_user3' || t?.status === 'user3_accepted' || t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed'
+      t?.status === 'pending_user3' || t?.status === 'user3_accepted' || t?.status === 'active' || t?.status === 'multiway_active'
     )
   }, [multiWayTrades])
 

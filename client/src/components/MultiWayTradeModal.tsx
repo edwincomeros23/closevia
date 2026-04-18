@@ -72,11 +72,12 @@ import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 're
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { useNavigate } from 'react-router-dom'
-import { MultiWayTrade, MultiWayTradeParticipant } from '../types'
+import { MultiWayTrade, MultiWayTradeParticipant, Trade } from '../types'
 import { getProductUrl } from '../utils/productUtils'
 import { getImageUrl } from '../utils/imageUtils'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import TradeCompletionModal from './TradeCompletionModal'
 import {
   acceptMultiWayTrade,
   declineMultiWayTrade,
@@ -264,6 +265,9 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   >(null)
   const [activeTab, setActiveTab] = useState(0)
   const [timeLeft, setTimeLeft] = useState<string>('')
+  const [reviewTrade, setReviewTrade] = useState<Trade | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [loadingReviewTrade, setLoadingReviewTrade] = useState(false)
 
   // Meetup UI state
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
@@ -524,6 +528,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const completedLegs = multiWayTrade.edges.filter((e) => e.status === 'completed').length
   const totalLegs = multiWayTrade.edges.length
   const healthPct = totalLegs > 0 ? Math.round((completedLegs / totalLegs) * 100) : 0
+  const isTwoWayLoop = sortedParticipants.length === 2
+  const reviewTradeId = useMemo(() => {
+    const edgeTradeId = multiWayTrade.edges.find((e) => e.trade_id)?.trade_id
+    const participantTradeId = sortedParticipants.find((p) => p.trade_id)?.trade_id
+    return edgeTradeId || participantTradeId || null
+  }, [multiWayTrade.edges, sortedParticipants])
 
   // Show Execute button only when the overall trade is active AND every participant has accepted.
   const canExecute =
@@ -637,6 +647,41 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     } finally {
       setLoading(false)
       setSelectedAction(null)
+    }
+  }
+
+  const handleLeaveReview = async () => {
+    try {
+      setLoadingReviewTrade(true)
+      let tradeId = reviewTradeId
+      if (!tradeId) {
+        const resolverRes = await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/review-trade`)
+        tradeId = resolverRes.data?.data?.trade_id || null
+      }
+
+      if (!tradeId) {
+        toast({
+          id: 'mwt-review-missing',
+          title: 'Review unavailable',
+          description: 'No trade was found for this loop yet.',
+          status: 'warning',
+        })
+        return
+      }
+
+      const res = await api.get(`/api/trades/${tradeId}`)
+      const tradePayload = res.data?.data?.trade || res.data?.data || res.data
+      setReviewTrade(tradePayload || null)
+      setReviewOpen(true)
+    } catch (error: any) {
+      toast({
+        id: 'mwt-review-load',
+        title: 'Unable to load trade',
+        description: error?.response?.data?.error || 'Failed to open review',
+        status: 'error',
+      })
+    } finally {
+      setLoadingReviewTrade(false)
     }
   }
 
@@ -2651,181 +2696,37 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 Accept Trade
               </Button>
             </>
-          ) : null}
+          ) : (
+            <>
+              {canExecute && (
+                <Button
+                  flex={1}
+                  colorScheme="brand"
+                  isDisabled={loading || (isTwoWayLoop && loadingReviewTrade)}
+                  isLoading={selectedAction === 'execute' && loading}
+                  onClick={isTwoWayLoop ? handleLeaveReview : handleExecute}
+                  leftIcon={isTwoWayLoop ? <FaStar /> : <FaHandshake />}
+                >
+                  {isTwoWayLoop ? 'Leave Review' : 'Execute Trade'}
+                </Button>
+              )}
+            </>
+          )}
         </HStack>
       </VStack>
     </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-      <Modal
-        isOpen={isReviewModalOpen}
-        onClose={() => setIsReviewModalOpen(false)}
-        size={["xs", "sm", "md"]}
-        isCentered
-        scrollBehavior="inside"
-      >
-        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <ModalContent bg={cardBg} borderRadius={["md", "lg", "xl"]} boxShadow="xl" maxW={["90vw", "500px"]} mx={[2, 4]}>
-          <ModalHeader>
-            <HStack spacing={2} fontSize={["sm", "md"]}>
-              <Icon as={FaStar} color="yellow.400" />
-              <Text>Trade Review & Completion</Text>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody py={[4, 6]} px={[3, 6]}>
-            <VStack spacing={4} align="stretch">
-              <SimpleGrid columns={2} spacing={3}>
-                <Box
-                  p={3}
-                  bg={reviewSubmitted ? 'green.50' : 'gray.50'}
-                  borderRadius="md"
-                  borderWidth="1px"
-                  borderColor={borderColor}
-                >
-                  <VStack spacing={2}>
-                    <HStack justify="space-between" w="full">
-                      <Text fontWeight="semibold" fontSize="sm">Your Review</Text>
-                      <Icon as={reviewSubmitted ? FaCheck : FaClock} color={reviewSubmitted ? 'green.500' : 'gray.400'} boxSize={4} />
-                    </HStack>
-                    <Text fontSize="xs" color="gray.600" w="full">
-                      {reviewSubmitted ? 'Submitted' : 'Pending'}
-                    </Text>
-                  </VStack>
-                </Box>
-
-                <Box
-                  p={3}
-                  bg="gray.50"
-                  borderRadius="md"
-                  borderWidth="1px"
-                  borderColor={borderColor}
-                >
-                  <VStack spacing={2}>
-                    <HStack justify="space-between" w="full">
-                      <Text fontWeight="semibold" fontSize="sm">Other Party Review</Text>
-                      <Icon as={FaClock} color="gray.400" boxSize={4} />
-                    </HStack>
-                    <Text fontSize="xs" color="gray.600" w="full">
-                      Pending
-                    </Text>
-                  </VStack>
-                </Box>
-              </SimpleGrid>
-
-              {reviewSubmitted && (
-                <Box
-                  p={4}
-                  bg="blue.50"
-                  borderRadius="md"
-                  borderWidth="1px"
-                  borderColor="blue.200"
-                  textAlign="center"
-                >
-                  <VStack spacing={2}>
-                    <Icon as={FaCheckCircle} color="blue.500" boxSize={6} />
-                    <Text fontWeight="semibold" color="blue.800">
-                      Your review has been submitted
-                    </Text>
-                    <Text fontSize="sm" color="blue.700">
-                      Waiting for the other party to complete their review...
-                    </Text>
-                  </VStack>
-                </Box>
-              )}
-
-              <FormControl isRequired>
-                <FormLabel fontSize="xs" fontWeight="semibold">Rating</FormLabel>
-                <HStack spacing={2}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Icon
-                      key={`loop-review-star-${star}`}
-                      as={FaStar}
-                      color={star <= rating ? 'yellow.400' : 'gray.300'}
-                      cursor={reviewSubmitted ? 'default' : 'pointer'}
-                      onClick={reviewSubmitted ? undefined : () => setRating(star)}
-                      boxSize={6}
-                      transition="all 0.1s"
-                      _hover={reviewSubmitted ? undefined : { transform: 'scale(1.1)' }}
-                    />
-                  ))}
-                  <Text fontSize="xs" fontWeight="semibold" ml={2}>
-                    {rating}/5
-                  </Text>
-                </HStack>
-              </FormControl>
-
-              <FormControl isRequired>
-                <FormLabel fontSize="xs" fontWeight="semibold">Feedback</FormLabel>
-                <Textarea
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  placeholder="Share your experience with this trade..."
-                  rows={3}
-                  fontSize="sm"
-                  borderColor={borderColor}
-                  _focus={{ borderColor: 'brand.500', boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)' }}
-                  isDisabled={reviewSubmitted}
-                />
-                <Text fontSize="xs" color="gray.500" mt={1}>
-                  {feedback.length} characters
-                </Text>
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize="xs" fontWeight="semibold">
-                  Proof Image {proofRequired ? '(Required)' : '(Optional)'}
-                </FormLabel>
-                {proofImage ? (
-                  <VStack spacing={2} align="stretch">
-                    <Box position="relative" w="full" maxW="250px" bg="gray.50" borderRadius="md" overflow="hidden" aspectRatio="4/3" display="flex" alignItems="center" justifyContent="center">
-                      <Image
-                        src={proofImage}
-                        alt="Proof"
-                        w="100%"
-                        h="100%"
-                        objectFit="contain"
-                        borderRadius="md"
-                      />
-                    </Box>
-                    <Button size="xs" variant="outline" onClick={() => { setProofImage(null); setProofFile(null) }}>
-                      Remove Image
-                    </Button>
-                  </VStack>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    leftIcon={<FaCamera />}
-                    onClick={() => document.getElementById('loop-proof-upload')?.click()}
-                    isDisabled={reviewSubmitted}
-                  >
-                    Upload Proof Image
-                  </Button>
-                )}
-                <input
-                  id="loop-proof-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleProofUpload}
-                  style={{ display: 'none' }}
-                />
-              </FormControl>
-
-              <Button
-                colorScheme="green"
-                onClick={submitReview}
-                isLoading={submittingReview}
-                leftIcon={<FaStar />}
-                isDisabled={reviewSubmitted}
-              >
-                Review & Complete Trade
-              </Button>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+      </ModalContent>
+    </Modal>
+    <TradeCompletionModal
+      trade={reviewTrade}
+      isOpen={reviewOpen}
+      onClose={() => setReviewOpen(false)}
+      onCompleted={() => {
+        onTradeCompleted?.()
+        onClose()
+      }}
+      currentUserId={viewerUserId}
+    />
     </>
   )
 }

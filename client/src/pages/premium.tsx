@@ -928,7 +928,6 @@ const Premium: React.FC = () => {
                   colorScheme="whiteAlpha" size="lg" variant="solid"
                   onClick={() => handleUpgrade('plus')}
                   isLoading={upgrading === 'plus'}
-                  isDisabled={currentTier !== 'free'}
                 >
                   Start with Plus
                 </Button>
@@ -936,7 +935,6 @@ const Premium: React.FC = () => {
                   colorScheme="whiteAlpha" size="lg" variant="outline"
                   onClick={() => handleUpgrade('pro')}
                   isLoading={upgrading === 'pro'}
-                  isDisabled={currentTier === 'pro'}
                 >
                   Go Pro
                 </Button>

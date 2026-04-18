@@ -5823,6 +5823,111 @@ func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "Trade loop already confirmed"})
 }
 
+// GetOrCreateLoopReviewTrade resolves a trade for a confirmed 2-way like loop.
+// If no trade exists yet, it creates one so users can leave reviews.
+func (h *TradeHandler) GetOrCreateLoopReviewTrade(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	loopID := c.Params("id")
+	loopNumericID, ok := parseLikeLoopID(loopID)
+	if !ok {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID"})
+	}
+
+	var loopStatus string
+	if err := h.db.QueryRow("SELECT status FROM trade_like_loops WHERE id = ?", loopNumericID).Scan(&loopStatus); err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade loop not found"})
+	}
+	if loopStatus != "confirmed" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Trade loop is not confirmed yet"})
+	}
+
+	rows, err := h.db.Query(`
+		SELECT user_id, offered_product_id, wanted_product_id, position_in_loop
+		FROM trade_like_loop_participants
+		WHERE loop_id = ?
+		ORDER BY position_in_loop ASC
+	`, loopNumericID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load loop participants"})
+	}
+	defer rows.Close()
+
+	type loopParticipant struct {
+		userID         int
+		offeredProduct int
+		wantedProduct  int
+		position       int
+	}
+	participants := []loopParticipant{}
+	for rows.Next() {
+		var p loopParticipant
+		if scanErr := rows.Scan(&p.userID, &p.offeredProduct, &p.wantedProduct, &p.position); scanErr == nil {
+			participants = append(participants, p)
+		}
+	}
+
+	if len(participants) != 2 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Review trade is only available for 2-way loops"})
+	}
+
+	isParticipant := participants[0].userID == userID || participants[1].userID == userID
+	if !isParticipant {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this trade loop"})
+	}
+
+	buyer := participants[0]
+	seller := participants[1]
+	targetProductID := buyer.wantedProduct
+	offeredProductID := buyer.offeredProduct
+
+	if targetProductID == 0 || offeredProductID == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Loop products are incomplete"})
+	}
+
+	var existingTradeID int
+	if err := h.db.QueryRow(`
+		SELECT id FROM trades
+		WHERE buyer_id = ? AND seller_id = ? AND target_product_id = ?
+		ORDER BY id DESC
+		LIMIT 1
+	`, buyer.userID, seller.userID, targetProductID).Scan(&existingTradeID); err == nil && existingTradeID > 0 {
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"trade_id": existingTradeID}})
+	}
+
+	tx, err := h.db.Begin()
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`
+		INSERT INTO trades (buyer_id, seller_id, target_product_id, status, message, offered_cash_amount)
+		VALUES (?, ?, ?, 'active', ?, NULL)
+	`, buyer.userID, seller.userID, targetProductID, "Trade loop review")
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create review trade"})
+	}
+
+	tradeID, err := res.LastInsertId()
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to finalize review trade"})
+	}
+
+	if _, err := tx.Exec("INSERT INTO trade_items (trade_id, product_id, offered_by) VALUES (?, ?, 'buyer')", tradeID, offeredProductID); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to attach trade items"})
+	}
+
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to save review trade"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"trade_id": tradeID}})
+}
+
 // GetTradeLoopNotifications returns notifications specifically related to trade loops
 func (h *TradeHandler) GetTradeLoopNotifications(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
