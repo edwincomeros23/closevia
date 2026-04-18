@@ -64,16 +64,18 @@ import {
   FaCalendarAlt,
   FaStore,
   FaCamera,
+  FaStar,
 } from 'react-icons/fa'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { useNavigate } from 'react-router-dom'
-import { MultiWayTrade, MultiWayTradeParticipant } from '../types'
+import { MultiWayTrade, MultiWayTradeParticipant, Trade } from '../types'
 import { getProductUrl } from '../utils/productUtils'
 import { getImageUrl } from '../utils/imageUtils'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import TradeCompletionModal from './TradeCompletionModal'
 import {
   acceptMultiWayTrade,
   declineMultiWayTrade,
@@ -252,6 +254,9 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   >(null)
   const [activeTab, setActiveTab] = useState(0)
   const [timeLeft, setTimeLeft] = useState<string>('')
+  const [reviewTrade, setReviewTrade] = useState<Trade | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [loadingReviewTrade, setLoadingReviewTrade] = useState(false)
 
   // Meetup UI state
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
@@ -501,6 +506,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const completedLegs = multiWayTrade.edges.filter((e) => e.status === 'completed').length
   const totalLegs = multiWayTrade.edges.length
   const healthPct = totalLegs > 0 ? Math.round((completedLegs / totalLegs) * 100) : 0
+  const isTwoWayLoop = sortedParticipants.length === 2
+  const reviewTradeId = useMemo(() => {
+    const edgeTradeId = multiWayTrade.edges.find((e) => e.trade_id)?.trade_id
+    const participantTradeId = sortedParticipants.find((p) => p.trade_id)?.trade_id
+    return edgeTradeId || participantTradeId || null
+  }, [multiWayTrade.edges, sortedParticipants])
 
   // Show Execute button only when the overall trade is active AND every participant has accepted.
   const canExecute =
@@ -614,6 +625,41 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     } finally {
       setLoading(false)
       setSelectedAction(null)
+    }
+  }
+
+  const handleLeaveReview = async () => {
+    try {
+      setLoadingReviewTrade(true)
+      let tradeId = reviewTradeId
+      if (!tradeId) {
+        const resolverRes = await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/review-trade`)
+        tradeId = resolverRes.data?.data?.trade_id || null
+      }
+
+      if (!tradeId) {
+        toast({
+          id: 'mwt-review-missing',
+          title: 'Review unavailable',
+          description: 'No trade was found for this loop yet.',
+          status: 'warning',
+        })
+        return
+      }
+
+      const res = await api.get(`/api/trades/${tradeId}`)
+      const tradePayload = res.data?.data?.trade || res.data?.data || res.data
+      setReviewTrade(tradePayload || null)
+      setReviewOpen(true)
+    } catch (error: any) {
+      toast({
+        id: 'mwt-review-load',
+        title: 'Unable to load trade',
+        description: error?.response?.data?.error || 'Failed to open review',
+        status: 'error',
+      })
+    } finally {
+      setLoadingReviewTrade(false)
     }
   }
 
@@ -2505,12 +2551,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 <Button
                   flex={1}
                   colorScheme="brand"
-                  isDisabled={loading}
+                  isDisabled={loading || (isTwoWayLoop && loadingReviewTrade)}
                   isLoading={selectedAction === 'execute' && loading}
-                  onClick={handleExecute}
-                  leftIcon={<FaHandshake />}
+                  onClick={isTwoWayLoop ? handleLeaveReview : handleExecute}
+                  leftIcon={isTwoWayLoop ? <FaStar /> : <FaHandshake />}
                 >
-                  Execute Trade
+                  {isTwoWayLoop ? 'Leave Review' : 'Execute Trade'}
                 </Button>
               )}
             </>
@@ -2518,6 +2564,16 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
         </HStack>
       </VStack>
     </ModalFooter>
+    <TradeCompletionModal
+      trade={reviewTrade}
+      isOpen={reviewOpen}
+      onClose={() => setReviewOpen(false)}
+      onCompleted={() => {
+        onTradeCompleted?.()
+        onClose()
+      }}
+      currentUserId={viewerUserId}
+    />
       </ModalContent>
     </Modal>
   )

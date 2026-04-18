@@ -333,7 +333,7 @@ const Offers: React.FC = () => {
   const incomingSorted = useMemo(() => sortList(incoming), [incoming, sort])
   const outgoingSorted = useMemo(() => sortList(outgoing), [outgoing, sort])
   // statuses that should be treated as "history"
-  const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed']
+  const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed', 'awaiting_other_party']
   const archiveStatuses = ['expired']
 
   // visible lists for the two main tabs (exclude history and active/accepted items)
