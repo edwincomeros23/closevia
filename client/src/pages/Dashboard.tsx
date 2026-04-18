@@ -457,7 +457,7 @@ const Dashboard: React.FC = () => {
   const planBenefits = {
     free: ['10 active listings', 'Standard delivery', 'Standard matches'],
     plus: ['30 active listings', '3 boosts', '10% delivery discount', 'Priority matches'],
-    pro: ['Unlimited listings', '10 boosts', '20% delivery discount', 'Top match priority', 'Multi-way trading'],
+    pro: ['Unlimited listings', '10 boosts', '20% delivery discount', 'Top match priority'],
   }
   const activePlan = planMeta[currentTier] || planMeta.free
   const activeBenefits = planBenefits[currentTier] || planBenefits.free
@@ -2254,7 +2254,7 @@ const Dashboard: React.FC = () => {
               <HStack spacing={2} flexShrink={0}>
                 {product.premium && (
                   <Badge colorScheme="yellow" variant="solid" fontSize="xs">
-                    Premium
+                    Boosted
                   </Badge>
                 )}
                 {shouldShowActions && (
@@ -3345,7 +3345,13 @@ const Dashboard: React.FC = () => {
 
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
-      <Container maxW="container.xl" py={{ base: 3, md: 8 }} px={{ base: 3, md: 6 }}>
+      <Container
+        maxW="container.xl"
+        py={{ base: 3, md: 8 }}
+        px={{ base: 1, md: 1 }}
+        mr={2}
+        ml="30px"
+      >
         <VStack spacing={{ base: 3, md: 6 }} align="stretch">
           {/* Sticky header: search bar + view toggle stay visible when scrolling long product lists */}
           <Box

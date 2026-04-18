@@ -1044,37 +1044,6 @@ const Home: React.FC = () => {
                 onClick={() => setShowFilters(!showFilters)}
               />
 
-              {/* Notifications button */}
-              {user && (
-                <Box position="relative">
-                  <IconButton
-                    aria-label="Notifications"
-                    icon={<BellIcon />}
-                    size="lg"
-                    variant="ghost"
-                    onClick={() => navigate('/notifications')}
-                  />
-                  {offerCount > 0 && (
-                    <Badge
-                      position="absolute"
-                      top="-1"
-                      right="-1"
-                      colorScheme="red"
-                      borderRadius="full"
-                      minW="20px"
-                      h="20px"
-                      display="flex"
-                      alignItems="center"
-                      justifyContent="center"
-                      fontSize="xs"
-                      px={1}
-                    >
-                      {offerCount > 99 ? '99+' : offerCount}
-                    </Badge>
-                  )}
-                </Box>
-              )}
-
               {/* Profile button */}
               {user && (
               <Popover placement="bottom-end" trigger="hover">

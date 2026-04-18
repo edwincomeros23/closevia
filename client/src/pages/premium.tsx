@@ -333,7 +333,6 @@ const Premium: React.FC = () => {
     ],
     insights: [
       { text: 'See total profile views only', icon: FaEye },
-      { text: 'AI price range shown', icon: FaChartLine },
     ],
   }
 
@@ -343,7 +342,6 @@ const Premium: React.FC = () => {
       { text: '3 boosted listings — pinned higher in the feed', icon: FaRocket, bold: true },
     ],
     trading: [
-      { text: 'Express delivery access', icon: FaTruck, bold: true },
       { text: '10% off all delivery fees', icon: FaPercentage, bold: true },
       { text: 'Priority matches — good trades reach you first', icon: FaBolt, bold: true },
       { text: 'Trade dispute reviewed first', icon: FaShieldAlt, bold: true },
@@ -361,23 +359,17 @@ const Premium: React.FC = () => {
     listings: [
       { text: 'Unlimited listings', icon: FaInfinity, bold: true },
       { text: '10 boosted listings — always pinned', icon: FaRocket, bold: true },
-      { text: 'Bundle listing — group items into one trade', icon: FaBoxes, bold: true },
     ],
     trading: [
       { text: 'Express delivery access', icon: FaTruck, bold: true },
       { text: '20% off all delivery fees', icon: FaPercentage, bold: true },
-      { text: 'First to see new nearby items', icon: FaSearch, bold: true },
-      { text: 'Top of match queue — shown first to matching buyers', icon: FaBolt, bold: true },
       { text: 'Trade dispute reviewed first', icon: FaShieldAlt, bold: true },
-      { text: 'Multi-way trading — complex trade chains', icon: FaLink, bold: true },
     ],
     insights: [
       { text: 'Full trade analytics — volume, best items, trends', icon: FaChartLine, bold: true },
       { text: 'AI price confidence + market data', icon: FaStar, bold: true },
     ],
     profile: [
-      { text: 'Store page — your own shop link on Alegre', icon: FaStore, bold: true },
-      { text: 'Featured on homepage banner rotation', icon: FaImage, bold: true },
       { text: 'Verified Pro badge on all listings', icon: FaUserShield, bold: true },
       { text: 'Priority support', icon: FaHeadset, bold: true },
     ],
@@ -386,18 +378,11 @@ const Premium: React.FC = () => {
   const comparisonFeatures = [
     { feature: 'Active Listings', free: '10', plus: '30', pro: 'Unlimited' },
     { feature: 'Boosted Listings', free: '—', plus: '3', pro: '10 always pinned' },
-    { feature: 'Bundle Listings', free: '—', plus: '—', pro: '✓' },
-    { feature: 'Relist in One Tap', free: '—', plus: '✓', pro: '✓' },
     { feature: 'Express Delivery', free: '—', plus: '✓', pro: '✓' },
     { feature: 'Delivery Fee Discount', free: '—', plus: '10%', pro: '20%' },
     { feature: 'Priority Matches', free: '—', plus: '✓', pro: 'Top of queue' },
-    { feature: 'Multi-Way Trading', free: '✓', plus: '✓', pro: '✓' },
     { feature: 'Trade Dispute Priority', free: '—', plus: '✓', pro: '✓' },
-    { feature: 'Profile Views', free: 'Total only', plus: 'Usernames', pro: 'Full history' },
-    { feature: 'Trade Analytics', free: '—', plus: 'Popularity', pro: 'Full analytics' },
     { feature: 'AI Price Confidence', free: 'Range only', plus: 'Data-backed', pro: '+ market data' },
-    { feature: 'Store Page', free: '—', plus: '—', pro: '✓' },
-    { feature: 'Homepage Feature', free: '—', plus: '—', pro: '✓' },
     { feature: 'Badge', free: '—', plus: 'Plus badge', pro: 'Verified Pro' },
     { feature: 'Priority Support', free: '—', plus: '—', pro: '✓' },
   ]
@@ -413,7 +398,7 @@ const Premium: React.FC = () => {
     },
     {
       question: 'What is the Store Page (Alegre)?',
-      answer: 'Pro members get their own Alegre store page — a personalized shop link where all your listings are showcased. Great for power sellers who want to build a brand on the platform.'
+      answer: 'Pro members get their own Alegre store page — a personalized shop link where all your listings are showcased. Great for power traders who want to build a brand on the platform.'
     },
     {
       question: 'Do WMSU students get premium for free?',
@@ -709,206 +694,16 @@ const Premium: React.FC = () => {
         </VStack>
       )}
 
-      {/* Your Unlocked Features - 4 Column Grid */}
-      <VStack align="start" spacing={4}>
-        <Heading size="md">Your Unlocked Features</Heading>
-        <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4} w="100%">
-          {/* Listings Card */}
-          <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} h="100%">
-            <CardBody>
-              <VStack spacing={4} align="start" h="100%">
-                <HStack spacing={2}>
-                  <Icon as={FaBoxes} color={currentTier === 'pro' ? 'purple.500' : 'blue.500'} fontSize="xl" />
-                  <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color={mutedText}>Listings</Text>
-                </HStack>
-                <List spacing={2} flex={1}>
-                  {(currentTier === 'pro' ? proFeatures.listings : plusFeatures.listings).map((f, i) => (
-                    <ListItem key={i} display="flex" alignItems="flex-start" fontSize="sm">
-                      <ListIcon as={f.icon} color={currentTier === 'pro' ? 'purple.400' : 'blue.400'} mt={1} />
-                      <Text>{f.text}</Text>
-                    </ListItem>
-                  ))}
-                </List>
-              </VStack>
-            </CardBody>
-          </Card>
-
-          {/* Trading Card */}
-          <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} h="100%">
-            <CardBody>
-              <VStack spacing={4} align="start" h="100%">
-                <HStack spacing={2}>
-                  <Icon as={FaHandshake} color={currentTier === 'pro' ? 'purple.500' : 'blue.500'} fontSize="xl" />
-                  <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color={mutedText}>Trading</Text>
-                </HStack>
-                <List spacing={2} flex={1}>
-                  {(currentTier === 'pro' ? proFeatures.trading : plusFeatures.trading).map((f, i) => (
-                    <ListItem key={i} display="flex" alignItems="flex-start" fontSize="sm">
-                      <ListIcon as={f.icon} color={currentTier === 'pro' ? 'purple.400' : 'blue.400'} mt={1} />
-                      <Text>{f.text}</Text>
-                    </ListItem>
-                  ))}
-                </List>
-              </VStack>
-            </CardBody>
-          </Card>
-
-          {/* Insights Card */}
-          <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} h="100%">
-            <CardBody>
-              <VStack spacing={4} align="start" h="100%">
-                <HStack spacing={2}>
-                  <Icon as={FaChartLine} color={currentTier === 'pro' ? 'purple.500' : 'blue.500'} fontSize="xl" />
-                  <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color={mutedText}>Insights</Text>
-                </HStack>
-                <List spacing={2} flex={1}>
-                  {(currentTier === 'pro' ? proFeatures.insights : plusFeatures.insights).map((f, i) => (
-                    <ListItem key={i} display="flex" alignItems="flex-start" fontSize="sm">
-                      <ListIcon as={f.icon} color={currentTier === 'pro' ? 'purple.400' : 'blue.400'} mt={1} />
-                      <Text>{f.text}</Text>
-                    </ListItem>
-                  ))}
-                </List>
-              </VStack>
-            </CardBody>
-          </Card>
-
-          {/* Profile Card */}
-          <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} h="100%">
-            <CardBody>
-              <VStack spacing={4} align="start" h="100%">
-                <HStack spacing={2}>
-                  <Icon as={FaUserShield} color={currentTier === 'pro' ? 'purple.500' : 'blue.500'} fontSize="xl" />
-                  <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color={mutedText}>Profile</Text>
-                </HStack>
-                <List spacing={2} flex={1}>
-                  {(currentTier === 'pro' ? proFeatures.profile : plusFeatures.profile).map((f, i) => (
-                    <ListItem key={i} display="flex" alignItems="flex-start" fontSize="sm">
-                      <ListIcon as={f.icon} color={currentTier === 'pro' ? 'purple.400' : 'blue.400'} mt={1} />
-                      <Text>{f.text}</Text>
-                    </ListItem>
-                  ))}
-                </List>
-              </VStack>
-            </CardBody>
-          </Card>
-        </SimpleGrid>
-      </VStack>
-
-      {/* Multi-Way Trading Section (Pro only) */}
-      {currentTier === 'pro' && (
-        <Box>
-          <Heading size="md" mb={4} display="flex" alignItems="center" gap={2}>
-            <Icon as={FaLink} color="purple.500" />
-            Multi-Way Trading Loops
-          </Heading>
-          <Text fontSize="sm" color={mutedText} mb={4}>
-            Participate in trading chains where multiple users exchange products simultaneously.
-            When a trade is declined, it can be converted to a multi-way trade — the system finds
-            users who can complete the chain.
-          </Text>
-
-          {loading && loops.length === 0 ? (
-            <Center py={8}>
-              <Spinner size="lg" color="brand.500" />
-            </Center>
-          ) : loops.length === 0 ? (
-            <Card bg={cardBg} borderColor={borderColor} borderWidth="1px">
-              <CardBody>
-                <HStack spacing={3} justify="center" py={8}>
-                  <Icon as={FaLink} fontSize="2xl" color="gray.400" />
-                  <VStack align="start" spacing={0}>
-                    <Text fontWeight="semibold" color="gray.600">No multi-way trades available</Text>
-                    <Text fontSize="sm" color={mutedText}>Create more trade offers to unlock trading loops</Text>
-                  </VStack>
-                </HStack>
-              </CardBody>
-            </Card>
-          ) : (
-            <VStack spacing={4} align="stretch">
-              {loops.map((loop, idx) => (
-                <Card
-                  key={idx}
-                  bg={cardBg}
-                  borderColor={borderColor}
-                  borderWidth="1px"
-                  _hover={{ bg: hoverBg, cursor: 'pointer', borderColor: 'brand.500', boxShadow: 'md' }}
-                  transition="all 0.2s"
-                  onClick={() => handleSelectLoop(loop)}
-                >
-                  <CardBody>
-                    <VStack spacing={3} align="stretch">
-                      <Flex justify="space-between" align="start">
-                        <HStack spacing={2}>
-                          <Badge colorScheme="purple" variant="solid">{loop.loop_length}-Way Trade</Badge>
-                          <Badge colorScheme="blue" variant="outline">{loop.participants.length} participants</Badge>
-                          <Badge colorScheme="purple" variant="subtle">
-                            <HStack spacing={1}><Icon as={FaCrown} fontSize="sm" /><Text>Pro</Text></HStack>
-                          </Badge>
-                        </HStack>
-                        <Button
-                          size="sm" variant="ghost" colorScheme="brand" rightIcon={<FaArrowRight />}
-                          onClick={(e) => { e.stopPropagation(); handleSelectLoop(loop) }}
-                        >
-                          Details
-                        </Button>
-                      </Flex>
-                      <Box overflowX="auto" py={2}>
-                        <Flex align="center" gap={2} minW="fit-content" px={2}>
-                          {loop.edges.map((edge, edgeIdx) => (
-                            <React.Fragment key={edgeIdx}>
-                              <VStack spacing={1} align="center" minW="120px">
-                                <Badge colorScheme="gray" variant="outline" fontSize="xs">User {edge.from_user}</Badge>
-                                <Text fontSize="xs" color={mutedText} textAlign="center">{edge.product_title?.substring(0, 15)}...</Text>
-                              </VStack>
-                              <Icon as={FaArrowRight} color="brand.500" fontSize="lg" />
-                            </React.Fragment>
-                          ))}
-                          <VStack spacing={1} align="center" minW="120px">
-                            <Badge colorScheme="gray" variant="outline" fontSize="xs">User {loop.edges[0].from_user}</Badge>
-                            <Text fontSize="xs" color={mutedText} textAlign="center">Completes loop</Text>
-                          </VStack>
-                        </Flex>
-                      </Box>
-                    </VStack>
-                  </CardBody>
-                </Card>
-              ))}
-            </VStack>
-          )}
-        </Box>
-      )}
     </VStack>
   )
 
   // ─── Render: Non-premium (Locked) Content ───
   const renderLockedContent = () => (
     <VStack spacing={10} align="stretch">
-      {/* Why Premium Section */}
-      <Box>
-        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6}>
-          <Box textAlign="center">
-            <Icon as={FaRocket} fontSize="3xl" color="blue.500" mb={3} />
-            <Text fontWeight="bold" fontSize="md" mb={2}>Trade Faster</Text>
-            <Text fontSize="sm" color={mutedText}>Get priority matches and boost your listings to reach more traders</Text>
-          </Box>
-          <Box textAlign="center">
-            <Icon as={FaShieldAlt} fontSize="3xl" color="green.500" mb={3} />
-            <Text fontWeight="bold" fontSize="md" mb={2}>Trade Safer</Text>
-            <Text fontSize="sm" color={mutedText}>Dispute priority, verified badges, and enhanced protection</Text>
-          </Box>
-          <Box textAlign="center">
-            <Icon as={FaChartLine} fontSize="3xl" color="purple.500" mb={3} />
-            <Text fontWeight="bold" fontSize="md" mb={2}>Trade Smarter</Text>
-            <Text fontSize="sm" color={mutedText}>AI insights, analytics, and data-backed pricing recommendations</Text>
-          </Box>
-        </SimpleGrid>
-      </Box>
-
       {/* 3-Tier Pricing Cards */}
-      <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} alignItems="start">
+      <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} alignItems="stretch">
         {/* ── Free Tier ── */}
-        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} overflow="hidden" opacity={0.8}>
+        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} overflow="hidden" opacity={0.8} h="100%">
           <CardBody>
             <VStack spacing={5} align="stretch">
               <VStack spacing={1} align="start">
@@ -925,7 +720,6 @@ const Premium: React.FC = () => {
               <Divider />
               <FeatureSection title="Trading" features={freeFeatures.trading} color="gray" />
               <Divider />
-              <FeatureSection title="Insights" features={freeFeatures.insights} color="gray" />
               <Button variant="outline" colorScheme="gray" size="lg" isDisabled opacity={0.6}>
                 Your Current Plan
               </Button>
@@ -944,6 +738,7 @@ const Premium: React.FC = () => {
           overflow="hidden"
           position="relative"
           shadow="lg"
+          h="100%"
         >
           <Box position="absolute" top={0} left={0} right={0} h="4px" bg="linear-gradient(90deg, #3182CE, #63B3ED)" />
           <Badge
@@ -984,7 +779,6 @@ const Premium: React.FC = () => {
               <Divider />
               <FeatureSection title="Trading" features={plusFeatures.trading} color="blue" />
               <Divider />
-              <FeatureSection title="Insights" features={plusFeatures.insights} color="blue" />
               <Divider />
               <FeatureSection title="Profile" features={plusFeatures.profile} color="blue" />
               <Button
@@ -1008,13 +802,14 @@ const Premium: React.FC = () => {
           overflow="hidden"
           position="relative"
           shadow="lg"
+          h="100%"
         >
           <Box position="absolute" top={0} left={0} right={0} h="4px" bg="linear-gradient(90deg, #9F7AEA, #805AD5, #6B46C1)" />
           <Badge
             position="absolute" top={3} right={3} colorScheme="purple" variant="solid"
             borderRadius="full" px={3} py={1} fontSize="xs"
           >
-            POWER SELLER
+            POWER TRADER
           </Badge>
           <CardBody>
             <VStack spacing={5} align="stretch">
@@ -1048,7 +843,6 @@ const Premium: React.FC = () => {
               <Divider />
               <FeatureSection title="Trading" features={proFeatures.trading} color="purple" />
               <Divider />
-              <FeatureSection title="Insights" features={proFeatures.insights} color="purple" />
               <Divider />
               <FeatureSection title="Profile" features={proFeatures.profile} color="purple" />
               <Button
@@ -1065,88 +859,92 @@ const Premium: React.FC = () => {
         </Card>
       </SimpleGrid>
 
-      {/* Comparison Table */}
-      <Box>
-        <Heading size="md" mb={6} textAlign="center">Feature Comparison</Heading>
-        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} overflow="hidden">
-          <TableContainer>
-            <Table variant="simple" size="sm">
-              <Thead bg={subtleBg}>
-                <Tr>
-                  <Th>Feature</Th>
-                  <Th textAlign="center">Free</Th>
-                  <Th textAlign="center" color="blue.600">Plus</Th>
-                  <Th textAlign="center" color="purple.600">Pro</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {comparisonFeatures.map((row, i) => (
-                  <Tr key={i} _hover={{ bg: hoverBg }}>
-                    <Td fontSize="sm" fontWeight="medium">{row.feature}</Td>
-                    <Td textAlign="center">{renderCell(row.free, 'gray')}</Td>
-                    <Td textAlign="center">{renderCell(row.plus, 'blue')}</Td>
-                    <Td textAlign="center">{renderCell(row.pro, 'purple')}</Td>
+      {currentTier === 'free' && (
+        <Box>
+          <Heading size="md" mb={6} textAlign="center">Feature Comparison</Heading>
+          <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} overflow="hidden">
+            <TableContainer>
+              <Table variant="simple" size="sm">
+                <Thead bg={subtleBg}>
+                  <Tr>
+                    <Th>Feature</Th>
+                    <Th textAlign="center">Free</Th>
+                    <Th textAlign="center" color="blue.600">Plus</Th>
+                    <Th textAlign="center" color="purple.600">Pro</Th>
                   </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </TableContainer>
-        </Card>
-      </Box>
+                </Thead>
+                <Tbody>
+                  {comparisonFeatures.map((row, i) => (
+                    <Tr key={i} _hover={{ bg: hoverBg }}>
+                      <Td fontSize="sm" fontWeight="medium">{row.feature}</Td>
+                      <Td textAlign="center">{renderCell(row.free, 'gray')}</Td>
+                      <Td textAlign="center">{renderCell(row.plus, 'blue')}</Td>
+                      <Td textAlign="center">{renderCell(row.pro, 'purple')}</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </TableContainer>
+          </Card>
+        </Box>
+      )}
 
       {/* FAQ */}
-      <Box>
-        <Heading size="md" mb={6} textAlign="center">Frequently Asked Questions</Heading>
-        <VStack spacing={3} align="stretch">
-          {faqItems.map((faq, i) => (
-            <Card
-              key={i} bg={cardBg} borderWidth="1px" borderColor={borderColor}
-              cursor="pointer" onClick={() => toggleFaq(i)}
-              _hover={{ borderColor: 'purple.300', shadow: 'md' }} transition="all 0.2s"
-            >
-              <CardBody py={4}>
-                <Flex justify="space-between" align="center">
-                  <Text fontWeight="semibold" fontSize="sm">{faq.question}</Text>
-                  <Icon as={expandedFaq === i ? FaChevronUp : FaChevronDown} color={mutedText} fontSize="sm" />
-                </Flex>
-                <Collapse in={expandedFaq === i} animateOpacity>
-                  <Text fontSize="sm" color={mutedText} mt={3} lineHeight="tall">{faq.answer}</Text>
-                </Collapse>
-              </CardBody>
-            </Card>
-          ))}
-        </VStack>
-      </Box>
-
-      {/* Final CTA */}
-      <Card bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" borderWidth="0">
-        <CardBody py={12}>
-          <VStack spacing={4} textAlign="center" color="white">
-            <Heading size="lg">Ready to Transform Your Trading Experience?</Heading>
-            <Text fontSize="md" maxW="2xl" opacity={0.95}>
-              Join thousands of traders using Clovia Premium to close deals faster, safer, and smarter.
-            </Text>
-            <HStack spacing={4} pt={4}>
-              <Button
-                colorScheme="whiteAlpha" size="lg" variant="solid"
-                onClick={() => handleUpgrade('plus')}
-                isLoading={upgrading === 'plus'}
-                isDisabled={currentTier !== 'free'}
+      {currentTier === 'free' && (
+        <Box>
+          <Heading size="md" mb={6} textAlign="center">Frequently Asked Questions</Heading>
+          <VStack spacing={3} align="stretch">
+            {faqItems.map((faq, i) => (
+              <Card
+                key={i} bg={cardBg} borderWidth="1px" borderColor={borderColor}
+                cursor="pointer" onClick={() => toggleFaq(i)}
+                _hover={{ borderColor: 'purple.300', shadow: 'md' }} transition="all 0.2s"
               >
-                Start with Plus
-              </Button>
-              <Button
-                colorScheme="whiteAlpha" size="lg" variant="outline"
-                onClick={() => handleUpgrade('pro')}
-                isLoading={upgrading === 'pro'}
-                isDisabled={currentTier === 'pro'}
-              >
-                Go Pro
-              </Button>
-            </HStack>
+                <CardBody py={4}>
+                  <Flex justify="space-between" align="center">
+                    <Text fontWeight="semibold" fontSize="sm">{faq.question}</Text>
+                    <Icon as={expandedFaq === i ? FaChevronUp : FaChevronDown} color={mutedText} fontSize="sm" />
+                  </Flex>
+                  <Collapse in={expandedFaq === i} animateOpacity>
+                    <Text fontSize="sm" color={mutedText} mt={3} lineHeight="tall">{faq.answer}</Text>
+                  </Collapse>
+                </CardBody>
+              </Card>
+            ))}
           </VStack>
-        </CardBody>
-      </Card>
+        </Box>
+      )}
+
+      {currentTier === 'free' && (
+        <Card bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" borderWidth="0">
+          <CardBody py={12}>
+            <VStack spacing={4} textAlign="center" color="white">
+              <Heading size="lg">Ready to Transform Your Trading Experience?</Heading>
+              <Text fontSize="md" maxW="2xl" opacity={0.95}>
+                Join thousands of traders using Clovia Premium to close deals faster, safer, and smarter.
+              </Text>
+              <HStack spacing={4} pt={4}>
+                <Button
+                  colorScheme="whiteAlpha" size="lg" variant="solid"
+                  onClick={() => handleUpgrade('plus')}
+                  isLoading={upgrading === 'plus'}
+                  isDisabled={currentTier !== 'free'}
+                >
+                  Start with Plus
+                </Button>
+                <Button
+                  colorScheme="whiteAlpha" size="lg" variant="outline"
+                  onClick={() => handleUpgrade('pro')}
+                  isLoading={upgrading === 'pro'}
+                  isDisabled={currentTier === 'pro'}
+                >
+                  Go Pro
+                </Button>
+              </HStack>
+            </VStack>
+          </CardBody>
+        </Card>
+      )}
     </VStack>
   )
 
@@ -1154,31 +952,33 @@ const Premium: React.FC = () => {
     <Box minH="100vh" bg={pageBg}>
       <Container maxW="container.xl" py={12}>
         <VStack spacing={12} align="stretch">
-          <VStack spacing={4} textAlign="center">
-            <Badge colorScheme="purple" px={4} py={1} borderRadius="full" fontSize="sm" fontWeight="bold">
-              Clovia Premium
-            </Badge>
-            <Heading size="2xl" fontWeight="extrabold">
-              Level up your trading game
-            </Heading>
-            <Text fontSize="lg" color={mutedText} maxW="2xl">
-              Unlock the full potential of Clovia with premium features designed to help you trade faster, safer, and smarter.
-            </Text>
+          {currentTier === 'free' && (
+            <VStack spacing={4} textAlign="center">
+              <Badge colorScheme="purple" px={4} py={1} borderRadius="full" fontSize="sm" fontWeight="bold">
+                Clovia Premium
+              </Badge>
+              <Heading size="2xl" fontWeight="extrabold">
+                Level up your trading game
+              </Heading>
+              <Text fontSize="lg" color={mutedText} maxW="2xl">
+                Unlock the full potential of Clovia with premium features designed to help you trade faster, safer, and smarter.
+              </Text>
 
-            {!isPremiumUser && (
-              <HStack spacing={4} pt={4}>
-                <Text fontWeight="medium" color={!isYearly ? 'gray.800' : mutedText}>Monthly</Text>
-                <Switch
-                  colorScheme="purple" size="lg" isChecked={isYearly}
-                  onChange={(e) => setIsYearly(e.target.checked)}
-                />
-                <HStack spacing={2}>
-                  <Text fontWeight="medium" color={isYearly ? 'gray.800' : mutedText}>Yearly</Text>
-                  <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>save up to 26%</Badge>
+              {!isPremiumUser && (
+                <HStack spacing={4} pt={4}>
+                  <Text fontWeight="medium" color={!isYearly ? 'gray.800' : mutedText}>Monthly</Text>
+                  <Switch
+                    colorScheme="purple" size="lg" isChecked={isYearly}
+                    onChange={(e) => setIsYearly(e.target.checked)}
+                  />
+                  <HStack spacing={2}>
+                    <Text fontWeight="medium" color={isYearly ? 'gray.800' : mutedText}>Yearly</Text>
+                    <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>save up to 26%</Badge>
+                  </HStack>
                 </HStack>
-              </HStack>
-            )}
-          </VStack>
+              )}
+            </VStack>
+          )}
 
           {isPremiumUser ? renderPremiumActive() : renderLockedContent()}
           {isPremiumUser && renderLockedContent()}
