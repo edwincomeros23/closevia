@@ -43,6 +43,7 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
   Card,
   CardBody,
   Divider,
@@ -64,8 +65,10 @@ import {
   FaCalendarAlt,
   FaStore,
   FaCamera,
+  FaStar,
+  FaSearch,
 } from 'react-icons/fa'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { useNavigate } from 'react-router-dom'
@@ -120,6 +123,15 @@ const ModalMapFix = () => {
     ]
     return () => timers.forEach(t => clearTimeout(t))
   }, [map])
+  return null
+}
+
+const MapClickPicker = ({ onPick }: { onPick: (lat: number, lng: number) => void }) => {
+  useMapEvents({
+    click: (event) => {
+      onPick(event.latlng.lat, event.latlng.lng)
+    },
+  })
   return null
 }
 
@@ -264,6 +276,8 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const [validationError, setValidationError] = useState<string | null>(null)
   const [showSuggestionsPanel, setShowSuggestionsPanel] = useState(false)
   const [mapInitKey, setMapInitKey] = useState(0)
+  const [pinnedLocation, setPinnedLocation] = useState<MeetupLocation | null>(null)
+  const [showPredefinedLocations, setShowPredefinedLocations] = useState(false)
 
   // Meetup Agreement / Dispute state (mirrors ViewTradeModal flow)
   const [meetupStatus, setMeetupStatus] = useState<{
@@ -306,6 +320,14 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const navigate = useNavigate()
   const toast = useToast()
 
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
+  const [rating, setRating] = useState(5)
+  const [feedback, setFeedback] = useState('')
+  const [proofImage, setProofImage] = useState<string | null>(null)
+  const [proofFile, setProofFile] = useState<File | null>(null)
+  const [submittingReview, setSubmittingReview] = useState(false)
+  const [reviewSubmitted, setReviewSubmitted] = useState(false)
+
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const sectionBg = useColorModeValue('gray.50', 'gray.750')
@@ -317,6 +339,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const defaultIconBg = useColorModeValue('gray.100', 'gray.700')
   const meetupInfoBg = useColorModeValue('blue.50', 'blue.900')
   const meetupInfoTextColor = useColorModeValue('blue.700', 'blue.200')
+  const proofRequired = true
 
   // Countdown timer
   useEffect(() => {
@@ -655,6 +678,93 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       })
     } finally {
       setLoading(false)
+      setSelectedAction(null)
+    }
+  }
+
+  const handlePlaceSearch = async () => {
+    const q = placeQuery.trim()
+    if (q.length < 2) {
+      setPlaceResults([])
+      return
+    }
+    setPlaceSearching(true)
+    try {
+      const params = new URLSearchParams({ q })
+      if (user?.latitude && user?.longitude) {
+        params.set('lat', String(user.latitude))
+        params.set('lng', String(user.longitude))
+      }
+      const res = await api.get(`/api/places/search?${params.toString()}`)
+      setPlaceResults(res.data?.results || [])
+    } catch {
+      setPlaceResults([])
+    } finally {
+      setPlaceSearching(false)
+    }
+  }
+
+  const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0]
+      setProofFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setProofImage(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const submitReview = async () => {
+    if (!rating || !feedback.trim()) {
+      toast({
+        id: 'mwt-review-missing',
+        title: 'Missing information',
+        description: 'Please provide a rating and feedback.',
+        status: 'warning',
+      })
+      return
+    }
+
+    if (proofRequired && !proofFile) {
+      toast({
+        id: 'mwt-review-proof-required',
+        title: 'Proof image required',
+        description: 'Please upload a proof image before submitting your review.',
+        status: 'warning',
+      })
+      return
+    }
+
+    try {
+      setSubmittingReview(true)
+
+      if (proofFile) {
+        const formData = new FormData()
+        formData.append('image', proofFile)
+        formData.append('type', 'trade_proof')
+        const uploadRes = await api.post('/api/upload', formData)
+        const uploadedProofUrl = uploadRes.data?.data?.url
+        if (!uploadedProofUrl) {
+          throw new Error(uploadRes.data?.error || 'Upload succeeded but no image URL was returned.')
+        }
+      }
+
+      setSelectedAction('execute')
+      await executeMultiWayTrade(multiWayTrade.loop_id)
+      toast({ id: 'mwt-review-submitted', title: 'Review submitted', status: 'success' })
+      onTradeCompleted?.()
+      setReviewSubmitted(true)
+    } catch (error: any) {
+      toast({
+        id: 'mwt-review-error',
+        title: 'Error',
+        description: error?.response?.data?.error || error?.message || 'Failed to complete trade',
+        status: 'error',
+      })
+    } finally {
+      setSubmittingReview(false)
       setSelectedAction(null)
     }
   }
@@ -1158,33 +1268,20 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   }, [])
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size={["sm", "md", "lg", "6xl"]} isCentered scrollBehavior="inside">
-      <ModalOverlay backdropFilter="blur(4px)" />
-      <ModalContent bg={cardBg} minH="70vh" maxH="92vh" display="flex" flexDirection="column" w="full">
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} size={["sm", "md", "lg", "6xl"]} isCentered scrollBehavior="inside">
+        <ModalOverlay backdropFilter="blur(4px)" />
+        <ModalContent bg={cardBg} minH="70vh" maxH="92vh" display="flex" flexDirection="column" w="full">
         <ModalHeader py={2}>
-          <VStack align="start" spacing={2} w="full">
-            {/* Title Row with Status Badge and Action Buttons */}
-            <HStack justify="space-between" w="full" align="flex-start">
-              <VStack align="start" spacing={0.5} flex={1}>
-                <Heading size="md">{sortedParticipants.length}-Way Trade Loop</Heading>
-                {timeLeft && (
-                  <HStack spacing={2}>
-                    <Icon
-                      as={FaClock}
-                      color={timeLeft === 'Expired' ? 'red.500' : 'orange.400'}
-                      boxSize={4}
-                    />
-                    <Text fontSize="sm" color={timeLeft === 'Expired' ? 'red.500' : 'orange.600'}>
-                      {timeLeft}
-                    </Text>
-                  </HStack>
-                )}
-              </VStack>
-
-              {/* Top Right: Status Badge removed by request */}
+          <HStack spacing={2} w="full" justify="space-between" fontSize={"md"}>
+            <HStack spacing={2}>
+              <Icon as={FaHandshake} color="purple.500" />
+              <Text>Trade Details</Text>
+              <Badge colorScheme="green" variant="subtle" fontSize="sm">
+                In Progress
+              </Badge>
             </HStack>
-
-          </VStack>
+          </HStack>
           <ModalCloseButton mt={2} />
         </ModalHeader>
 
@@ -1202,25 +1299,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
               {/* Overview Tab - Restructured Layout */}
               <TabPanel py={3} px={[2, 4]} overflowY="auto" minH={0} flex={1} display="flex" flexDirection="column">
                 <VStack spacing={4} align="stretch">
-                  {/* Overview Actions */}
-                  <HStack spacing={2} justify="flex-end">
-                    <Button
-                      size="sm"
-                      colorScheme="orange"
-                      variant="outline"
-                      leftIcon={<FaExclamationTriangle />}
-                    >
-                      Dispute
-                    </Button>
-                    <Button
-                      size="sm"
-                      colorScheme="red"
-                      variant="outline"
-                      leftIcon={<FaTimes />}
-                    >
-                      Cancel
-                    </Button>
-                  </HStack>
                   {/* CONFIRMATION PROGRESS */}
                   <Box>
                     <HStack justify="space-between" mb={3}>
@@ -1291,6 +1369,45 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       </HStack>
                     )}
                   </Box>
+
+                  {meetupAgreed && agreedMeetup && (
+                    <Card bg="green.50" borderWidth="2px" borderColor="green.200">
+                      <CardBody>
+                        <VStack spacing={3} align="stretch">
+                          <HStack>
+                            <Icon as={FaCheckCircle} color="green.500" boxSize={5} />
+                            <Text fontWeight="semibold" fontSize="md" color="green.700">
+                              Meetup Agreed
+                            </Text>
+                          </HStack>
+
+                          <VStack spacing={2} align="start" fontSize="sm">
+                            <HStack spacing={2} w="full">
+                              <Icon as={FaMapMarkerAlt} boxSize={4} color="green.600" />
+                              <VStack align="start" spacing={0} flex={1}>
+                                <Text fontWeight="semibold" color="green.900">Location</Text>
+                                <Text color="green.800">{agreedMeetup.meetup_location}</Text>
+                              </VStack>
+                            </HStack>
+                            <HStack spacing={2} w="full">
+                              <Icon as={FaCalendarAlt} boxSize={4} color="green.600" />
+                              <VStack align="start" spacing={0} flex={1}>
+                                <Text fontWeight="semibold" color="green.900">Date</Text>
+                                <Text color="green.800">{new Date(agreedMeetup.meetup_date + 'T00:00:00').toLocaleDateString()}</Text>
+                              </VStack>
+                            </HStack>
+                            <HStack spacing={2} w="full">
+                              <Icon as={FaClock} boxSize={4} color="green.600" />
+                              <VStack align="start" spacing={0} flex={1}>
+                                <Text fontWeight="semibold" color="green.900">Time</Text>
+                                <Text color="green.800">{formatTimePH(agreedMeetup.meetup_time)}</Text>
+                              </VStack>
+                            </HStack>
+                          </VStack>
+                        </VStack>
+                      </CardBody>
+                    </Card>
+                  )}
 
                   {/* TRADE LOOP DIAGRAM - INTERACTIVE ROWS */}
                   <Box borderTopWidth="1px" borderBottomWidth="1px" borderColor={borderColor} py={4} px={2}>
@@ -1546,26 +1663,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
                   {/* INFO CARDS ROW - Only show if we have data */}
                   <SimpleGrid columns={3} spacing={2} w="full">
-                    {/* Exchange Type */}
-                    <Box borderWidth="1px" borderColor={borderColor} borderRadius="md" p={2.5} bg={useColorModeValue('gray.50', 'gray.800')}>
-                      <Text fontSize="10px" fontWeight="semibold" textTransform="uppercase" color={useColorModeValue('gray.600', 'gray.400')} mb={1}>
-                        Exchange type
-                      </Text>
-                      <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.900', 'gray.100')}>
-                        In-person meetup
-                      </Text>
-                    </Box>
-
-                    {/* Items in Loop */}
-                    <Box borderWidth="1px" borderColor={borderColor} borderRadius="md" p={2.5} bg={useColorModeValue('gray.50', 'gray.800')}>
-                      <Text fontSize="10px" fontWeight="semibold" textTransform="uppercase" color={useColorModeValue('gray.600', 'gray.400')} mb={1}>
-                        Items in loop
-                      </Text>
-                      <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.900', 'gray.100')}>
-                        {sortedParticipants.length} items
-                      </Text>
-                    </Box>
-
                     {/* Expires - Only show if we have a date */}
                     {multiWayTrade.expires_at && (
                       <Box borderWidth="1px" borderColor={borderColor} borderRadius="md" p={2.5} bg={useColorModeValue('gray.50', 'gray.800')}>
@@ -1817,44 +1914,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                     </Text>
                   </Box>
 
-                  {meetupAgreed && agreedMeetup && (
-                    <Card bg="green.50" borderWidth="2px" borderColor="green.200">
-                      <CardBody>
-                        <VStack spacing={3} align="stretch">
-                          <HStack>
-                            <Icon as={FaCheckCircle} color="green.500" boxSize={5} />
-                            <Text fontWeight="semibold" fontSize="md" color="green.700">
-                              Meetup Agreed
-                            </Text>
-                          </HStack>
-
-                          <VStack spacing={2} align="start" fontSize="sm">
-                            <HStack spacing={2} w="full">
-                              <Icon as={FaMapMarkerAlt} boxSize={4} color="green.600" />
-                              <VStack align="start" spacing={0} flex={1}>
-                                <Text fontWeight="semibold" color="green.900">Location</Text>
-                                <Text color="green.800">{agreedMeetup.meetup_location}</Text>
-                              </VStack>
-                            </HStack>
-                            <HStack spacing={2} w="full">
-                              <Icon as={FaCalendarAlt} boxSize={4} color="green.600" />
-                              <VStack align="start" spacing={0} flex={1}>
-                                <Text fontWeight="semibold" color="green.900">Date</Text>
-                                <Text color="green.800">{new Date(agreedMeetup.meetup_date + 'T00:00:00').toLocaleDateString()}</Text>
-                              </VStack>
-                            </HStack>
-                            <HStack spacing={2} w="full">
-                              <Icon as={FaClock} boxSize={4} color="green.600" />
-                              <VStack align="start" spacing={0} flex={1}>
-                                <Text fontWeight="semibold" color="green.900">Time</Text>
-                                <Text color="green.800">{formatTimePH(agreedMeetup.meetup_time)}</Text>
-                              </VStack>
-                            </HStack>
-                          </VStack>
-                        </VStack>
-                      </CardBody>
-                    </Card>
-                  )}
 
                   <Box>
                     <Text fontWeight="semibold" mb={1} fontSize="md">
@@ -1873,8 +1932,24 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                           placeholder='Search any place in PH (e.g. "claret jollibee")'
                           value={placeQuery}
                           onChange={(e) => setPlaceQuery(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handlePlaceSearch()
+                            }
+                          }}
                           pr={placeSearching ? '2rem' : undefined}
                         />
+                        <InputRightElement>
+                          <IconButton
+                            aria-label="Search places"
+                            icon={<FaSearch />}
+                            size="sm"
+                            variant="ghost"
+                            isLoading={placeSearching}
+                            onClick={handlePlaceSearch}
+                          />
+                        </InputRightElement>
                         {placeSearching && (
                           <Box position="absolute" right={2} top="50%" transform="translateY(-50%)" zIndex={2}>
                             <Spinner size="xs" />
@@ -1947,6 +2022,24 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                         attributionControl={false}
                       >
                         <ModalMapFix />
+                        <MapClickPicker
+                          onPick={(lat, lng) => {
+                            const loc: MeetupLocation = {
+                              name: 'Pinned location',
+                              address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+                              type: 'other',
+                              lat,
+                              lng,
+                            }
+                            setPinnedLocation(loc)
+                            setSearchedLocations((prev) => {
+                              const filtered = prev.filter((p) => p.name !== 'Pinned location')
+                              return [loc, ...filtered].slice(0, 5)
+                            })
+                            setSelectedLocation(loc.name)
+                            setValidationError(null)
+                          }}
+                        />
                         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                         {selectedLocation && suggestedLocations.find((l) => l.name === selectedLocation)?.lat && (
                           <MapUpdater
@@ -1972,121 +2065,148 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       </MapContainer>
                     </Box>
 
-                    <SimpleGrid
-                      columns={[1, 2]}
-                      spacing={[1, 1.5]}
-                      maxH={['280px', '350px']}
-                      overflowY="auto"
-                      pr={2}
-                      css={{
-                        '&::-webkit-scrollbar': {
-                          width: '4px',
-                        },
-                        '&::-webkit-scrollbar-track': {
-                          width: '6px',
-                        },
-                        '&::-webkit-scrollbar-thumb': {
-                          background: 'brand.500',
-                          borderRadius: '24px',
-                        },
-                      }}
+                    <Box
+                      w="full"
+                      borderWidth="1px"
+                      borderColor={borderColor}
+                      borderRadius="md"
+                      px={3}
+                      py={2}
+                      cursor="pointer"
+                      bg={useColorModeValue('gray.50', 'gray.800')}
+                      onClick={() => setShowPredefinedLocations((prev) => !prev)}
+                      _hover={{ bg: useColorModeValue('gray.100', 'gray.700') }}
                     >
-                      {suggestedLocations.map((location) => {
-                        const isSelected = selectedLocation === location.name
-                        const isPartner = location.isPartner
-                        const isNearest = location.name === nearestLocationName
+                      <HStack justify="space-between">
+                        <Text fontSize="sm" fontWeight="semibold">
+                          Predefined locations & partners
+                        </Text>
+                        <Icon
+                          as={FaChevronDown}
+                          boxSize={4}
+                          transform={showPredefinedLocations ? 'rotate(180deg)' : 'rotate(0deg)'}
+                          transition="transform 0.2s"
+                        />
+                      </HStack>
+                    </Box>
 
-                        return (
-                          <Card
-                            key={`location-${location.name}`}
-                            variant="outline"
-                            cursor="pointer"
-                            borderWidth={isPartner ? '2px' : isSelected ? '2px' : '1px'}
-                            borderColor={
-                              isPartner
-                                ? 'orange.400'
-                                : isSelected
-                                  ? 'brand.500'
-                                  : isNearest
-                                    ? 'blue.300'
-                                    : borderColor
-                            }
-                            bg={isSelected ? 'brand.50' : isPartner ? partnerBg : isNearest ? nearestBg : 'white'}
-                            onClick={() => {
-                              setSelectedLocation(location.name)
-                              setValidationError(null)
-                            }}
-                            transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                            _hover={{
-                              borderColor: isPartner ? 'orange.500' : isSelected ? 'brand.600' : 'brand.400',
-                              shadow: 'md',
-                              transform: 'translateY(-2px)',
-                            }}
-                          >
-                            <CardBody p={[1.5, 2]}>
-                              <VStack spacing={0.5} align="stretch">
-                                <HStack spacing={1.5} flex={1}>
-                                  <Box
-                                    p={1}
-                                    bg={isPartner ? partnerIconBg : defaultIconBg}
-                                    borderRadius="sm"
-                                    display="flex"
-                                    alignItems="center"
-                                    justifyContent="center"
-                                    flexShrink={0}
-                                  >
-                                    <Icon
-                                      as={isPartner ? FaStore : FaMapMarkerAlt}
-                                      color={
-                                        isPartner
-                                          ? 'orange.500'
-                                          : isSelected
-                                            ? 'brand.500'
-                                            : isNearest
-                                              ? 'blue.500'
-                                              : 'gray.500'
-                                      }
-                                      boxSize={isPartner ? 4 : 3.5}
-                                    />
-                                  </Box>
+                    {showPredefinedLocations && (
+                      <SimpleGrid
+                        columns={[1, 2]}
+                        spacing={[1, 1.5]}
+                        maxH={['280px', '350px']}
+                        overflowY="auto"
+                        pr={2}
+                        css={{
+                          '&::-webkit-scrollbar': {
+                            width: '4px',
+                          },
+                          '&::-webkit-scrollbar-track': {
+                            width: '6px',
+                          },
+                          '&::-webkit-scrollbar-thumb': {
+                            background: 'brand.500',
+                            borderRadius: '24px',
+                          },
+                        }}
+                      >
+                        {suggestedLocations.map((location) => {
+                          const isSelected = selectedLocation === location.name
+                          const isPartner = location.isPartner
+                          const isNearest = location.name === nearestLocationName
 
-                                  <VStack align="start" spacing={0.25} flex={1} minW={0}>
-                                    <Text fontWeight="semibold" fontSize={['10px', 'xs']} color={locationTextColor} noOfLines={1}>
-                                      {location.name}
-                                    </Text>
-                                    <Text fontSize={['2xs', '2xs']} color="gray.600" noOfLines={1}>
-                                      {location.address}
-                                    </Text>
-                                    <Badge
-                                      colorScheme={
-                                        location.type === 'cafe'
-                                          ? 'orange'
-                                          : location.type === 'mall'
-                                            ? 'blue'
-                                            : 'green'
-                                      }
-                                      variant="subtle"
-                                      fontSize="2xs"
-                                      px={0.5}
-                                      py={0}
-                                      w="fit-content"
+                          return (
+                            <Card
+                              key={`location-${location.name}`}
+                              variant="outline"
+                              cursor="pointer"
+                              borderWidth={isPartner ? '2px' : isSelected ? '2px' : '1px'}
+                              borderColor={
+                                isPartner
+                                  ? 'orange.400'
+                                  : isSelected
+                                    ? 'brand.500'
+                                    : isNearest
+                                      ? 'blue.300'
+                                      : borderColor
+                              }
+                              bg={isSelected ? 'brand.50' : isPartner ? partnerBg : isNearest ? nearestBg : 'white'}
+                              onClick={() => {
+                                setSelectedLocation(location.name)
+                                setValidationError(null)
+                              }}
+                              transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                              _hover={{
+                                borderColor: isPartner ? 'orange.500' : isSelected ? 'brand.600' : 'brand.400',
+                                shadow: 'md',
+                                transform: 'translateY(-2px)',
+                              }}
+                            >
+                              <CardBody p={[1.5, 2]}>
+                                <VStack spacing={0.5} align="stretch">
+                                  <HStack spacing={1.5} flex={1}>
+                                    <Box
+                                      p={1}
+                                      bg={isPartner ? partnerIconBg : defaultIconBg}
+                                      borderRadius="sm"
+                                      display="flex"
+                                      alignItems="center"
+                                      justifyContent="center"
+                                      flexShrink={0}
                                     >
-                                      {location.type}
-                                    </Badge>
-                                  </VStack>
-                                </HStack>
+                                      <Icon
+                                        as={isPartner ? FaStore : FaMapMarkerAlt}
+                                        color={
+                                          isPartner
+                                            ? 'orange.500'
+                                            : isSelected
+                                              ? 'brand.500'
+                                              : isNearest
+                                                ? 'blue.500'
+                                                : 'gray.500'
+                                        }
+                                        boxSize={isPartner ? 4 : 3.5}
+                                      />
+                                    </Box>
 
-                                {isSelected && (
-                                  <HStack justify="center" flexShrink={0}>
-                                    <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />
+                                    <VStack align="start" spacing={0.25} flex={1} minW={0}>
+                                      <Text fontWeight="semibold" fontSize={['10px', 'xs']} color={locationTextColor} noOfLines={1}>
+                                        {location.name}
+                                      </Text>
+                                      <Text fontSize={['2xs', '2xs']} color="gray.600" noOfLines={1}>
+                                        {location.address}
+                                      </Text>
+                                      <Badge
+                                        colorScheme={
+                                          location.type === 'cafe'
+                                            ? 'orange'
+                                            : location.type === 'mall'
+                                              ? 'blue'
+                                              : 'green'
+                                        }
+                                        variant="subtle"
+                                        fontSize="2xs"
+                                        px={0.5}
+                                        py={0}
+                                        w="fit-content"
+                                      >
+                                        {location.type}
+                                      </Badge>
+                                    </VStack>
                                   </HStack>
-                                )}
-                              </VStack>
-                            </CardBody>
-                          </Card>
-                        )
-                      })}
-                    </SimpleGrid>
+
+                                  {isSelected && (
+                                    <HStack justify="center" flexShrink={0}>
+                                      <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />
+                                    </HStack>
+                                  )}
+                                </VStack>
+                              </CardBody>
+                            </Card>
+                          )
+                        })}
+                      </SimpleGrid>
+                    )}
                   </Box>
 
                   {showSuggestionsPanel && (
@@ -2132,15 +2252,13 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                         </Text>
                       </VStack>
                       <HStack spacing={2}>
-                        <Button size="xs" variant="ghost" onClick={() => setShowSuggestionsPanel(true)}>
-                          Suggestions
-                        </Button>
-                        {(selectedDate || selectedTime) && (
+                        {myMeetupConfirmed ? (
                           <Button
                             size="xs"
                             variant="ghost"
                             colorScheme="blue"
                             onClick={() => {
+                              resetMeetupSelection()
                               setSelectedDate(null)
                               setSelectedTime(null)
                               setValidationError(null)
@@ -2148,11 +2266,36 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                           >
                             Change
                           </Button>
+                        ) : (
+                          <Button size="xs" variant="ghost" onClick={() => setShowSuggestionsPanel(true)}>
+                            Suggestions
+                          </Button>
                         )}
                       </HStack>
                     </HStack>
 
-                    <VStack spacing={4} align="stretch" data-meetup-picker>
+                    {myMeetupConfirmed ? (
+                      <Box
+                        p={3}
+                        borderWidth="1px"
+                        borderColor={borderColor}
+                        borderRadius="md"
+                        bg={useColorModeValue('green.50', 'green.900')}
+                      >
+                        <HStack spacing={2} mb={2}>
+                          <Icon as={FaCheckCircle} color="green.500" boxSize={4} />
+                          <Text fontWeight="semibold" color={useColorModeValue('green.700', 'green.200')}>
+                            Schedule confirmed
+                          </Text>
+                        </HStack>
+                        <VStack align="start" spacing={1} fontSize="sm">
+                          <Text><strong>Location:</strong> {myMeetup?.meetup_location || selectedLocation || '—'}</Text>
+                          <Text><strong>Date:</strong> {myMeetup?.meetup_date ? new Date(myMeetup.meetup_date + 'T00:00:00').toLocaleDateString() : (selectedDate ? formatDateLabel(selectedDate) : '—')}</Text>
+                          <Text><strong>Time:</strong> {myMeetup?.meetup_time ? formatTimePH(myMeetup.meetup_time) : (selectedTime ? formatTimePH(selectedTime) : '—')}</Text>
+                        </VStack>
+                      </Box>
+                    ) : (
+                      <VStack spacing={4} align="stretch" data-meetup-picker>
                       {validationError && (
                         <Box p={3} bg="red.50" borderRadius="md" borderLeft="4px" borderColor="red.500">
                           <Text fontSize="sm" color="red.700">
@@ -2241,6 +2384,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                         Confirm Schedule
                       </Button>
                     </VStack>
+                    )}
                   </Box>
 
                   <Box pt={4}>
@@ -2366,9 +2510,17 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                             </Button>
 
                             {allMetConfirmed && (
-                              <Text fontSize="sm" textAlign="center" color={useColorModeValue('gray.600', 'gray.400')}>
-                                Everyone confirmed they met. You can now execute the loop.
-                              </Text>
+                              <Button
+                                colorScheme="green"
+                                size="lg"
+                                onClick={() => setIsReviewModalOpen(true)}
+                                leftIcon={<FaStar />}
+                                w="full"
+                                transition="all 0.2s"
+                                _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                              >
+                                Review & Complete Trade
+                              </Button>
                             )}
                           </VStack>
                         )}
@@ -2499,27 +2651,182 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 Accept Trade
               </Button>
             </>
-          ) : (
-            <>
-              {canExecute && (
-                <Button
-                  flex={1}
-                  colorScheme="brand"
-                  isDisabled={loading}
-                  isLoading={selectedAction === 'execute' && loading}
-                  onClick={handleExecute}
-                  leftIcon={<FaHandshake />}
-                >
-                  Execute Trade
-                </Button>
-              )}
-            </>
-          )}
+          ) : null}
         </HStack>
       </VStack>
     </ModalFooter>
-      </ModalContent>
-    </Modal>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+        size={["xs", "sm", "md"]}
+        isCentered
+        scrollBehavior="inside"
+      >
+        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        <ModalContent bg={cardBg} borderRadius={["md", "lg", "xl"]} boxShadow="xl" maxW={["90vw", "500px"]} mx={[2, 4]}>
+          <ModalHeader>
+            <HStack spacing={2} fontSize={["sm", "md"]}>
+              <Icon as={FaStar} color="yellow.400" />
+              <Text>Trade Review & Completion</Text>
+            </HStack>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody py={[4, 6]} px={[3, 6]}>
+            <VStack spacing={4} align="stretch">
+              <SimpleGrid columns={2} spacing={3}>
+                <Box
+                  p={3}
+                  bg={reviewSubmitted ? 'green.50' : 'gray.50'}
+                  borderRadius="md"
+                  borderWidth="1px"
+                  borderColor={borderColor}
+                >
+                  <VStack spacing={2}>
+                    <HStack justify="space-between" w="full">
+                      <Text fontWeight="semibold" fontSize="sm">Your Review</Text>
+                      <Icon as={reviewSubmitted ? FaCheck : FaClock} color={reviewSubmitted ? 'green.500' : 'gray.400'} boxSize={4} />
+                    </HStack>
+                    <Text fontSize="xs" color="gray.600" w="full">
+                      {reviewSubmitted ? 'Submitted' : 'Pending'}
+                    </Text>
+                  </VStack>
+                </Box>
+
+                <Box
+                  p={3}
+                  bg="gray.50"
+                  borderRadius="md"
+                  borderWidth="1px"
+                  borderColor={borderColor}
+                >
+                  <VStack spacing={2}>
+                    <HStack justify="space-between" w="full">
+                      <Text fontWeight="semibold" fontSize="sm">Other Party Review</Text>
+                      <Icon as={FaClock} color="gray.400" boxSize={4} />
+                    </HStack>
+                    <Text fontSize="xs" color="gray.600" w="full">
+                      Pending
+                    </Text>
+                  </VStack>
+                </Box>
+              </SimpleGrid>
+
+              {reviewSubmitted && (
+                <Box
+                  p={4}
+                  bg="blue.50"
+                  borderRadius="md"
+                  borderWidth="1px"
+                  borderColor="blue.200"
+                  textAlign="center"
+                >
+                  <VStack spacing={2}>
+                    <Icon as={FaCheckCircle} color="blue.500" boxSize={6} />
+                    <Text fontWeight="semibold" color="blue.800">
+                      Your review has been submitted
+                    </Text>
+                    <Text fontSize="sm" color="blue.700">
+                      Waiting for the other party to complete their review...
+                    </Text>
+                  </VStack>
+                </Box>
+              )}
+
+              <FormControl isRequired>
+                <FormLabel fontSize="xs" fontWeight="semibold">Rating</FormLabel>
+                <HStack spacing={2}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Icon
+                      key={`loop-review-star-${star}`}
+                      as={FaStar}
+                      color={star <= rating ? 'yellow.400' : 'gray.300'}
+                      cursor={reviewSubmitted ? 'default' : 'pointer'}
+                      onClick={reviewSubmitted ? undefined : () => setRating(star)}
+                      boxSize={6}
+                      transition="all 0.1s"
+                      _hover={reviewSubmitted ? undefined : { transform: 'scale(1.1)' }}
+                    />
+                  ))}
+                  <Text fontSize="xs" fontWeight="semibold" ml={2}>
+                    {rating}/5
+                  </Text>
+                </HStack>
+              </FormControl>
+
+              <FormControl isRequired>
+                <FormLabel fontSize="xs" fontWeight="semibold">Feedback</FormLabel>
+                <Textarea
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="Share your experience with this trade..."
+                  rows={3}
+                  fontSize="sm"
+                  borderColor={borderColor}
+                  _focus={{ borderColor: 'brand.500', boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)' }}
+                  isDisabled={reviewSubmitted}
+                />
+                <Text fontSize="xs" color="gray.500" mt={1}>
+                  {feedback.length} characters
+                </Text>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="xs" fontWeight="semibold">
+                  Proof Image {proofRequired ? '(Required)' : '(Optional)'}
+                </FormLabel>
+                {proofImage ? (
+                  <VStack spacing={2} align="stretch">
+                    <Box position="relative" w="full" maxW="250px" bg="gray.50" borderRadius="md" overflow="hidden" aspectRatio="4/3" display="flex" alignItems="center" justifyContent="center">
+                      <Image
+                        src={proofImage}
+                        alt="Proof"
+                        w="100%"
+                        h="100%"
+                        objectFit="contain"
+                        borderRadius="md"
+                      />
+                    </Box>
+                    <Button size="xs" variant="outline" onClick={() => { setProofImage(null); setProofFile(null) }}>
+                      Remove Image
+                    </Button>
+                  </VStack>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    leftIcon={<FaCamera />}
+                    onClick={() => document.getElementById('loop-proof-upload')?.click()}
+                    isDisabled={reviewSubmitted}
+                  >
+                    Upload Proof Image
+                  </Button>
+                )}
+                <input
+                  id="loop-proof-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProofUpload}
+                  style={{ display: 'none' }}
+                />
+              </FormControl>
+
+              <Button
+                colorScheme="green"
+                onClick={submitReview}
+                isLoading={submittingReview}
+                leftIcon={<FaStar />}
+                isDisabled={reviewSubmitted}
+              >
+                Review & Complete Trade
+              </Button>
+            </VStack>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+    </>
   )
 }
 

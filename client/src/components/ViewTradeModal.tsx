@@ -2710,8 +2710,23 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
             </HStack>
           </ModalHeader>
 
-          <ModalBody overflowY="auto" flex={1} p={[3, 4, 6]}>
-            <Tabs colorScheme="brand" index={tabIndex} onChange={(i) => setTabIndex(i)}>
+          <ModalBody
+            overflowY={tabIndex === 1 ? "hidden" : "auto"}
+            flex={1}
+            p={[3, 4, 6]}
+            display={tabIndex === 1 ? "flex" : "block"}
+            flexDirection={tabIndex === 1 ? "column" : undefined}
+            minH={tabIndex === 1 ? 0 : undefined}
+          >
+            <Tabs
+              colorScheme="brand"
+              index={tabIndex}
+              onChange={(i) => setTabIndex(i)}
+              display={tabIndex === 1 ? "flex" : "block"}
+              flexDirection={tabIndex === 1 ? "column" : undefined}
+              flex={tabIndex === 1 ? 1 : undefined}
+              minH={tabIndex === 1 ? 0 : undefined}
+            >
               <TabList fontSize={["sm", "md"]}>
                 <Tab>Overview</Tab>
                 <Tab>
@@ -2727,7 +2742,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                 </Tab>
               </TabList>
 
-              <TabPanels>
+              <TabPanels
+                flex={tabIndex === 1 ? 1 : undefined}
+                minH={tabIndex === 1 ? 0 : undefined}
+                overflow={tabIndex === 1 ? "hidden" : undefined}
+                display={tabIndex === 1 ? "flex" : undefined}
+                flexDirection={tabIndex === 1 ? "column" : undefined}
+              >
                 {/* Overview Tab */}
                 <TabPanel px={[0, 2]}>
                   <VStack spacing={[4, 6]} align="stretch">
@@ -3181,11 +3202,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
 
                 {/* Chat Tab */}
-                <TabPanel px={[0, 2]}>
-                  <VStack spacing={3} align="stretch" h={["300px", "400px", "500px"]} display="flex" flexDirection="column">
+                <TabPanel px={[0, 2]} overflow="hidden" minH={0} flex={1} display="flex" flexDirection="column">
+                  <VStack spacing={3} align="stretch" h="full" minH={0} display="flex" flexDirection="column">
                     {/* Messages Area */}
                     <Box
                       flex={1}
+                      minH={0}
                       overflowY="auto"
                       p={[2, 3, 4]}
                       bg="gray.50"
