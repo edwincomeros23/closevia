@@ -531,6 +531,7 @@ func main() {
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
+	trades.Post("/loops/:id/review-trade", middleware.AuthMiddleware(), tradeHandler.GetOrCreateLoopReviewTrade)
 	trades.Post("/loops/:id/cancel", middleware.AuthMiddleware(), tradeHandler.CancelTradeLoop)
 	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
 	trades.Get("/loops/:id/messages", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopMessages)
