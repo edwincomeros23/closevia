@@ -236,7 +236,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 </Text>
                 {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
                   <Text display={{ base: 'none', sm: 'block' }} fontSize="2xs" color="brand.100" lineHeight="1.25" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
-                    📊 Market Est. ₱{formatPriceCompact(product.estimated_value_min)} – ₱{formatPriceCompact(product.estimated_value_max)}
+                    📊 Market Est. ₱{formatPriceUltraCompact(product.estimated_value_min)} – ₱{formatPriceUltraCompact(product.estimated_value_max)}
                   </Text>
                 )}
                 {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
