@@ -17,7 +17,20 @@ import (
 	"github.com/xashathebest/clovia/models"
 )
 
+
+func haversine(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371.0 // Earth radius in km
+	dLat := (lat2 - lat1) * math.Pi / 180.0
+	dLon := (lon2 - lon1) * math.Pi / 180.0
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*math.Pi/180.0)*math.Cos(lat2*math.Pi/180.0)*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return R * c
+}
+
 // BackfillLedgers is an HTTP handler that triggers backfilling missing deliveries
+
 func (h *DeliveryHandler) BackfillLedgers(c *fiber.Ctx) error {
 	h.BackfillMissingDeliveries()
 	return c.JSON(models.APIResponse{Success: true, Message: "Backfill completed (see logs for details)"})
@@ -1694,6 +1707,9 @@ func (h *DeliveryHandler) getDeliveryByID(deliveryID, userID int) (*models.Deliv
 	// Load delivery items
 	h.loadDeliveryItems(&d)
 
+	// Load delivery stops (CRITICAL for buyout tracking)
+	h.loadDeliveryStops(&d)
+
 	return &d, nil
 }
 
@@ -1739,6 +1755,43 @@ func (h *DeliveryHandler) loadDeliveryItems(d *models.Delivery) {
 	if len(items) > 0 {
 		d.Items = items
 	}
+}
+
+// Helper function to load delivery stops
+func (h *DeliveryHandler) loadDeliveryStops(d *models.Delivery) {
+	rows, err := h.db.Query(`
+		SELECT id, delivery_id, stop_number, stop_type, contact_name, contact_phone,
+		       address, latitude, longitude, COALESCE(item_qr_code, ''), fee_amount, status,
+		       arrived_at, qr_scanned_at, fee_collected_at, completed_at, photo_url,
+		       created_at, updated_at
+		FROM delivery_stops
+		WHERE delivery_id = ?
+		ORDER BY stop_number ASC
+	`, d.ID)
+	if err != nil {
+		log.Printf("Warning: failed to load delivery stops: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var stops []models.DeliveryStop
+
+	for rows.Next() {
+		var s models.DeliveryStop
+		err := rows.Scan(
+			&s.ID, &s.DeliveryID, &s.StopNumber, &s.StopType, &s.ContactName, &s.ContactPhone,
+			&s.Address, &s.Latitude, &s.Longitude, &s.ItemQRCode, &s.FeeAmount, &s.Status,
+			&s.ArrivedAt, &s.QRScannedAt, &s.FeeCollectedAt, &s.CompletedAt, &s.PhotoURL,
+			&s.CreatedAt, &s.UpdatedAt,
+		)
+		if err != nil {
+			log.Printf("Error scanning delivery stop: %v", err)
+			continue
+		}
+		stops = append(stops, s)
+	}
+
+	d.Stops = stops
 }
 
 // GetAvailableDeliveries returns all pending, unclaimed deliveries for riders to browse
@@ -2173,6 +2226,9 @@ func (h *DeliveryHandler) ClaimDelivery(c *fiber.Ctx) error {
 
 	// Create stops based on delivery type and buyout flow
 	if isBuyoutDelivery {
+		// Cleanup any existing stops for this delivery before creating the buyout workflow
+		_, _ = h.db.Exec("DELETE FROM delivery_stops WHERE delivery_id = ?", deliveryID)
+
 		buyerName := receiverName
 		buyerPhone := receiverPhone
 		sellerName := senderName
@@ -2184,8 +2240,12 @@ func (h *DeliveryHandler) ClaimDelivery(c *fiber.Ctx) error {
 			sellerPhone = receiverPhone
 		}
 
-		buyerPaymentAmount := offeredCash + totalCost
-		returnFee := totalCost
+		// Split fee: 50% from buyer, 50% from seller
+		leg1Fee := totalCost * 0.5
+		leg2Fee := totalCost * 0.5
+
+		buyerPaymentAmount := offeredCash + leg1Fee
+		returnFee := leg2Fee
 
 		// Stop 1: Buyer payment + delivery fee collection
 		_, err = h.db.Exec(`
@@ -2479,13 +2539,22 @@ func (h *DeliveryHandler) autoCreateDeliveryForTrade(tradeID, buyerID, sellerID 
 		delType = deliveryType.String
 	}
 
-	// Calculate cost
+	// Calculate cost with distance-based pricing
 	var totalCost float64
+	baseFee := 30.0
 	if delType == "express" {
-		totalCost = 60.0
-	} else {
-		totalCost = 30.0
+		baseFee = 60.0
 	}
+
+	dist := 0.0
+	if sellerLat.Valid && sellerLon.Valid && buyerLat.Valid && buyerLon.Valid {
+		dist = haversine(sellerLat.Float64, sellerLon.Float64, buyerLat.Float64, buyerLon.Float64)
+	}
+
+	// ₱10 per km as approved by user
+	totalCost = baseFee + (dist * 10.0)
+	// Round to 2 decimal places
+	totalCost = math.Round(totalCost*100) / 100
 
 	// Determine pickup address
 	pickupAddr := "Seller location"
@@ -2651,9 +2720,14 @@ func (h *DeliveryHandler) UpdateStopStatus(c *fiber.Ctx) error {
 	// TASK 15: Enforce step order - must complete previous stop first
 	if stopNumber > 1 {
 		var prevStopStatus string
-		h.db.QueryRow("SELECT status FROM delivery_stops WHERE delivery_id = ? AND stop_number = ?",
+		err := h.db.QueryRow("SELECT status FROM delivery_stops WHERE delivery_id = ? AND stop_number = ?",
 			deliveryID, stopNumber-1).Scan(&prevStopStatus)
-		if prevStopStatus != "completed" {
+		
+		// Only enforce if the previous stop actually exists
+		if err == nil && prevStopStatus != "completed" {
+			log.Printf("Order Enforcement: Delivery %d Stop %d blocked. Prev Stop %d is '%s'", 
+				deliveryID, stopNumber, stopNumber-1, prevStopStatus)
+			
 			return c.Status(400).JSON(models.APIResponse{
 				Success: false,
 				Error:   "You must complete the previous stop first",
