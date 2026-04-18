@@ -354,13 +354,23 @@ const AddProduct: React.FC = () => {
     setManualLocationSaving(true)
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=ph&q=${encodeURIComponent(q)}`
       )
       const results = await response.json()
       const bestMatch = Array.isArray(results) && results.length > 0 ? results[0] : null
       if (bestMatch) {
         const lat = parseFloat(bestMatch.lat)
         const lng = parseFloat(bestMatch.lon)
+        const countryCode = String(bestMatch.address?.country_code || '').toLowerCase()
+        if (countryCode && countryCode !== 'ph') {
+          toast({
+            title: 'PH locations only',
+            description: 'Please select a location within the Philippines.',
+            status: 'warning',
+            duration: 3000,
+          })
+          return
+        }
         const label = bestMatch.display_name || q
         if (!isNaN(lat) && !isNaN(lng)) {
           setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: label }))
@@ -396,7 +406,7 @@ const AddProduct: React.FC = () => {
     setIsSearchingPickupLocation(true)
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`
+        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=ph&q=${encodeURIComponent(query)}&limit=5`
       )
       const results = await response.json()
       const formatted = results.map((r: any) => ({
@@ -1908,6 +1918,16 @@ const AddProduct: React.FC = () => {
                               )
                               const data = await res.json()
                               const addr = data.address || {}
+                              const countryCode = String(addr.country_code || '').toLowerCase()
+                              if (countryCode && countryCode !== 'ph') {
+                                toast({
+                                  title: 'PH locations only',
+                                  description: 'Please select a location within the Philippines.',
+                                  status: 'warning',
+                                  duration: 3000,
+                                })
+                                return
+                              }
                               const street = [addr.house_number, addr.road || addr.street].filter(Boolean).join(' ')
                               const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
                               const city = addr.city || addr.town || addr.municipality || ''

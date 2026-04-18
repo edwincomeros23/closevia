@@ -93,13 +93,14 @@ const AdvertisementCMS = () => {
 
       if (editingAd?.start_date) formData.append('start_date', editingAd.start_date)
       if (editingAd?.end_date) formData.append('end_date', editingAd.end_date)
-      
-      if (mediaFile) {
-        formData.append('media', mediaFile)
-      } else if (!editingAd?.id) {
+
+      if (!editingAd?.id && !mediaFile) {
         toast({ title: 'Media file is required for new ads', status: 'error' })
         setSubmitting(false)
         return
+      }
+      if (mediaFile) {
+        formData.append('media', mediaFile)
       }
 
       if (editingAd?.id) {
@@ -109,10 +110,9 @@ const AdvertisementCMS = () => {
         await api.post('/api/admin/advertisements', formData)
         toast({ title: 'Ad created', status: 'success' })
       }
-      
-      onClose()
       fetchAds()
       setMediaFile(null)
+      onClose()
     } catch (err: any) {
       toast({ title: 'Submission failed', description: err?.response?.data?.error || err.message, status: 'error' })
     } finally {
@@ -220,7 +220,7 @@ const AdvertisementCMS = () => {
                   <FormLabel>Title</FormLabel>
                   <Input value={editingAd?.title || ''} onChange={(e) => setEditingAd({ ...editingAd, title: e.target.value })} placeholder="Holiday Sale!" />
                 </FormControl>
-                
+
                 <FormControl>
                   <FormLabel>Description (Optional)</FormLabel>
                   <Textarea value={editingAd?.description || ''} onChange={(e) => setEditingAd({ ...editingAd, description: e.target.value })} placeholder="Get 50% off on premium items..." rows={2} />
