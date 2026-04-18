@@ -1,19 +1,18 @@
-import React, { useState, useEffect } from 'react'
-import { useNavigate, Link as RouterLink } from 'react-router-dom'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Box,
   Container,
   VStack,
   HStack,
   Input,
+  InputGroup,
+  InputLeftElement,
   Heading,
   Text,
   Badge,
   Alert,
   AlertIcon,
-  Card,
-  CardBody,
-  CardHeader,
   Button,
   useToast,
   useColorModeValue,
@@ -22,8 +21,13 @@ import {
   IconButton,
   Skeleton,
   SkeletonText,
+  ScaleFade,
+  Tooltip,
+  Divider,
+  Icon,
 } from '@chakra-ui/react'
-import { ChevronLeftIcon, ChevronRightIcon, AddIcon } from '@chakra-ui/icons'
+import { SearchIcon, CheckIcon, BellIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons'
+import { FaHandshake, FaExchangeAlt, FaSyncAlt, FaLightbulb, FaFire, FaFlag, FaCog, FaBullhorn, FaBox, FaShoppingBag, FaCheckDouble, FaInbox } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { useRealtime } from '../contexts/RealtimeContext'
@@ -43,6 +47,91 @@ interface Notification {
   data?: any
 }
 
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+const ICON_MAP: Record<string, any> = {
+  order: FaBox,
+  product: FaShoppingBag,
+  trade_offer: FaHandshake,
+  trade_update: FaSyncAlt,
+  trade_loop: FaExchangeAlt,
+  similar_item: FaLightbulb,
+  popular_item: FaFire,
+  report: FaFlag,
+  system: FaCog,
+}
+
+const COLOR_MAP: Record<string, string> = {
+  order: 'blue',
+  product: 'green',
+  trade_offer: 'teal',
+  trade_update: 'orange',
+  trade_loop: 'purple',
+  similar_item: 'cyan',
+  popular_item: 'red',
+  report: 'red',
+  system: 'purple',
+}
+
+const ACCENT_MAP: Record<string, string> = {
+  order: '#3182CE',
+  product: '#38A169',
+  trade_offer: '#319795',
+  trade_update: '#DD6B20',
+  trade_loop: '#805AD5',
+  similar_item: '#00B5D8',
+  popular_item: '#E53E3E',
+  report: '#E53E3E',
+  system: '#805AD5',
+}
+
+const TITLE_MAP: Record<string, string> = {
+  trade_offer: 'Trade Offer',
+  trade_update: 'Trade Update',
+  trade_loop: 'Trade Loop Found',
+  similar_item: 'Item Match',
+  popular_item: 'Trending Item',
+  report: 'Report',
+  system: 'System',
+  order: 'Order',
+  product: 'Product',
+}
+
+function getRelativeTime(dateStr: string): string {
+  const now = new Date()
+  const date = new Date(dateStr)
+  const diffMs = now.getTime() - date.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHr = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHr / 24)
+
+  if (diffSec < 60) return 'Just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffHr < 24) return `${diffHr}h ago`
+  if (diffDay === 1) return 'Yesterday'
+  if (diffDay < 7) return `${diffDay}d ago`
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function getDateGroup(dateStr: string): string {
+  const now = new Date()
+  const date = new Date(dateStr)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today.getTime() - 86400000)
+  const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+
+  if (dateDay.getTime() === today.getTime()) return 'Today'
+  if (dateDay.getTime() === yesterday.getTime()) return 'Yesterday'
+  return 'Earlier'
+}
+
+/* ------------------------------------------------------------------ */
+/*  Component                                                          */
+/* ------------------------------------------------------------------ */
+
 const Notifications: React.FC = () => {
   const { user } = useAuth()
   const { products } = useProducts()
@@ -54,17 +143,19 @@ const Notifications: React.FC = () => {
   const [error, setError] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [query, setQuery] = useState('')
-  const [paginationStartPage, setPaginationStartPage] = useState(1)
-  const itemsPerPage = 5
+  const itemsPerPage = 8
   const toast = useToast()
-  // dev helper: when true, show multiple pages for testing even if there are no notifications
-  const DEV_SHOW_PAGES_ALWAYS = true
-  
-  const bgColor = useColorModeValue('white', 'gray.800')
-  const borderColor = useColorModeValue('gray.200', 'gray.700')
-  // page background color (applies to entire viewport behind the container)
-  const pageBg = '#FFFDF1'
 
+  const bgColor = useColorModeValue('white', 'gray.800')
+  const cardBg = useColorModeValue('white', 'gray.750')
+  const borderColor = useColorModeValue('gray.100', 'gray.700')
+  const pageBg = useColorModeValue('#FFFDF1', '#1A202C')
+  const subtleBg = useColorModeValue('gray.50', 'gray.700')
+  const unreadBg = useColorModeValue('blue.50', 'rgba(66, 153, 225, 0.08)')
+  const groupLabelColor = useColorModeValue('gray.500', 'gray.400')
+  const inputBg = useColorModeValue('white', 'gray.700')
+
+  /* --- Data fetching --- */
   useEffect(() => {
     if (user) {
       const endpoint = user?.role === 'admin' ? '/api/notifications?type=report' : '/api/notifications'
@@ -74,12 +165,10 @@ const Notifications: React.FC = () => {
         const cached = localStorage.getItem(cacheKey)
         if (cached) {
           const parsed = JSON.parse(cached)
-          if (Array.isArray(parsed)) {
-            setNotifications(parsed)
-          }
+          if (Array.isArray(parsed)) setNotifications(parsed)
         }
       } catch {
-        // ignore cache parsing errors
+        // ignore
       }
 
       fetchNotifications(endpoint, cacheKey)
@@ -93,169 +182,145 @@ const Notifications: React.FC = () => {
     const cacheKey = cacheKeyArg || `clovia_notifications_cache_${user?.role || 'user'}`
 
     try {
-      if (notifications.length === 0) {
-        setLoading(true)
-      }
+      if (notifications.length === 0) setLoading(true)
       setError('')
       const response = await api.get(endpoint)
       const list: Notification[] = Array.isArray(response.data?.data) ? response.data.data : []
       setNotifications(list)
-      try {
-        localStorage.setItem(cacheKey, JSON.stringify(list))
-      } catch {
-        // ignore cache write errors
-      }
+      try { localStorage.setItem(cacheKey, JSON.stringify(list)) } catch {}
     } catch (error: any) {
       setError(error.message || 'Failed to fetch notifications')
-      toast({
-        id: "notifications-error",
-        title: 'Error',
-        description: 'Failed to load notifications',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
+      toast({ id: 'notifications-error', title: 'Error', description: 'Failed to load notifications', status: 'error', duration: 3000, isClosable: true })
     } finally {
       setLoading(false)
       setInitialLoading(false)
     }
   }
 
-  const markAsRead = async (notificationId: number) => {
+  const markAsRead = useCallback(async (notificationId: number) => {
     try {
       await api.put(`/api/notifications/${notificationId}/read`)
-      setNotifications(prev =>
-        prev.map(notif =>
-          notif.id === notificationId ? { ...notif, read: true } : notif
-        )
-      )
+      setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n))
       refreshCounts()
-    } catch (error: any) {
-      toast({
-        id: "notifications-error-2",
-        title: 'Error',
-        description: 'Failed to mark notification as read',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
+    } catch {
+      toast({ id: 'mark-read-error', title: 'Error', description: 'Failed to mark notification as read', status: 'error', duration: 3000, isClosable: true })
     }
-  }
+  }, [refreshCounts, toast])
 
-  const markAllAsRead = async () => {
+  const markAllAsRead = useCallback(async () => {
     try {
       await api.put('/api/notifications/read-all')
-      setNotifications(prev =>
-        prev.map(notif => ({ ...notif, read: true }))
-      )
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
       refreshCounts()
-      toast({
-        id: "notifications-success",
-        title: 'Success',
-        description: 'All notifications marked as read',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      })
-    } catch (error: any) {
-      toast({
-        id: "notifications-error-3",
-        title: 'Error',
-        description: 'Failed to mark all notifications as read',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
+      toast({ id: 'mark-all-success', title: 'All caught up!', description: 'All notifications marked as read', status: 'success', duration: 2000, isClosable: true })
+    } catch {
+      toast({ id: 'mark-all-error', title: 'Error', description: 'Failed to mark all as read', status: 'error', duration: 3000, isClosable: true })
     }
+  }, [refreshCounts, toast])
+
+  /* --- Filtering & Pagination --- */
+  const filtered = useMemo(() => {
+    return notifications.filter(n => {
+      // Filter out proactive auto-detected trade_loop notifications (spam from category matching)
+      if (n.type === 'trade_loop' && n.message && (
+        n.message.includes('A 3-way trade opportunity was found') ||
+        n.message.includes('Great match!') ||
+        n.message.includes('in a 3-way trade')
+      )) return false
+
+      if (!query) return true
+      const q = query.toLowerCase()
+      if ((n.message || '').toLowerCase().includes(q)) return true
+      if ((n.type || '').toLowerCase().includes(q)) return true
+
+      try {
+        const matchingProductIds = new Set<number>()
+        for (const p of (products || [])) {
+          if (p?.title?.toLowerCase().includes(q)) matchingProductIds.add(p.id)
+        }
+        const data = n.data as any
+        if (data) {
+          if (typeof data.product_id === 'number' && matchingProductIds.has(data.product_id)) return true
+          if (data.product?.id && matchingProductIds.has(data.product.id)) return true
+          if (data.product?.title?.toLowerCase().includes(q)) return true
+        }
+      } catch {}
+
+      return false
+    })
+  }, [notifications, query, products])
+
+  const unreadCount = useMemo(() => filtered.filter(n => !n.read).length, [filtered])
+  const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage))
+  const paginated = useMemo(() => filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage), [filtered, currentPage])
+
+  /* Group paginated results by date group */
+  const grouped = useMemo(() => {
+    const groups: { label: string; items: Notification[] }[] = []
+    const map = new Map<string, Notification[]>()
+    for (const n of paginated) {
+      const g = getDateGroup(n.created_at)
+      if (!map.has(g)) { map.set(g, []); groups.push({ label: g, items: map.get(g)! }) }
+      map.get(g)!.push(n)
+    }
+    return groups
+  }, [paginated])
+
+  const matchingProducts = useMemo(() => {
+    if (!query || !products?.length) return []
+    return products.filter((p: any) => p?.title?.toLowerCase().includes(query.toLowerCase()))
+  }, [query, products])
+
+  /* --- Redirect logic --- */
+  const getRedirectPath = (notification: Notification): string | null => {
+    if (notification.type === 'trade_offer' || notification.type === 'trade_update') {
+      return notification.data?.trade_id ? `/offers/buyout/${notification.data.trade_id}` : '/offers/buyout'
+    }
+    if (notification.type === 'similar_item' || notification.type === 'popular_item') return '/browse'
+    if (notification.type === 'trade_loop') return '/dashboard?tab=2'
+    return null
   }
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'order':
-        return '📦'
-      case 'product':
-        return '🛍️'
-      case 'trade_offer':
-        return '�'
-      case 'trade_update':
-        return '🔄'
-      case 'trade_loop':
-        return '🔁'
-      case 'similar_item':
-        return '💡'
-      case 'popular_item':
-        return '🔥'
-      case 'report':
-        return '🚨'
-      case 'system':
-        return '⚙️'
-      default:
-        return '📢'
-    }
-  }
+  const handleNotificationClick = useCallback(async (notification: Notification) => {
+    if (!notification.read) await markAsRead(notification.id)
+    const path = getRedirectPath(notification)
+    if (path) navigate(path)
+  }, [markAsRead, navigate])
 
-  const getNotificationColor = (type: string) => {
-    switch (type) {
-      case 'order':
-        return 'blue'
-      case 'product':
-        return 'green'
-      case 'trade_offer':
-        return 'cyan'
-      case 'trade_update':
-        return 'orange'
-      case 'trade_loop':
-        return 'purple'
-      case 'similar_item':
-        return 'teal'
-      case 'popular_item':
-        return 'red'
-      case 'report':
-        return 'red'
-      case 'system':
-        return 'purple'
-      default:
-        return 'gray'
-    }
-  }
-
+  /* ------------------------------------------------------------------ */
+  /*  Loading Skeleton                                                    */
+  /* ------------------------------------------------------------------ */
   if (loading && initialLoading && notifications.length === 0) {
     return (
       <Box minH="100vh" bg={pageBg} py={8}>
-        <Container maxW="container.md" py={0}>
+        <Container maxW="container.md">
           <VStack spacing={6} align="stretch">
-            <Flex align="center" justify="space-between" flexWrap="wrap">
-              <VStack align="start" spacing={1} minW={0}>
-                <Skeleton height="28px" width="180px" />
-                <Skeleton height="16px" width="120px" />
-              </VStack>
-              <HStack spacing={3} mt={{ base: 3, md: 0 }}>
-                <Skeleton height="32px" width={{ base: '140px', md: '240px' }} />
+            {/* Header skeleton */}
+            <Box bg={bgColor} borderRadius="2xl" p={{ base: 4, md: 5 }} border="1px" borderColor={borderColor}>
+              <HStack justify="space-between" align="start">
+                <HStack spacing={3}>
+                  <Skeleton h="42px" w="42px" borderRadius="xl" />
+                  <VStack align="start" spacing={2}>
+                    <Skeleton h="24px" w="150px" borderRadius="md" />
+                    <Skeleton h="16px" w="100px" borderRadius="md" />
+                  </VStack>
+                </HStack>
+                <Skeleton h="32px" w="200px" borderRadius="full" />
               </HStack>
-            </Flex>
-
-            <VStack spacing={4} align="stretch">
-              {[1, 2, 3].map((n) => (
-                <Card key={n} bg={bgColor} border="1px" borderColor={borderColor} shadow="sm">
-                  <CardHeader pb={2}>
-                    <HStack justify="space-between" align="start">
-                      <HStack spacing={3} align="start" flex={1}>
-                        <Skeleton height="32px" width="32px" borderRadius="md" />
-                        <VStack align="start" spacing={2} flex={1}>
-                          <Skeleton height="16px" width="120px" />
-                          <Skeleton height="14px" width="70px" />
-                        </VStack>
-                      </HStack>
-                      <Skeleton height="14px" width="84px" />
-                    </HStack>
-                  </CardHeader>
-                  <CardBody pt={0}>
-                    <SkeletonText noOfLines={2} spacing="2" mb={4} />
-                    <Skeleton height="30px" width="110px" borderRadius="md" />
-                  </CardBody>
-                </Card>
-              ))}
-            </VStack>
+            </Box>
+            {/* Card skeletons */}
+            {[1, 2, 3, 4].map(i => (
+              <Box key={i} bg={bgColor} borderRadius="xl" p={5} border="1px" borderColor={borderColor}>
+                <HStack spacing={4} align="start">
+                  <Skeleton h="44px" w="44px" borderRadius="xl" flexShrink={0} />
+                  <VStack align="start" spacing={2} flex={1}>
+                    <Skeleton h="16px" w="60%" borderRadius="md" />
+                    <SkeletonText noOfLines={2} spacing="2" w="100%" />
+                    <Skeleton h="12px" w="80px" borderRadius="md" />
+                  </VStack>
+                </HStack>
+              </Box>
+            ))}
           </VStack>
         </Container>
         <FloatingTab />
@@ -265,290 +330,394 @@ const Notifications: React.FC = () => {
 
   if (error) {
     return (
-      <Container maxW="container.md" py={8}>
-        <Alert status="error">
-          <AlertIcon />
-          {error}
-        </Alert>
-      </Container>
+      <Box minH="100vh" bg={pageBg} py={8}>
+        <Container maxW="container.md">
+          <Alert status="error" borderRadius="xl">
+            <AlertIcon />
+            {error}
+          </Alert>
+        </Container>
+      </Box>
     )
   }
 
-  // apply a simple case-insensitive filter by message or type
-  const filtered = notifications.filter(n => {
-    if (!query) return true
-    const q = query.toLowerCase()
-    if ((n.message || '').toLowerCase().includes(q)) return true
-    if ((n.type || '').toLowerCase().includes(q)) return true
-
-    // match against product titles from product context
-    try {
-      // find product IDs whose titles match the query
-      const matchingProductIds = new Set<number>()
-      for (const p of (products || [])) {
-        if (p && p.title && typeof p.title === 'string' && p.title.toLowerCase().includes(q)) {
-          matchingProductIds.add(p.id)
-        }
-      }
-
-      // check if notification data contains a product_id or embedded product that matches
-      const data = n.data as any
-      if (data) {
-        if (typeof data.product_id === 'number' && matchingProductIds.has(data.product_id)) return true
-        if (data.product && typeof data.product.id === 'number' && matchingProductIds.has(data.product.id)) return true
-        if (data.product && typeof data.product.title === 'string' && data.product.title.toLowerCase().includes(q)) return true
-      }
-    } catch (err) {
-      // ignore product matching errors
-    }
-
-    return false
-  })
-
-  const unreadCount = filtered.filter(n => !n.read).length
-  const totalPagesInitial = Math.max(1, Math.ceil(filtered.length / itemsPerPage))
-  const totalPages = (DEV_SHOW_PAGES_ALWAYS && totalPagesInitial === 1) ? 5 : totalPagesInitial
-  const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-
-  // Pagination controls: show 3 pages at a time
-  const paginationWindowSize = 3
-  const maxStartPage = Math.max(1, totalPages - paginationWindowSize + 1)
-  const visiblePages = Array.from(
-    { length: Math.min(paginationWindowSize, totalPages) },
-    (_, i) => paginationStartPage + i
-  )
-
-  const handlePreviousPagination = () => {
-    setPaginationStartPage(prev => Math.max(1, prev - 1))
-  }
-
-  const handleNextPagination = () => {
-    setPaginationStartPage(prev => Math.min(maxStartPage, prev + 1))
-  }
-
-  // If the query looks like a product search, prepare matching products to show in the empty state
-  const matchingProducts = (query && products && products.length > 0)
-    ? products.filter((p: any) => p && p.title && p.title.toLowerCase().includes(query.toLowerCase()))
-    : []
-
+  /* ------------------------------------------------------------------ */
+  /*  Render                                                              */
+  /* ------------------------------------------------------------------ */
   return (
-    // outer Box sets the viewport background color requested
-    <Box minH="100vh" bg={pageBg} py={8}>
-      <Container maxW="container.md" py={0}>
+    <Box minH="100vh" bg={pageBg} py={{ base: 4, md: 8 }}>
+      <Container maxW="container.md" px={{ base: 4, md: 6 }}>
         <VStack spacing={6} align="stretch">
-          {/* Header + Actions in one row: title + compact subtext on left, actions on right */}
-          <Flex align="center" justify="space-between" flexWrap="wrap">
-            <VStack align="start" spacing={1} minW={0}>
-              <Heading size="md" color="brand.500" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">
-                {user?.role === 'admin' ? 'User Reports' : 'Notifications'}
-              </Heading>
-              <Text color="gray.600" fontSize="sm" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">
-                {unreadCount > 0 ? `${unreadCount} unread${unreadCount > 1 ? 's' : ''}` : 'All caught up!'}
-              </Text>
-            </VStack>
 
-            <HStack spacing={3} align="center" mt={{ base: 3, md: 0 }} flexWrap="wrap">
-              <Input
-                placeholder="Search..."
-                size="sm"
-                value={query}
-                onChange={(e) => { setQuery(e.target.value); setCurrentPage(1); setPaginationStartPage(1) }}
-                w={{ base: '140px', md: '240px' }}
-                bg={useColorModeValue('gray.50', 'gray.700')}
-              />
-              {unreadCount > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  colorScheme="brand"
-                  onClick={markAllAsRead}
+          {/* ===== Header ===== */}
+          <Box
+            bg={bgColor}
+            borderRadius="2xl"
+            px={{ base: 4, md: 6 }}
+            py={{ base: 4, md: 5 }}
+            border="1px"
+            borderColor={borderColor}
+            boxShadow="0 1px 3px rgba(0,0,0,0.04)"
+          >
+            <Flex
+              align={{ base: 'start', md: 'center' }}
+              justify="space-between"
+              direction={{ base: 'column', md: 'row' }}
+              gap={3}
+            >
+              <HStack spacing={3}>
+                <Flex
+                  align="center"
+                  justify="center"
+                  w="42px"
+                  h="42px"
+                  borderRadius="xl"
+                  bg="brand.50"
+                  color="brand.500"
+                  flexShrink={0}
                 >
-                  Mark All as Read
-                </Button>
-              )}
-            </HStack>
-          </Flex>
-
-          {/* Notifications List */}
-          <VStack spacing={4} align="stretch">
-            {paginated.length === 0 ? (
-              matchingProducts.length > 0 ? (
-                <VStack spacing={4} align="stretch">
-                  {matchingProducts.map((p: any) => (
-                    <Card key={p.id} bg={bgColor} border="1px" borderColor={borderColor} shadow="sm">
-                      <CardBody>
-                        <HStack spacing={4} align="center">
-                          <Box boxSize="72px">
-                            <ChakraImage src={getFirstImage(p.image_urls)} alt={p.title} width="100%" height="100%" objectFit="cover" borderRadius="6px" />
-                          </Box>
-                          <VStack align="start" spacing={1} flex={1}>
-                            <Heading size="sm">{p.title}</Heading>
-                            <Text fontSize="sm" color="gray.600" noOfLines={2}>{p.description}</Text>
-                            <HStack>
-                              {p.allow_buying && p.price ? (
-                                <Text fontWeight="bold" color="brand.500">{formatPHP(p.price)}</Text>
-                              ) : (
-                                <Badge colorScheme="green">Barter</Badge>
-                              )}
-                              <Button size="sm" variant="outline" onClick={() => {
-                                window.location.href = getProductUrl(p)
-                              }}>View</Button>
-                            </HStack>
-                          </VStack>
-                        </HStack>
-                      </CardBody>
-                    </Card>
-                  ))}
+                  <Icon as={BellIcon} boxSize={5} />
+                </Flex>
+                <VStack align="start" spacing={0}>
+                  <Heading size="md" color="gray.800" _dark={{ color: 'gray.100' }}>
+                    {user?.role === 'admin' ? 'User Reports' : 'Notifications'}
+                  </Heading>
+                  <Text fontSize="sm" color="gray.500">
+                    {unreadCount > 0
+                      ? `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`
+                      : "You're all caught up!"}
+                  </Text>
                 </VStack>
-              ) : (
-                <Box textAlign="center" py={12}>
-                  <Text fontSize="lg" color="gray.500" mb={4}>
-                    {user?.role === 'admin' ? 'No user reports yet' : 'No notifications yet'}
+              </HStack>
+
+              <HStack spacing={2} w={{ base: '100%', md: 'auto' }}>
+                <InputGroup size="sm" maxW={{ base: '100%', md: '220px' }} flex={1}>
+                  <InputLeftElement pointerEvents="none">
+                    <SearchIcon color="gray.400" boxSize={3.5} />
+                  </InputLeftElement>
+                  <Input
+                    placeholder="Search notifications..."
+                    value={query}
+                    onChange={(e) => { setQuery(e.target.value); setCurrentPage(1) }}
+                    bg={inputBg}
+                    borderRadius="full"
+                    borderColor={borderColor}
+                    _focus={{ borderColor: 'brand.400', boxShadow: '0 0 0 1px var(--chakra-colors-brand-400)' }}
+                    fontSize="sm"
+                  />
+                </InputGroup>
+                {unreadCount > 0 && (
+                  <Tooltip label="Mark all as read" hasArrow placement="bottom">
+                    <IconButton
+                      aria-label="Mark all as read"
+                      icon={<Icon as={FaCheckDouble} />}
+                      size="sm"
+                      variant="ghost"
+                      colorScheme="brand"
+                      borderRadius="full"
+                      onClick={markAllAsRead}
+                    />
+                  </Tooltip>
+                )}
+              </HStack>
+            </Flex>
+
+            {/* Unread count pill */}
+            {unreadCount > 0 && (
+              <Flex mt={3} pt={3} borderTop="1px" borderColor={borderColor}>
+                <HStack
+                  spacing={2}
+                  bg="red.50"
+                  _dark={{ bg: 'rgba(254, 178, 178, 0.1)' }}
+                  px={3}
+                  py={1.5}
+                  borderRadius="full"
+                >
+                  <Box w="8px" h="8px" borderRadius="full" bg="red.400" />
+                  <Text fontSize="xs" fontWeight="semibold" color="red.600" _dark={{ color: 'red.300' }}>
+                    {unreadCount} new
                   </Text>
-                  <Text color="gray.400">
-                    {user?.role === 'admin'
-                      ? "You'll be notified here when a user reports another user."
-                      : "We'll notify you about orders, messages, and important updates here."}
-                  </Text>
-                </Box>
-              )
-            ) : (
-              paginated.map((notification) => {
-                // Determine redirect path based on notification type/data
-                let redirectPath = null;
-                if (notification.type === 'trade_offer' || notification.type === 'trade_update') {
-                  // Example: redirect to offers/buyout or trade details
-                  if (notification.data && notification.data.trade_id) {
-                    redirectPath = `/offers/buyout/${notification.data.trade_id}`;
-                  } else {
-                    redirectPath = '/offers/buyout';
-                  }
-                } else if (notification.type === 'similar_item' || notification.type === 'popular_item') {
-                  // For product notifications, redirect to browse/search
-                  redirectPath = '/browse';
-                } else if (notification.type === 'trade_loop') {
-                  // For trade loops, go to dashboard multi-way tab
-                  redirectPath = '/dashboard?tab=2';
-                } else if (notification.type === 'trade_loop') {
-                  redirectPath = '/dashboard?tab=2';
-                }
-                // Add more types as needed
+                </HStack>
+              </Flex>
+            )}
+          </Box>
 
-                const handleNotificationClick = async () => {
-                  if (!notification.read) {
-                    await markAsRead(notification.id);
-                  }
-                  if (redirectPath) {
-                    navigate(redirectPath);
-                  }
-                };
-
-                const getNotificationTitle = (type: string) => {
-                  const titleMap: Record<string, string> = {
-                    'trade_offer': '📬 Trade Offer',
-                    'trade_update': '🔄 Trade Update',
-                    'trade_loop': '🔁 Trade Loop Found',
-                    'similar_item': '💡 Item Match',
-                    'popular_item': '🔥 Trending Item',
-                    'report': '⚠️ Report',
-                    'system': '⚙️ System',
-                  };
-                  return titleMap[type] || type.replace('_', ' ').toUpperCase();
-                };
-
-                return (
-                  <Card
-                    key={notification.id}
+          {/* ===== Notification List ===== */}
+          {paginated.length === 0 ? (
+            matchingProducts.length > 0 ? (
+              /* Product match results when searching */
+              <VStack spacing={3} align="stretch">
+                <Text fontSize="sm" color="gray.500" px={1}>
+                  No notifications found, but we found matching products:
+                </Text>
+                {matchingProducts.map((p: any) => (
+                  <Box
+                    key={p.id}
                     bg={bgColor}
+                    borderRadius="xl"
                     border="1px"
                     borderColor={borderColor}
-                    shadow="sm"
-                    opacity={notification.read ? 0.7 : 1}
+                    p={4}
+                    cursor="pointer"
                     transition="all 0.2s"
-                    _hover={{ shadow: 'md', cursor: redirectPath ? 'pointer' : 'default' }}
-                    onClick={redirectPath ? handleNotificationClick : undefined}
+                    _hover={{ shadow: 'md', transform: 'translateY(-1px)' }}
+                    onClick={() => { window.location.href = getProductUrl(p) }}
                   >
-                    <CardHeader pb={2}>
-                      <HStack justify="space-between" align="start" flexWrap="wrap" gap={2}>
-                        <HStack spacing={3} align="start" minW={0} flex={1}>
-                          <VStack align="start" spacing={1} minW={0}>
-                            <HStack spacing={2} flexWrap="wrap">
-                              <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }} noOfLines={1}>
-                                {getNotificationTitle(notification.type)}
-                              </Text>
-                              {!notification.read && (
-                                <Badge colorScheme="red" size="sm">
-                                  New
-                                </Badge>
-                              )}
-                            </HStack>
-                            <Badge colorScheme={getNotificationColor(notification.type)} size="sm">
-                              {notification.type.replace('_', ' ')}
-                            </Badge>
-                          </VStack>
-                        </HStack>
-                        <Text fontSize="sm" color="gray.500">
-                          {new Date(notification.created_at).toLocaleDateString()}
-                        </Text>
-                      </HStack>
-                    </CardHeader>
-                    <CardBody pt={0}>
-                      <Text color="gray.700" mb={4}>{notification.message}</Text>
-
-                      {redirectPath && (
+                    <HStack spacing={4} align="center">
+                      <Box boxSize="64px" borderRadius="lg" overflow="hidden" flexShrink={0} bg="gray.100">
+                        <ChakraImage src={getFirstImage(p.image_urls)} alt={p.title} w="100%" h="100%" objectFit="cover" />
+                      </Box>
+                      <VStack align="start" spacing={1} flex={1} minW={0}>
+                        <Text fontWeight="semibold" fontSize="sm" noOfLines={1}>{p.title}</Text>
+                        <Text fontSize="xs" color="gray.500" noOfLines={1}>{p.description}</Text>
                         <HStack spacing={2}>
-                          {!notification.read ? (
-                            <Button
-                              size="sm"
-                              variant="solid"
-                              colorScheme="blue"
-                              onClick={e => { e.stopPropagation(); handleNotificationClick(); }}
-                            >
-                              View & Mark as Read
-                            </Button>
+                          {p.allow_buying && p.price ? (
+                            <Text fontWeight="bold" fontSize="sm" color="brand.500">{formatPHP(p.price)}</Text>
                           ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              colorScheme="blue"
-                              onClick={e => { e.stopPropagation(); handleNotificationClick(); }}
-                            >
-                              View
-                            </Button>
+                            <Badge colorScheme="green" fontSize="2xs">Barter</Badge>
                           )}
                         </HStack>
-                      )}
+                      </VStack>
+                    </HStack>
+                  </Box>
+                ))}
+              </VStack>
+            ) : (
+              /* Empty state */
+              <VStack spacing={4} py={16} align="center">
+                <Flex
+                  w="80px"
+                  h="80px"
+                  borderRadius="full"
+                  bg={subtleBg}
+                  align="center"
+                  justify="center"
+                >
+                  <Icon as={FaInbox} boxSize={8} color="gray.300" />
+                </Flex>
+                <VStack spacing={1}>
+                  <Text fontSize="lg" fontWeight="semibold" color="gray.600" _dark={{ color: 'gray.300' }}>
+                    {query ? 'No results found' : user?.role === 'admin' ? 'No reports yet' : 'No notifications yet'}
+                  </Text>
+                  <Text fontSize="sm" color="gray.400" textAlign="center" maxW="300px">
+                    {query
+                      ? `Nothing matches "${query}". Try a different search.`
+                      : user?.role === 'admin'
+                        ? "You'll see user reports here when they come in."
+                        : "We'll let you know about trades, offers, and important updates."}
+                  </Text>
+                </VStack>
+              </VStack>
+            )
+          ) : (
+            /* Grouped notification cards */
+            <VStack spacing={4} align="stretch">
+              {grouped.map((group) => (
+                <VStack key={group.label} spacing={2} align="stretch">
+                  {/* Group label */}
+                  <HStack px={1} pt={1}>
+                    <Text fontSize="xs" fontWeight="bold" textTransform="uppercase" letterSpacing="wider" color={groupLabelColor}>
+                      {group.label}
+                    </Text>
+                    <Divider borderColor={borderColor} />
+                  </HStack>
 
-                      {!redirectPath && (
-                        <>
-                          {!notification.read ? (
-                            <Button
-                              size="sm"
-                              variant="solid"
-                              colorScheme="blue"
-                              onClick={e => { e.stopPropagation(); markAsRead(notification.id); }}
-                            >
-                              Mark as Read
-                            </Button>
-                          ) : (
-                            <Badge colorScheme="green" variant="subtle" px={2} py={1} borderRadius="full" fontSize="xs">
-                              ✓ Read
-                            </Badge>
-                          )}
-                        </>
-                      )}
-                    </CardBody>
-                  </Card>
-                );
-              })
-            )}
+                  {group.items.map((notification, idx) => {
+                    const redirectPath = getRedirectPath(notification)
+                    const accent = ACCENT_MAP[notification.type] || '#A0AEC0'
+                    const colorScheme = COLOR_MAP[notification.type] || 'gray'
+                    const IconComp = ICON_MAP[notification.type] || FaBullhorn
+                    const title = TITLE_MAP[notification.type] || notification.type.replace('_', ' ')
 
-            {/* Pagination Controls are rendered below the Container for spacing */}
-          </VStack>
+                    return (
+                      <ScaleFade key={notification.id} in={true} initialScale={0.97}>
+                        <Box
+                          position="relative"
+                          bg={notification.read ? cardBg : unreadBg}
+                          borderRadius="xl"
+                          border="1px"
+                          borderColor={notification.read ? borderColor : `${colorScheme}.200`}
+                          overflow="hidden"
+                          transition="all 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
+                          _hover={{
+                            shadow: 'md',
+                            transform: 'translateY(-2px)',
+                            borderColor: `${colorScheme}.300`,
+                          }}
+                          cursor={redirectPath ? 'pointer' : 'default'}
+                          onClick={redirectPath ? () => handleNotificationClick(notification) : undefined}
+                          role="article"
+                          aria-label={`Notification: ${title}`}
+                        >
+                          {/* Accent bar */}
+                          <Box
+                            position="absolute"
+                            left={0}
+                            top={0}
+                            bottom={0}
+                            w="4px"
+                            bg={notification.read ? 'transparent' : accent}
+                            borderRadius="4px 0 0 4px"
+                            transition="background 0.3s"
+                          />
+
+                          <Box px={5} py={4} pl={6}>
+                            <Flex align="start" gap={3}>
+                              {/* Icon */}
+                              <Flex
+                                align="center"
+                                justify="center"
+                                w="40px"
+                                h="40px"
+                                borderRadius="xl"
+                                bg={`${colorScheme}.50`}
+                                _dark={{ bg: `${colorScheme}.900` }}
+                                flexShrink={0}
+                                mt="2px"
+                              >
+                                <Icon as={IconComp} boxSize={4} color={`${colorScheme}.500`} />
+                              </Flex>
+
+                              {/* Content */}
+                              <VStack align="start" spacing={1} flex={1} minW={0}>
+                                <Flex align="center" justify="space-between" w="100%" gap={2}>
+                                  <HStack spacing={2} minW={0}>
+                                    <Text
+                                      fontWeight={notification.read ? 'medium' : 'bold'}
+                                      fontSize="sm"
+                                      color="gray.800"
+                                      _dark={{ color: 'gray.100' }}
+                                      noOfLines={1}
+                                    >
+                                      {title}
+                                    </Text>
+                                    {!notification.read && (
+                                      <Box w="7px" h="7px" borderRadius="full" bg="blue.400" flexShrink={0} />
+                                    )}
+                                  </HStack>
+                                  <Text fontSize="xs" color="gray.400" flexShrink={0} whiteSpace="nowrap">
+                                    {getRelativeTime(notification.created_at)}
+                                  </Text>
+                                </Flex>
+
+                                <Text
+                                  fontSize="sm"
+                                  color={notification.read ? 'gray.500' : 'gray.700'}
+                                  _dark={{ color: notification.read ? 'gray.400' : 'gray.300' }}
+                                  noOfLines={2}
+                                  lineHeight="tall"
+                                >
+                                  {notification.message}
+                                </Text>
+
+                                {/* Actions */}
+                                <HStack spacing={2} mt={1}>
+                                  {redirectPath && (
+                                    <Button
+                                      size="xs"
+                                      variant={notification.read ? 'ghost' : 'solid'}
+                                      colorScheme="brand"
+                                      borderRadius="full"
+                                      px={3}
+                                      fontWeight="semibold"
+                                      onClick={(e) => { e.stopPropagation(); handleNotificationClick(notification) }}
+                                      _hover={{ transform: 'scale(1.02)' }}
+                                      transition="all 0.15s"
+                                    >
+                                      {notification.read ? 'View' : 'View Details'}
+                                    </Button>
+                                  )}
+                                  {!notification.read && !redirectPath && (
+                                    <Button
+                                      size="xs"
+                                      variant="ghost"
+                                      colorScheme="gray"
+                                      borderRadius="full"
+                                      px={3}
+                                      leftIcon={<CheckIcon boxSize={2.5} />}
+                                      onClick={(e) => { e.stopPropagation(); markAsRead(notification.id) }}
+                                      fontSize="xs"
+                                      _hover={{ bg: 'gray.100' }}
+                                    >
+                                      Mark as read
+                                    </Button>
+                                  )}
+                                  {notification.read && !redirectPath && (
+                                    <Text fontSize="2xs" color="gray.400" fontStyle="italic">
+                                      Read
+                                    </Text>
+                                  )}
+                                </HStack>
+                              </VStack>
+                            </Flex>
+                          </Box>
+                        </Box>
+                      </ScaleFade>
+                    )
+                  })}
+                </VStack>
+              ))}
+            </VStack>
+          )}
+
+          {/* ===== Pagination ===== */}
+          {totalPages > 1 && (
+            <Flex justify="center" align="center" gap={1} pt={2} pb={4}>
+              <IconButton
+                aria-label="Previous page"
+                icon={<ChevronLeftIcon />}
+                size="sm"
+                variant="ghost"
+                borderRadius="full"
+                isDisabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              />
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(page => {
+                  // Show first, last, and pages near current
+                  if (page === 1 || page === totalPages) return true
+                  return Math.abs(page - currentPage) <= 1
+                })
+                .reduce<(number | 'ellipsis')[]>((acc, page, idx, arr) => {
+                  if (idx > 0 && page - (arr[idx - 1] as number) > 1) acc.push('ellipsis')
+                  acc.push(page)
+                  return acc
+                }, [])
+                .map((item, idx) =>
+                  item === 'ellipsis' ? (
+                    <Text key={`ellipsis-${idx}`} fontSize="sm" color="gray.400" px={1}>…</Text>
+                  ) : (
+                    <Button
+                      key={item}
+                      size="sm"
+                      variant={item === currentPage ? 'solid' : 'ghost'}
+                      colorScheme={item === currentPage ? 'brand' : 'gray'}
+                      borderRadius="full"
+                      minW="36px"
+                      h="36px"
+                      fontSize="sm"
+                      fontWeight={item === currentPage ? 'bold' : 'medium'}
+                      onClick={() => setCurrentPage(item as number)}
+                    >
+                      {item}
+                    </Button>
+                  )
+                )}
+              <IconButton
+                aria-label="Next page"
+                icon={<ChevronRightIcon />}
+                size="sm"
+                variant="ghost"
+                borderRadius="full"
+                isDisabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              />
+            </Flex>
+          )}
         </VStack>
       </Container>
 
-    <FloatingTab />
+      <FloatingTab />
     </Box>
   )
 }

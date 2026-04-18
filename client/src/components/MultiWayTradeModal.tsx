@@ -67,6 +67,7 @@ import {
   FaCamera,
   FaStar,
   FaSearch,
+  FaTimesCircle,
 } from 'react-icons/fa'
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -1270,40 +1271,78 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   return (
     <>
       <Modal isOpen={isOpen} onClose={onClose} size={["sm", "md", "lg", "6xl"]} isCentered scrollBehavior="inside">
-        <ModalOverlay backdropFilter="blur(4px)" />
-        <ModalContent bg={cardBg} minH="70vh" maxH="92vh" display="flex" flexDirection="column" w="full">
-        <ModalHeader py={2}>
-          <HStack spacing={2} w="full" justify="space-between" fontSize={"md"}>
-            <HStack spacing={2}>
-              <Icon as={FaHandshake} color="purple.500" />
-              <Text>Trade Details</Text>
-              <Badge colorScheme="green" variant="subtle" fontSize="sm">
+        <ModalOverlay backdropFilter="blur(8px)" />
+        <ModalContent bg={useColorModeValue('white', 'gray.900')} borderRadius="3xl" overflow="hidden" shadow="2xl" minH="70vh" maxH="92vh" display="flex" flexDirection="column" w="full">
+        <ModalHeader pt={6} pb={5} px={6}>
+          <HStack spacing={2} w="full" justify="space-between">
+            <HStack spacing={3}>
+              <Icon as={FaHandshake} color="brand.500" boxSize={6} />
+              <Text fontSize="2xl" fontWeight="600" color={useColorModeValue('gray.800', 'white')} letterSpacing="tight">Trade Details</Text>
+              <Badge colorScheme="green" variant="subtle" fontSize="sm" px={2} py={0.5} borderRadius="md" ml={2}>
                 In Progress
               </Badge>
             </HStack>
           </HStack>
-          <ModalCloseButton mt={2} />
+          <ModalCloseButton mt={4} mr={2} size="lg" />
         </ModalHeader>
 
         <ModalBody py={0} px={0} flex={1} display="flex" flexDirection="column" overflow="hidden" minH={0}>
           <Tabs index={activeTab} onChange={setActiveTab} variant="soft-rounded" colorScheme="brand" display="flex" flexDirection="column" flex={1} overflow="hidden">
-            <TabList px={4} pt={2} mb={0} borderBottomWidth="1px" borderColor={borderColor}>
-              <Tab fontSize="sm" fontWeight="medium">Overview</Tab>
-              <Tab fontSize="sm" fontWeight="medium">
+            <TabList px={6} pt={2} pb={4} mb={0} borderBottomWidth="1px" borderColor={borderColor}>
+              <Tab fontSize="md" fontWeight="600" px={5}>Overview</Tab>
+              <Tab fontSize="md" fontWeight="600" px={5}>
                 {sortedParticipants.length >= 3 ? 'Group Chat' : 'Chat'}
               </Tab>
-              <Tab fontSize="sm" fontWeight="medium">Meet up</Tab>
+              <Tab fontSize="md" fontWeight="600" px={5}>Meet up</Tab>
             </TabList>
 
             <TabPanels flex={1} minH={0} overflow="hidden" display="flex" flexDirection="column">
               {/* Overview Tab - Restructured Layout */}
-              <TabPanel py={3} px={[2, 4]} overflowY="auto" minH={0} flex={1} display="flex" flexDirection="column">
-                <VStack spacing={4} align="stretch">
+              <TabPanel py={4} px={[4, 6]} overflowY="auto" minH={0} flex={1} display="flex" flexDirection="column" bg={useColorModeValue('gray.50', 'gray.900')}>
+                <VStack spacing={6} align="stretch">
+                  {/* TRADE MANAGEMENT ACTIONS */}
+                  {isActiveChain && (
+                    <Card variant="outline" bg="white" borderRadius="2xl" shadow="sm" borderColor={borderColor}>
+                      <CardBody p={4}>
+                        <HStack justify="space-between" align="center">
+                          <Box>
+                            <Text fontWeight="600" fontSize="sm" color="gray.800">Trade Management Actions</Text>
+                            <Text fontSize="xs" color="gray.500">Need to cancel or report a problem?</Text>
+                          </Box>
+                          <HStack spacing={2}>
+                            {meetupAgreed && (
+                              <Button
+                                size="sm"
+                                colorScheme="orange"
+                                onClick={() => setShowDisputeDialog(true)}
+                                leftIcon={<Icon as={FaExclamationTriangle} boxSize={3} />}
+                                borderRadius="full"
+                                px={4}
+                              >
+                                Dispute
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              colorScheme="red"
+                              variant="outline"
+                              onClick={handleCancelLoop}
+                              leftIcon={<Icon as={FaTimesCircle} boxSize={3} />}
+                              borderRadius="full"
+                              px={4}
+                            >
+                              Cancel Trade
+                            </Button>
+                          </HStack>
+                        </HStack>
+                      </CardBody>
+                    </Card>
+                  )}
                   {/* CONFIRMATION PROGRESS */}
-                  <Box>
-                    <HStack justify="space-between" mb={3}>
-                      <Text fontSize="sm" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.300')}>Confirmation progress</Text>
-                      <Text fontSize="sm" fontWeight="bold" color="brand.500">{sortedParticipants.filter(p => ['accepted', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)).length}/{sortedParticipants.length}</Text>
+                  <Box bg="white" p={5} borderRadius="2xl" shadow="sm">
+                    <HStack justify="space-between" mb={4}>
+                      <Text fontSize="sm" fontWeight="600" textTransform="uppercase" letterSpacing="wider" color={useColorModeValue('gray.700', 'gray.300')}>Confirmation progress</Text>
+                      <Badge bg="brand.50" color="brand.600" px={3} py={1} borderRadius="full" fontSize="sm">{sortedParticipants.filter(p => ['accepted', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)).length}/{sortedParticipants.length}</Badge>
                     </HStack>
                     {/* Step indicators with labels */}
                     {sortedParticipants.length === 2 ? (
@@ -1323,7 +1362,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                                   justifyContent="center"
                                   color="white"
                                   fontSize="12px"
-                                  fontWeight="bold"
+                                  fontWeight="600"
                                 >
                                   {isAccepted ? '✓' : idx + 1}
                                 </Box>
@@ -1356,7 +1395,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                                 justifyContent="center"
                                 color="white"
                                 fontSize="12px"
-                                fontWeight="bold"
+                                fontWeight="600"
                               >
                                 {isAccepted ? '✓' : idx + 1}
                               </Box>
@@ -1410,11 +1449,10 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                   )}
 
                   {/* TRADE LOOP DIAGRAM - INTERACTIVE ROWS */}
-                  <Box borderTopWidth="1px" borderBottomWidth="1px" borderColor={borderColor} py={4} px={2}>
-                    <Heading size="xs" mb={3} textTransform="uppercase" fontSize="10px" color={useColorModeValue('gray.600', 'gray.400')} letterSpacing="1px">
+                  <Box bg="white" p={5} borderRadius="2xl" shadow="sm">
+                    <Heading size="xs" mb={4} textTransform="uppercase" fontSize="10px" color={useColorModeValue('gray.500', 'gray.400')} fontWeight="600" letterSpacing="widest">
                       Trade Exchange
                     </Heading>
-                    
                     {sortedParticipants.length === 2 ? (
                       /* Two-way trade: two rows showing bidirectional exchange */
                       <VStack spacing={2} align="stretch">
@@ -1602,7 +1640,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                                       transition="all 0.2s"
                                       _hover={{ ring: '2px', ringColor: 'brand.600', opacity: 0.85 }}
                                     />
-                                    <Box position="absolute" bottom="-4px" right="-4px" borderRadius="full" bg={isAccepted ? 'green.500' : 'gray.400'} w="16px" h="16px" display="flex" alignItems="center" justifyContent="center" color="white" fontSize="9px" fontWeight="bold" shadow="md" borderWidth="1px" borderColor="white">
+                                    <Box position="absolute" bottom="-4px" right="-4px" borderRadius="full" bg={isAccepted ? 'green.500' : 'gray.400'} w="16px" h="16px" display="flex" alignItems="center" justifyContent="center" color="white" fontSize="9px" fontWeight="600" shadow="md" borderWidth="1px" borderColor="white">
                                       {isAccepted ? '✓' : '●'}
                                     </Box>
                                   </Box>
@@ -1677,37 +1715,41 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                   </SimpleGrid>
 
                   {/* PARTICIPANTS SECTION */}
-                  <Box borderTopWidth="1px" borderColor={borderColor} pt={3}>
-                    <Heading size="xs" mb={2} textTransform="uppercase" fontSize="10px" color={useColorModeValue('gray.600', 'gray.400')} letterSpacing="1px">
+                  <Box bg="white" p={5} borderRadius="2xl" shadow="sm">
+                    <Heading size="xs" mb={4} textTransform="uppercase" fontSize="10px" color={useColorModeValue('gray.500', 'gray.400')} fontWeight="600" letterSpacing="widest">
                       Participants
                     </Heading>
-                    <VStack spacing={2} align="stretch">
+                    <VStack spacing={3} align="stretch">
                       {sortedParticipants.map((participant, idx) => {
                         const isAccepted = ['accepted', 'confirmed', 'user3_accepted', 'active', 'multiway_active'].includes(participant.trade_status)
                         const isCurrentUser = participant.user_id === user?.id
                         
                         return (
-                          <Box key={idx} p={3} borderWidth="1px" borderColor={borderColor} borderRadius="md" bg={useColorModeValue('white', 'gray.800')}>
-                            <HStack justify="space-between" align="start">
-                              <HStack spacing={2} flex={1}>
-                                <Avatar name={participant.user_name} size="sm" cursor="pointer" onClick={() => navigate(getUserProfileUrl(participant.user_id, participant.user_slug))} />
-                                <VStack spacing={0} align="start" flex={1} minW={0}>
-                                  <Text fontSize="sm" fontWeight="semibold">{participant.user_name} {isCurrentUser && <Text as="span" fontSize="xs" color="gray.500">(you)</Text>}</Text>
-                                  <Text fontSize="xs" color="gray.600" noOfLines={1}>Giving: {participant.product_title}</Text>
+                          <Box key={idx} p={4} borderWidth="0" shadow="sm" borderRadius="2xl" bg={useColorModeValue('gray.50', 'gray.800')} _hover={{ shadow: 'md', transform: 'translateY(-2px)' }} transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)">
+                            <HStack justify="space-between" align="center">
+                              <HStack spacing={3} flex={1}>
+                                <Avatar name={participant.user_name} size="md" borderRadius="xl" cursor="pointer" onClick={() => navigate(getUserProfileUrl(participant.user_id, participant.user_slug))} />
+                                <VStack spacing={0.5} align="start" flex={1} minW={0}>
+                                  <Text fontSize="sm" fontWeight="600" color="gray.800" letterSpacing="tight">{participant.user_name} {isCurrentUser && <Text as="span" fontSize="xs" fontWeight="600" color="brand.500">(you)</Text>}</Text>
+                                  <Text fontSize="xs" color="gray.500" fontWeight="600" noOfLines={1}>Giving: {participant.product_title}</Text>
                                 </VStack>
                               </HStack>
-                              <VStack spacing={1} align="flex-end">
-                                <Badge colorScheme={isAccepted ? 'green' : 'gray'} borderRadius="md" whiteSpace="nowrap">
+                              <VStack spacing={1.5} align="flex-end">
+                                <Badge bg={isAccepted ? 'green.100' : 'gray.100'} color={isAccepted ? 'green.700' : 'gray.600'} borderRadius="md" px={2} py={0.5} fontWeight="600" whiteSpace="nowrap">
                                   {isAccepted ? 'Confirmed' : 'Pending'}
                                 </Badge>
                                 {!isAccepted && canManage && !isCurrentUser && (
                                   <Button
                                     size="xs"
-                                    variant="ghost"
+                                    bg="brand.500"
+                                    color="white"
+                                    borderRadius="md"
                                     fontSize="xs"
+                                    fontWeight="600"
                                     isDisabled={loading}
                                     isLoading={selectedAction === 'reinvite' && loading}
                                     onClick={() => handleReinviteLoop()}
+                                    _hover={{ bg: 'brand.600' }}
                                   >
                                     Reinvite
                                   </Button>
@@ -1722,10 +1764,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
                   {/* Estimated Total Value */}
                   {multiWayTrade.total_value && (
-                    <HStack justify="space-between" bg={useColorModeValue('green.50', 'green.900')} p={3} borderRadius="md" borderLeftWidth="4px" borderColor="green.500">
-                      <Text fontWeight="semibold" fontSize="sm">Estimated Total Value</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="green.500">₱{multiWayTrade.total_value.toFixed(2)}</Text>
-                    </HStack>
+                    <Box bg="white" p={5} borderRadius="2xl" shadow="sm">
+                      <HStack justify="space-between">
+                        <Text fontWeight="600" color="gray.700" fontSize="md">Estimated Total Value</Text>
+                        <Text fontSize="xl" fontWeight="600" color="brand.500">₱{multiWayTrade.total_value.toFixed(2)}</Text>
+                      </HStack>
+                    </Box>
                   )}
                 </VStack>
               </TabPanel>
@@ -1790,7 +1834,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                           shadow="sm"
                         >
                           {!isOwnMessage && (
-                            <Text fontSize="xs" fontWeight="bold" color={isOwnMessage ? 'white' : 'gray.700'} mb={1}>
+                            <Text fontSize="xs" fontWeight="600" color={isOwnMessage ? 'white' : 'gray.700'} mb={1}>
                               {msg.sender_name}
                             </Text>
                           )}
@@ -2065,148 +2109,92 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       </MapContainer>
                     </Box>
 
-                    <Box
-                      w="full"
-                      borderWidth="1px"
-                      borderColor={borderColor}
-                      borderRadius="md"
-                      px={3}
-                      py={2}
-                      cursor="pointer"
-                      bg={useColorModeValue('gray.50', 'gray.800')}
-                      onClick={() => setShowPredefinedLocations((prev) => !prev)}
-                      _hover={{ bg: useColorModeValue('gray.100', 'gray.700') }}
-                    >
-                      <HStack justify="space-between">
-                        <Text fontSize="sm" fontWeight="semibold">
-                          Predefined locations & partners
-                        </Text>
-                        <Icon
-                          as={FaChevronDown}
-                          boxSize={4}
-                          transform={showPredefinedLocations ? 'rotate(180deg)' : 'rotate(0deg)'}
-                          transition="transform 0.2s"
-                        />
-                      </HStack>
-                    </Box>
-
-                    {showPredefinedLocations && (
-                      <SimpleGrid
-                        columns={[1, 2]}
-                        spacing={[1, 1.5]}
-                        maxH={['280px', '350px']}
-                        overflowY="auto"
-                        pr={2}
-                        css={{
-                          '&::-webkit-scrollbar': {
-                            width: '4px',
-                          },
-                          '&::-webkit-scrollbar-track': {
-                            width: '6px',
-                          },
-                          '&::-webkit-scrollbar-thumb': {
-                            background: 'brand.500',
-                            borderRadius: '24px',
-                          },
-                        }}
+                    <Box>
+                      <Box
+                        w="full"
+                        borderWidth="1px"
+                        borderColor={borderColor}
+                        borderRadius="md"
+                        px={3}
+                        py={2}
+                        cursor="pointer"
+                        bg={useColorModeValue('gray.50', 'gray.800')}
+                        onClick={() => setShowPredefinedLocations((prev) => !prev)}
+                        _hover={{ bg: useColorModeValue('gray.100', 'gray.700') }}
                       >
-                        {suggestedLocations.map((location) => {
-                          const isSelected = selectedLocation === location.name
-                          const isPartner = location.isPartner
-                          const isNearest = location.name === nearestLocationName
+                        <HStack justify="space-between">
+                          <Text fontSize="xs" fontWeight="600" color="gray.500" textTransform="uppercase" letterSpacing="wider">
+                            Predefined locations &amp; partners
+                          </Text>
+                          <Icon
+                            as={FaChevronDown}
+                            boxSize={3}
+                            color="gray.400"
+                            transform={showPredefinedLocations ? 'rotate(180deg)' : 'rotate(0deg)'}
+                            transition="transform 0.2s"
+                          />
+                        </HStack>
+                      </Box>
 
-                          return (
-                            <Card
-                              key={`location-${location.name}`}
-                              variant="outline"
-                              cursor="pointer"
-                              borderWidth={isPartner ? '2px' : isSelected ? '2px' : '1px'}
-                              borderColor={
-                                isPartner
-                                  ? 'orange.400'
-                                  : isSelected
-                                    ? 'brand.500'
-                                    : isNearest
-                                      ? 'blue.300'
-                                      : borderColor
-                              }
-                              bg={isSelected ? 'brand.50' : isPartner ? partnerBg : isNearest ? nearestBg : 'white'}
-                              onClick={() => {
-                                setSelectedLocation(location.name)
-                                setValidationError(null)
-                              }}
-                              transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                              _hover={{
-                                borderColor: isPartner ? 'orange.500' : isSelected ? 'brand.600' : 'brand.400',
-                                shadow: 'md',
-                                transform: 'translateY(-2px)',
-                              }}
-                            >
-                              <CardBody p={[1.5, 2]}>
-                                <VStack spacing={0.5} align="stretch">
-                                  <HStack spacing={1.5} flex={1}>
-                                    <Box
-                                      p={1}
-                                      bg={isPartner ? partnerIconBg : defaultIconBg}
-                                      borderRadius="sm"
-                                      display="flex"
-                                      alignItems="center"
-                                      justifyContent="center"
-                                      flexShrink={0}
-                                    >
-                                      <Icon
-                                        as={isPartner ? FaStore : FaMapMarkerAlt}
-                                        color={
-                                          isPartner
-                                            ? 'orange.500'
-                                            : isSelected
-                                              ? 'brand.500'
-                                              : isNearest
-                                                ? 'blue.500'
-                                                : 'gray.500'
-                                        }
-                                        boxSize={isPartner ? 4 : 3.5}
-                                      />
-                                    </Box>
+                      {showPredefinedLocations && (
+                        <Box
+                          maxH="140px"
+                          overflowY="auto"
+                          pr={1}
+                          mt={2}
+                          css={{
+                            '&::-webkit-scrollbar': { width: '3px' },
+                            '&::-webkit-scrollbar-thumb': { background: 'var(--chakra-colors-brand-400)', borderRadius: '24px' },
+                          }}
+                        >
+                          <VStack spacing={1} align="stretch">
+                            {suggestedLocations.map((location) => {
+                              const isSelected = selectedLocation === location.name
+                              const isPartner = location.isPartner
+                              const isNearest = location.name === nearestLocationName
 
-                                    <VStack align="start" spacing={0.25} flex={1} minW={0}>
-                                      <Text fontWeight="semibold" fontSize={['10px', 'xs']} color={locationTextColor} noOfLines={1}>
+                              return (
+                                <HStack
+                                  key={`location-${location.name}`}
+                                  px={3}
+                                  py={1.5}
+                                  borderRadius="lg"
+                                  borderWidth="1px"
+                                  borderColor={isPartner ? 'orange.300' : isSelected ? 'brand.400' : isNearest ? 'blue.200' : 'gray.200'}
+                                  bg={isSelected ? 'brand.50' : isPartner ? 'orange.50' : isNearest ? 'blue.50' : 'white'}
+                                  cursor="pointer"
+                                  onClick={() => {
+                                    setSelectedLocation(location.name)
+                                    setValidationError(null)
+                                  }}
+                                  transition="all 0.15s"
+                                  _hover={{ borderColor: isPartner ? 'orange.400' : 'brand.400', bg: isSelected ? 'brand.50' : 'gray.50' }}
+                                  spacing={2}
+                                >
+                                  <Icon
+                                    as={isPartner ? FaStore : FaMapMarkerAlt}
+                                    color={isPartner ? 'orange.500' : isSelected ? 'brand.500' : isNearest ? 'blue.400' : 'gray.400'}
+                                    boxSize={3}
+                                    flexShrink={0}
+                                  />
+                                  <VStack align="start" spacing={0} flex={1} minW={0}>
+                                    <HStack spacing={1}>
+                                      <Text fontSize="xs" fontWeight={isSelected ? '600' : '500'} color={isSelected ? 'brand.700' : 'gray.800'} noOfLines={1}>
                                         {location.name}
                                       </Text>
-                                      <Text fontSize={['2xs', '2xs']} color="gray.600" noOfLines={1}>
-                                        {location.address}
-                                      </Text>
-                                      <Badge
-                                        colorScheme={
-                                          location.type === 'cafe'
-                                            ? 'orange'
-                                            : location.type === 'mall'
-                                              ? 'blue'
-                                              : 'green'
-                                        }
-                                        variant="subtle"
-                                        fontSize="2xs"
-                                        px={0.5}
-                                        py={0}
-                                        w="fit-content"
-                                      >
-                                        {location.type}
-                                      </Badge>
-                                    </VStack>
-                                  </HStack>
-
-                                  {isSelected && (
-                                    <HStack justify="center" flexShrink={0}>
-                                      <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />
+                                      {isPartner && <Badge colorScheme="orange" fontSize="2xs" px={1}>Partner</Badge>}
+                                      {isNearest && !isPartner && <Badge colorScheme="blue" fontSize="2xs" px={1}>Nearest</Badge>}
                                     </HStack>
-                                  )}
-                                </VStack>
-                              </CardBody>
-                            </Card>
-                          )
-                        })}
-                      </SimpleGrid>
-                    )}
+                                    <Text fontSize="2xs" color="gray.500" noOfLines={1}>{location.address}</Text>
+                                  </VStack>
+                                  {isSelected && <Icon as={FaCheckCircle} color="brand.500" boxSize={3} flexShrink={0} />}
+                                </HStack>
+                              )
+                            })}
+                          </VStack>
+                        </Box>
+                      )}
+                    </Box>
                   </Box>
 
                   {showSuggestionsPanel && (
@@ -2393,7 +2381,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       <VStack spacing={[2, 3]} align="stretch">
                         <HStack justify="center" spacing={2} py={[1, 2]}>
                           <Icon as={FaHandshake} color="blue.500" boxSize={4} />
-                          <Text fontWeight="bold" fontSize={['sm', 'md']} color="blue.700">
+                          <Text fontWeight="600" fontSize={['sm', 'md']} color="blue.700">
                             Meetup Agreement
                           </Text>
                         </HStack>
@@ -2489,7 +2477,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                           <VStack spacing={3} align="stretch">
                             <Box p={[2, 3]} bg="green.100" borderRadius="md" borderWidth="2px" borderColor="green.400" textAlign="center">
                               <Icon as={FaCheckCircle} color="green.500" boxSize={6} mb={1} />
-                              <Text fontWeight="bold" color="green.700" fontSize={['sm', 'md']}>
+                              <Text fontWeight="600" color="green.700" fontSize={['sm', 'md']}>
                                 {participantIds.length <= 2 ? 'You Both Agreed!' : 'Everyone Agreed!'}
                               </Text>
                               {agreedMeetup && (
@@ -2525,18 +2513,9 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                           </VStack>
                         )}
 
-                        <HStack justify="space-between" pt={1}>
+                        <HStack justify="flex-start" pt={1}>
                           <Button size="sm" variant="outline" onClick={resetMeetupSelection} isLoading={resettingMeetup}>
                             Change My Selection
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            colorScheme="orange"
-                            onClick={() => setShowDisputeDialog(true)}
-                            isDisabled={allMetConfirmed}
-                          >
-                            Dispute
                           </Button>
                         </HStack>
 
@@ -2548,7 +2527,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                         >
                           <AlertDialogOverlay>
                             <AlertDialogContent>
-                              <AlertDialogHeader fontSize="lg" fontWeight="bold">
+                              <AlertDialogHeader fontSize="lg" fontWeight="600">
                                 Report Meetup Issue
                               </AlertDialogHeader>
                               <AlertDialogBody>
@@ -2623,38 +2602,36 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       </Tabs>
     </ModalBody>
 
-    <ModalFooter borderTopWidth="1px" borderColor={borderColor} pt={3} pb={3}>
-      <VStack w="full" spacing={2} align="stretch">
-        {/* Action Buttons */}
-        <HStack w="full" spacing={2} justify="flex-end">
-          {!isActiveChain ? (
-            <>
-              <Button
-                flex={1}
-                variant="ghost"
-                isDisabled={loading}
-                onClick={handleDecline}
-                isLoading={selectedAction === 'decline' && loading}
-                leftIcon={<FaTimes />}
-                colorScheme="red"
-              >
-                Decline
-              </Button>
-              <Button
-                flex={1}
-                colorScheme="green"
-                isDisabled={loading || !canAcceptLoopTrade}
-                isLoading={selectedAction === 'accept' && loading}
-                onClick={handleAccept}
-                leftIcon={<FaCheck />}
-              >
-                Accept Trade
-              </Button>
-            </>
-          ) : null}
-        </HStack>
-      </VStack>
-    </ModalFooter>
+    {!isActiveChain && (
+      <ModalFooter borderTopWidth="1px" borderColor={borderColor} pt={3} pb={3}>
+        <VStack w="full" spacing={2} align="stretch">
+          {/* Action Buttons */}
+          <HStack w="full" spacing={2} justify="flex-end">
+            <Button
+              flex={1}
+              variant="ghost"
+              isDisabled={loading}
+              onClick={handleDecline}
+              isLoading={selectedAction === 'decline' && loading}
+              leftIcon={<FaTimes />}
+              colorScheme="red"
+            >
+              Decline
+            </Button>
+            <Button
+              flex={1}
+              colorScheme="green"
+              isDisabled={loading || !canAcceptLoopTrade}
+              isLoading={selectedAction === 'accept' && loading}
+              onClick={handleAccept}
+              leftIcon={<FaCheck />}
+            >
+              Accept Trade
+            </Button>
+          </HStack>
+        </VStack>
+      </ModalFooter>
+    )}
         </ModalContent>
       </Modal>
 
@@ -2665,49 +2642,49 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
         isCentered
         scrollBehavior="inside"
       >
-        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <ModalContent bg={cardBg} borderRadius={["md", "lg", "xl"]} boxShadow="xl" maxW={["90vw", "500px"]} mx={[2, 4]}>
-          <ModalHeader>
-            <HStack spacing={2} fontSize={["sm", "md"]}>
-              <Icon as={FaStar} color="yellow.400" />
-              <Text>Trade Review & Completion</Text>
+        <ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+        <ModalContent bg="white" borderRadius="3xl" boxShadow="2xl" maxW={["90vw", "500px"]} mx={[2, 4]} overflow="hidden">
+          <ModalHeader pt={6} pb={2} px={6}>
+            <HStack spacing={3} fontSize="xl">
+              <Icon as={FaStar} color="yellow.400" boxSize={6} />
+              <Text fontWeight="600" color={useColorModeValue('gray.800', 'white')} letterSpacing="tight">Trade Review & Completion</Text>
             </HStack>
           </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody py={[4, 6]} px={[3, 6]}>
-            <VStack spacing={4} align="stretch">
-              <SimpleGrid columns={2} spacing={3}>
+          <ModalCloseButton mt={4} mr={4} size="md" />
+          <ModalBody py={6} px={6}>
+            <VStack spacing={6} align="stretch">
+              <SimpleGrid columns={2} spacing={4}>
                 <Box
-                  p={3}
+                  p={4}
                   bg={reviewSubmitted ? 'green.50' : 'gray.50'}
-                  borderRadius="md"
-                  borderWidth="1px"
-                  borderColor={borderColor}
+                  borderRadius="2xl"
+                  borderWidth="0"
+                  shadow="sm"
                 >
                   <VStack spacing={2}>
                     <HStack justify="space-between" w="full">
-                      <Text fontWeight="semibold" fontSize="sm">Your Review</Text>
+                      <Text fontWeight="600" fontSize="sm" color="gray.800">Your Review</Text>
                       <Icon as={reviewSubmitted ? FaCheck : FaClock} color={reviewSubmitted ? 'green.500' : 'gray.400'} boxSize={4} />
                     </HStack>
-                    <Text fontSize="xs" color="gray.600" w="full">
+                    <Text fontSize="xs" fontWeight="500" color="gray.500" w="full">
                       {reviewSubmitted ? 'Submitted' : 'Pending'}
                     </Text>
                   </VStack>
                 </Box>
 
                 <Box
-                  p={3}
+                  p={4}
                   bg="gray.50"
-                  borderRadius="md"
-                  borderWidth="1px"
-                  borderColor={borderColor}
+                  borderRadius="2xl"
+                  borderWidth="0"
+                  shadow="sm"
                 >
                   <VStack spacing={2}>
                     <HStack justify="space-between" w="full">
-                      <Text fontWeight="semibold" fontSize="sm">Other Party Review</Text>
+                      <Text fontWeight="600" fontSize="sm" color="gray.800">Other Party</Text>
                       <Icon as={FaClock} color="gray.400" boxSize={4} />
                     </HStack>
-                    <Text fontSize="xs" color="gray.600" w="full">
+                    <Text fontSize="xs" fontWeight="500" color="gray.500" w="full">
                       Pending
                     </Text>
                   </VStack>
@@ -2716,19 +2693,19 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
               {reviewSubmitted && (
                 <Box
-                  p={4}
+                  p={5}
                   bg="blue.50"
-                  borderRadius="md"
-                  borderWidth="1px"
-                  borderColor="blue.200"
+                  borderRadius="2xl"
+                  borderWidth="0"
+                  shadow="sm"
                   textAlign="center"
                 >
                   <VStack spacing={2}>
                     <Icon as={FaCheckCircle} color="blue.500" boxSize={6} />
-                    <Text fontWeight="semibold" color="blue.800">
+                    <Text fontWeight="600" color="blue.800" fontSize="md">
                       Your review has been submitted
                     </Text>
-                    <Text fontSize="sm" color="blue.700">
+                    <Text fontSize="xs" fontWeight="500" color="blue.700">
                       Waiting for the other party to complete their review...
                     </Text>
                   </VStack>
@@ -2736,70 +2713,82 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
               )}
 
               <FormControl isRequired>
-                <FormLabel fontSize="xs" fontWeight="semibold">Rating</FormLabel>
+                <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Rating</FormLabel>
                 <HStack spacing={2}>
                   {[1, 2, 3, 4, 5].map((star) => (
                     <Icon
                       key={`loop-review-star-${star}`}
                       as={FaStar}
-                      color={star <= rating ? 'yellow.400' : 'gray.300'}
+                      color={star <= rating ? 'yellow.400' : 'gray.200'}
                       cursor={reviewSubmitted ? 'default' : 'pointer'}
                       onClick={reviewSubmitted ? undefined : () => setRating(star)}
-                      boxSize={6}
-                      transition="all 0.1s"
-                      _hover={reviewSubmitted ? undefined : { transform: 'scale(1.1)' }}
+                      boxSize={8}
+                      transition="transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
+                      _hover={reviewSubmitted ? undefined : { transform: 'scale(1.15) translateY(-2px)' }}
                     />
                   ))}
-                  <Text fontSize="xs" fontWeight="semibold" ml={2}>
+                  <Text fontSize="sm" fontWeight="600" color="gray.600" ml={3}>
                     {rating}/5
                   </Text>
                 </HStack>
               </FormControl>
 
               <FormControl isRequired>
-                <FormLabel fontSize="xs" fontWeight="semibold">Feedback</FormLabel>
+                <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Feedback</FormLabel>
                 <Textarea
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   placeholder="Share your experience with this trade..."
-                  rows={3}
+                  rows={4}
                   fontSize="sm"
-                  borderColor={borderColor}
-                  _focus={{ borderColor: 'brand.500', boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)' }}
+                  borderRadius="xl"
+                  bg="white"
+                  borderWidth="2px"
+                  borderColor="gray.200"
+                  _hover={{ borderColor: 'gray.300' }}
+                  _focus={{ borderColor: 'brand.500', boxShadow: 'sm' }}
                   isDisabled={reviewSubmitted}
+                  shadow="sm"
+                  transition="all 0.2s"
                 />
-                <Text fontSize="xs" color="gray.500" mt={1}>
+                <Text fontSize="xs" fontWeight="500" color="gray.400" mt={2}>
                   {feedback.length} characters
                 </Text>
               </FormControl>
 
               <FormControl>
-                <FormLabel fontSize="xs" fontWeight="semibold">
+                <FormLabel fontSize="sm" fontWeight="600" color="gray.700">
                   Proof Image {proofRequired ? '(Required)' : '(Optional)'}
                 </FormLabel>
                 {proofImage ? (
-                  <VStack spacing={2} align="stretch">
-                    <Box position="relative" w="full" maxW="250px" bg="gray.50" borderRadius="md" overflow="hidden" aspectRatio="4/3" display="flex" alignItems="center" justifyContent="center">
+                  <VStack spacing={3} align="stretch">
+                    <Box position="relative" w="full" maxW="250px" bg="gray.50" borderRadius="2xl" overflow="hidden" aspectRatio="4/3" display="flex" alignItems="center" justifyContent="center" shadow="sm">
                       <Image
                         src={proofImage}
                         alt="Proof"
                         w="100%"
                         h="100%"
-                        objectFit="contain"
-                        borderRadius="md"
+                        objectFit="cover"
+                        borderRadius="2xl"
                       />
                     </Box>
-                    <Button size="xs" variant="outline" onClick={() => { setProofImage(null); setProofFile(null) }}>
+                    <Button size="sm" variant="outline" borderRadius="xl" fontWeight="600" onClick={() => { setProofImage(null); setProofFile(null) }}>
                       Remove Image
                     </Button>
                   </VStack>
                 ) : (
                   <Button
-                    size="sm"
+                    size="md"
+                    borderRadius="xl"
+                    fontWeight="600"
                     variant="outline"
+                    colorScheme="gray"
+                    borderWidth="2px"
                     leftIcon={<FaCamera />}
                     onClick={() => document.getElementById('loop-proof-upload')?.click()}
                     isDisabled={reviewSubmitted}
+                    _hover={reviewSubmitted ? undefined : { bg: 'gray.50', transform: 'translateY(-1px)' }}
+                    transition="all 0.2s"
                   >
                     Upload Proof Image
                   </Button>
@@ -2814,11 +2803,18 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
               </FormControl>
 
               <Button
-                colorScheme="green"
+                size="lg"
+                borderRadius="3xl"
+                fontWeight="600"
+                colorScheme="brand"
                 onClick={submitReview}
                 isLoading={submittingReview}
                 leftIcon={<FaStar />}
                 isDisabled={reviewSubmitted}
+                shadow="md"
+                _hover={reviewSubmitted ? undefined : { transform: 'translateY(-2px)' }}
+                transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
+                mb={2}
               >
                 Review & Complete Trade
               </Button>

@@ -64,7 +64,7 @@ import { Product, Order, Trade, TradeAction, TradeItem } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
 import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb, FaRocket } from 'react-icons/fa'
-import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiGrid, FiList, FiSend, FiInbox, FiArchive, FiSliders } from 'react-icons/fi'
+import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiGrid, FiList, FiSend, FiInbox, FiArchive, FiSliders, FiHeart } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
@@ -2179,12 +2179,12 @@ const Dashboard: React.FC = () => {
     // Never show actions for traded/sold items
     const shouldShowActions = showActions && normalizedStatus !== 'traded' && normalizedStatus !== 'sold'
     const offersCount = React.useMemo(() => getProductOffersCount(product.id), [product.id, getProductOffersCount])
-    const viewsCount = product.view_count || 0
+
 
     const isStagnant = React.useMemo(() => {
       const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-      return viewsCount === 0 && offersCount === 0 && daysOld > 3
-    }, [product.created_at, viewsCount, offersCount])
+      return offersCount === 0 && daysOld > 3
+    }, [product.created_at, offersCount])
 
     const isBoostable = React.useMemo(() => {
       if (!product.boosted_at) return true
@@ -2300,37 +2300,32 @@ const Dashboard: React.FC = () => {
                     : ''}
                 </Text>
               </HStack>
-              <HStack spacing={2} align="center" flexWrap="wrap">
-                <Badge
-                  colorScheme={isAvailable ? 'green' : normalizedStatus === 'sold' ? 'red' : isLocked ? 'orange' : 'blue'}
-                  variant="subtle"
-                  fontSize="2xs"
-                  px={1.5}
-                  py={0.5}
-                  borderRadius="sm"
-                >
-                  {product.status}
-                </Badge>
-                {product.barter_only && (
+              <HStack spacing={2} align="center" flexWrap="wrap" justify="space-between">
+                <HStack spacing={2}>
                   <Badge
-                    colorScheme="purple"
+                    colorScheme={isAvailable ? 'green' : normalizedStatus === 'sold' ? 'red' : isLocked ? 'orange' : 'blue'}
                     variant="subtle"
                     fontSize="2xs"
                     px={1.5}
                     py={0.5}
                     borderRadius="sm"
                   >
-                    Barter Only
+                    {product.status}
                   </Badge>
-                )}
-              </HStack>
-              {/* Views and Offers Count */}
-              <HStack spacing={4} fontSize="xs" color="gray.500" mt={1}>
-                <HStack spacing={1}>
-                  <Icon as={ViewIcon} boxSize={3} />
-                  <Text>{viewsCount} views</Text>
+                  {product.barter_only && (
+                    <Badge
+                      colorScheme="purple"
+                      variant="subtle"
+                      fontSize="2xs"
+                      px={1.5}
+                      py={0.5}
+                      borderRadius="sm"
+                    >
+                      Barter Only
+                    </Badge>
+                  )}
                 </HStack>
-                <HStack spacing={1}>
+                <HStack spacing={1} fontSize="xs" color="gray.500">
                   <Icon as={FaHandshake} boxSize={3} />
                   <Text>{offersCount} offers</Text>
                 </HStack>
@@ -2392,7 +2387,7 @@ const Dashboard: React.FC = () => {
     onToggleSelect,
     onDelete,
     offersCount,
-    viewsCount = 0,
+
   }: {
     product: Product
     showActions: boolean
@@ -2400,7 +2395,7 @@ const Dashboard: React.FC = () => {
     onToggleSelect: () => void
     onDelete: () => void
     offersCount: number
-    viewsCount?: number
+
   }) => {
     const normalizedStatus = String(product.status || '').toLowerCase().trim()
     const isAvailable = normalizedStatus === 'available'
@@ -2451,15 +2446,9 @@ const Dashboard: React.FC = () => {
               <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
                 {product.status}
               </Badge>
-              <HStack spacing={3} fontSize="xs" color="gray.500">
-                <HStack spacing={1}>
-                  <Icon as={ViewIcon} boxSize={3} />
-                  <Text>{viewsCount} views</Text>
-                </HStack>
-                <HStack spacing={1}>
-                  <Icon as={FaHandshake} boxSize={3} />
-                  <Text>{offersCount} offers</Text>
-                </HStack>
+              <HStack spacing={1} fontSize="xs" color="gray.500">
+                <Icon as={FaHandshake} boxSize={3} />
+                <Text>{offersCount} offers</Text>
               </HStack>
             </HStack>
           </VStack>
@@ -2467,7 +2456,7 @@ const Dashboard: React.FC = () => {
           <HStack spacing={1} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
             {(() => {
               const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-              const isStag = viewsCount === 0 && offersCount === 0 && daysOld > 3
+              const isStag = offersCount === 0 && daysOld > 3
               const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
               const shouldAct = showActions && product.status !== 'traded' && product.status !== 'sold'
 
@@ -2541,7 +2530,7 @@ const Dashboard: React.FC = () => {
           <HStack spacing={1} mt={2} display={{ base: 'flex', md: 'none' }} justify="flex-end" flexWrap="wrap">
             {(() => {
               const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-              const isStag = viewsCount === 0 && offersCount === 0 && daysOld > 3
+              const isStag = offersCount === 0 && daysOld > 3
               const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
               const shouldAct = product.status !== 'traded' && product.status !== 'sold'
 
@@ -2824,26 +2813,30 @@ const Dashboard: React.FC = () => {
           h="100%"
           display="flex"
           flexDirection="column"
-          _hover={{
-            shadow: 'lg',
-            transform: 'translateY(-4px)',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            borderColor: 'brand.400',
-          }}
-          transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+          borderRadius="2xl"
+          overflow="hidden"
+          borderWidth="0"
           borderLeftWidth="4px"
           borderLeftColor={borderColor}
+          shadow="sm"
+          _hover={{
+            shadow: 'md',
+            transform: 'translateY(-3px)',
+            transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+          }}
+          transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
           role="article"
+          bg="white"
         >
-          <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
+          <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={2} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
             {/* Your Item - Always flex=1 */}
-            <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300" minW="0">
+            <Box flex={1} position="relative" borderRadius="xl" overflow="hidden" minW="0" shadow="sm">
               <ProductThumb
                 pid={trade.target_product_id}
                 alt={getProductTitle(trade.target_product_id, trade.product_title)}
                 size="100%"
               />
-              <Badge position="absolute" top={1} left={1} colorScheme="blue" fontSize="2xs" px={1} py={0.5}>
+              <Badge position="absolute" top={1} left={1} bg={isIncoming ? 'blue.500' : 'brand.500'} color="white" fontSize="9px" fontWeight="700" px={2} py={0.5} borderRadius="md" shadow="sm">
                 {leftLabel}
               </Badge>
             </Box>
@@ -2857,12 +2850,11 @@ const Dashboard: React.FC = () => {
                       key={item.id || idx}
                       flex={1}
                       position="relative"
-                      borderRadius="md"
+                      borderRadius="xl"
                       overflow="hidden"
-                      borderWidth="2px"
-                      borderColor="green.300"
                       minW="0"
                       h="100%"
+                      shadow="sm"
                     >
                       <ProductThumb
                         pid={Number(item.product_id)}
@@ -2879,16 +2871,16 @@ const Dashboard: React.FC = () => {
                       )}
                     </Box>
                   ))}
-                  <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
+                  <Badge position="absolute" top={1} right={1} bg={!isIncoming ? 'brand.500' : 'blue.500'} color="white" fontWeight="700" fontSize="9px" px={2} py={0.5} borderRadius="md" shadow="sm">
                     {rightLabel}{offeredItems.length > 1 ? 's' : ''}
                   </Badge>
                 </>
               ) : (
-                <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="gray.300" minW="0">
-                  <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
-                    <Text fontSize="xs" color="gray.500">No items</Text>
+                <Box flex={1} position="relative" borderRadius="xl" overflow="hidden" bg="white" shadow="sm" minW="0">
+                  <Box w="full" h="full" bg="gray.100" display="flex" alignItems="center" justifyContent="center">
+                    <Text fontSize="xs" fontWeight="600" color="gray.500">No items</Text>
                   </Box>
-                  <Badge position="absolute" top={1} right={1} colorScheme="gray" fontSize="2xs" px={1} py={0.5}>
+                  <Badge position="absolute" top={1} right={1} bg="gray.500" color="white" fontWeight="700" fontSize="9px" px={2} py={0.5} borderRadius="md" shadow="sm">
                     {rightLabel}
                   </Badge>
                 </Box>
@@ -2896,34 +2888,21 @@ const Dashboard: React.FC = () => {
             </Box>
           </Box>
 
-          <CardHeader pb={2} flex={1}>
-            <VStack spacing={2} align="stretch">
+          <CardHeader pb={3} pt={4} flex={1}>
+            <VStack spacing={3} align="stretch">
               <Flex justify="space-between" align="start">
-                <Badge colorScheme={statusBadge.color} variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full">
+                <Badge colorScheme={statusBadge.color} bg={`${statusBadge.color}.100`} color={`${statusBadge.color}.700`} variant="solid" fontSize="10px" px={3} py={1} borderRadius="md" fontWeight="700" letterSpacing="wider" textTransform="uppercase">
                   {statusBadge.text}
                 </Badge>
               </Flex>
 
-              <HStack spacing={2} align="center" flexWrap="wrap" mt={2}>
-                <Heading size="sm" noOfLines={2} lineHeight="1.3">
+              <Box>
+                <Heading fontSize="md" fontWeight="700" color="gray.800" noOfLines={2} lineHeight="1.3" letterSpacing="tight">
                   {getProductTitle(trade.target_product_id, trade.product_title)}
                 </Heading>
-                {trade.trade_option && (
-                  <Badge
-                    colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
-                    variant="subtle"
-                    fontSize="2xs"
-                    display="flex"
-                    alignItems="center"
-                    gap={1}
-                  >
-                    <Icon as={trade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
-                    {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                  </Badge>
-                )}
-              </HStack>
+              </Box>
 
-              <HStack spacing={1} mt={1}>
+              <HStack spacing={2} mt={1}>
                 <Avatar
                   name={userName}
                   size="sm"
@@ -2931,10 +2910,10 @@ const Dashboard: React.FC = () => {
                   color="white"
                 />
                 <Box flex={1} minW={0}>
-                  <Text fontSize="xs" fontWeight="medium" color="gray.800" noOfLines={1}>
+                  <Text fontSize="sm" fontWeight="600" color="gray.800" noOfLines={1} letterSpacing="tight">
                     {userName}
                   </Text>
-                  <Text fontSize="2xs" color="gray.500">
+                  <Text fontSize="10px" fontWeight="500" color="gray.400" textTransform="uppercase" letterSpacing="wider">
                     Accepted {timeAgo}
                   </Text>
                 </Box>
@@ -2942,15 +2921,18 @@ const Dashboard: React.FC = () => {
             </VStack>
           </CardHeader>
 
-          <CardFooter pt={0} pb={3}>
+          <CardFooter pt={0} pb={4} px={4}>
             <Button
-              size="sm"
+              size="md"
+              borderRadius="2xl"
+              fontWeight="600"
               colorScheme="brand"
               w="full"
               onClick={() => onView(trade)}
               leftIcon={<Icon as={ViewIcon} />}
-              _hover={{ transform: 'scale(1.02)', shadow: 'md' }}
-              transition="all 0.2s"
+              _hover={{ transform: 'translateY(-2px)' }}
+              transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
+              shadow="md"
             >
               View Trade
             </Button>
@@ -3348,9 +3330,8 @@ const Dashboard: React.FC = () => {
       <Container
         maxW="container.xl"
         py={{ base: 3, md: 8 }}
-        px={{ base: 1, md: 1 }}
-        mr={2}
-        ml="30px"
+        px={{ base: 2, md: 4 }}
+        ml={{ base: 0, lg: '70px' }}
       >
         <VStack spacing={{ base: 3, md: 6 }} align="stretch">
           {/* Sticky header: search bar + view toggle stay visible when scrolling long product lists */}
@@ -3389,7 +3370,7 @@ const Dashboard: React.FC = () => {
                   maxW={{ base: '65%', sm: '70%', md: '800px' }}
                   position="relative"
                 >
-                  <InputLeftElement pointerEvents="none">
+                  <InputLeftElement pointerEvents="none" h="full">
                     <SearchIcon color="gray.400" />
                   </InputLeftElement>
                   <Input
@@ -3409,10 +3390,16 @@ const Dashboard: React.FC = () => {
                     }}
                     bg={cardBg}
                     borderColor={borderColor}
+                    borderWidth="0"
+                    shadow="sm"
+                    borderRadius="2xl"
+                    _hover={{ shadow: 'md' }}
                     _focus={{
-                      borderColor: 'brand.400',
-                      boxShadow: '0 0 0 1px var(--chakra-colors-brand-400)'
+                      shadow: 'md',
+                      bg: 'white'
                     }}
+                    transition="all 0.2s"
+                    h="44px"
                     size={{ base: 'sm', md: 'md' }}
                   />
                   {unifiedSearch && (
@@ -3642,6 +3629,17 @@ const Dashboard: React.FC = () => {
 
                 {/* Mobile controls: Search stays left; Controls + Bell + Avatar on the right */}
                 <HStack spacing={2} flexShrink={0} display={{ base: 'flex', md: 'none' }}>
+                  <IconButton
+                    aria-label="Saved products"
+                    icon={<Icon as={FiHeart} boxSize={5.5} />}
+                    size="sm"
+                    variant="outline"
+                    color="red.500"
+                    borderColor="red.500"
+                    _hover={{ bg: 'red.50' }}
+                    _active={{ bg: 'red.100' }}
+                    onClick={() => navigate('/saved-products')}
+                  />
                   <Menu placement="bottom-end" closeOnSelect>
                     <MenuButton
                       as={IconButton}
@@ -3685,24 +3683,84 @@ const Dashboard: React.FC = () => {
             </VStack>
           </Box>
 
-          <Box bg={cardBg} border="1px" borderColor={borderColor} borderRadius="lg" px={{ base: 3, md: 4 }} py={{ base: 3, md: 4 }}>
-            <Flex direction={{ base: 'column', md: 'row' }} gap={3} align={{ base: 'flex-start', md: 'center' }} justify="space-between">
-              <HStack spacing={2} align="center">
-                <Icon as={FaCrown} color={`${activePlan.color}.500`} />
-                <Text fontWeight="semibold">Plan: {activePlan.label}</Text>
-                <Badge colorScheme={activePlan.color} borderRadius="full" fontSize="xs">{activePlan.label}</Badge>
-              </HStack>
-              <Text fontSize="sm" color="gray.600">
-                Listings {dashboardStats.activeProducts}/{listingLimitLabel}
-              </Text>
-              <Button size="sm" variant="outline" onClick={() => navigate('/premium')}>View plan</Button>
-            </Flex>
-            <Flex mt={3} gap={2} flexWrap="wrap">
-              {activeBenefits.map((benefit) => (
-                <Badge key={benefit} colorScheme={activePlan.color} variant="subtle" borderRadius="full" px={2} py={1} fontSize="xs">
-                  {benefit}
-                </Badge>
-              ))}
+          {/* Premium Subscription Banner */}
+          <Box 
+            bg={cardBg} 
+            borderRadius="2xl" 
+            shadow="md" 
+            borderWidth="0" 
+            p={{ base: 4, md: 5 }}
+            position="relative"
+            overflow="hidden"
+          >
+            {/* Soft background decor for premium tier */}
+            {activePlan.label !== 'Free' && (
+              <Box position="absolute" top="-20px" right="-20px" opacity={0.05} transform="scale(3)">
+                <Icon as={FaCrown} boxSize={20} color={`${activePlan.color}.500`} />
+              </Box>
+            )}
+            
+            <Flex direction={{ base: 'column', md: 'row' }} align={{ base: 'stretch', md: 'center' }} justify="space-between" gap={{ base: 4, md: 6 }} position="relative" zIndex={1}>
+              <Flex justify="space-between" align="center">
+                <HStack spacing={3} align="center">
+                  <Center bg={`${activePlan.color}.50`} p={2.5} borderRadius="xl">
+                    <Icon as={FaCrown} boxSize={5} color={`${activePlan.color}.500`} />
+                  </Center>
+                  <Box>
+                    <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="wider">Active Plan</Text>
+                    <HStack spacing={2} align="center">
+                      <Text fontWeight="800" fontSize={{ base: 'md', md: 'lg' }} color="gray.800" letterSpacing="tight">{activePlan.label}</Text>
+                      <Badge colorScheme={activePlan.color} borderRadius="full" px={2} py={0.5} fontSize="10px" variant="solid" shadow="sm">PRO</Badge>
+                    </HStack>
+                  </Box>
+                </HStack>
+                <Button 
+                  display={{ base: 'flex', md: 'none' }}
+                  size="xs" 
+                  variant="outline" 
+                  colorScheme={activePlan.color} 
+                  borderRadius="xl"
+                  onClick={() => navigate('/premium')}
+                >
+                  View plan
+                </Button>
+              </Flex>
+              
+              <Flex align="center" gap={4} flex={1} overflow="hidden" justify={{ base: 'flex-start', md: 'flex-end' }}>
+                <Text fontSize="xs" color="gray.600" fontWeight="700" flexShrink={0}>
+                  Listings: <Text as="span" color="gray.900">{dashboardStats.activeProducts}</Text> / {listingLimitLabel}
+                </Text>
+                
+                <Flex 
+                  gap={2} 
+                  overflowX="auto"
+                  flexWrap={{ base: 'nowrap', md: 'wrap' }}
+                  css={{ '&::-webkit-scrollbar': { display: 'none' }, msOverflowStyle: 'none', scrollbarWidth: 'none' }}
+                  py={0.5}
+                >
+                  {activeBenefits.map((benefit) => (
+                    <Badge flexShrink={0} key={benefit} colorScheme={activePlan.color} variant="subtle" borderRadius="full" px={3} py={1} fontSize="10px" fontWeight="700" letterSpacing="0.5px" textTransform="uppercase">
+                      {benefit}
+                    </Badge>
+                  ))}
+                </Flex>
+
+                <Button 
+                  display={{ base: 'none', md: 'flex' }}
+                  size="sm" 
+                  bg={`${activePlan.color}.500`}
+                  color="white"
+                  borderRadius="xl"
+                  fontWeight="800"
+                  boxShadow="sm"
+                  _hover={{ transform: 'translateY(-2px)', shadow: 'md', bg: `${activePlan.color}.600` }}
+                  transition="all 0.2s"
+                  flexShrink={0}
+                  onClick={() => navigate('/premium')}
+                >
+                  View Plan details
+                </Button>
+              </Flex>
             </Flex>
           </Box>
 
@@ -4664,7 +4722,7 @@ const Dashboard: React.FC = () => {
                                     >
                                       <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
                                         {/* Your Item */}
-                                        <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300" minW="0">
+                                        <Box flex={1} position="relative" borderRadius="xl" overflow="hidden" shadow="sm" minW="0">
                                           {yourProductImage ? (
                                             <Image src={yourProductImage} alt="Your Item" objectFit="cover" w="100%" h="100%" fallback={
                                               <Box w="100%" h="100%" bg="gray.200" />
@@ -4674,13 +4732,11 @@ const Dashboard: React.FC = () => {
                                               <Text fontSize="xs" color="gray.600" fontWeight="semibold">Your Item</Text>
                                             </Box>
                                           )}
-                                          <Badge position="absolute" top={1} left={1} colorScheme="blue" fontSize="2xs" px={1} py={0.5}>
-                                            Your Item
-                                          </Badge>
+                                          <Badge position="absolute" top={1} left={1} bg="blue.500" color="white" fontSize="9px" fontWeight="700" px={2} py={0.5} borderRadius="md" shadow="sm">Your Item</Badge>
                                         </Box>
 
                                         {/* Their Items */}
-                                        <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="green.300" minW="0">
+                                        <Box flex={1} position="relative" borderRadius="xl" overflow="hidden" shadow="sm" minW="0">
                                           {incomingProductImage ? (
                                             <Image src={incomingProductImage} alt="Their Item" objectFit="cover" w="100%" h="100%" fallback={
                                               <Box w="100%" h="100%" bg="gray.200" />
@@ -4690,39 +4746,39 @@ const Dashboard: React.FC = () => {
                                               <Text fontSize="xs" color="gray.600" fontWeight="semibold">{loopLabel}</Text>
                                             </Box>
                                           )}
-                                          <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
-                                            {loopLabel}
-                                          </Badge>
+                                          <Badge position="absolute" top={1} right={1} bg={loopLabel === 'Multi-Way' ? 'brand.500' : 'purple.500'} color="white" fontSize="9px" fontWeight="700" px={2} py={0.5} borderRadius="md" shadow="sm">{loopLabel}</Badge>
                                         </Box>
                                       </Box>
 
-                                      <CardHeader pb={2} flex={1}>
-                                        <VStack spacing={2} align="stretch">
+                                      <CardHeader pb={3} pt={4} flex={1}>
+                                        <VStack spacing={3} align="stretch">
                                           <Flex justify="space-between" align="start">
                                             <HStack spacing={2}>
-                                              <Badge colorScheme="purple" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full">
+                                              <Badge colorScheme="purple" bg="purple.100" color="purple.700" variant="solid" fontSize="10px" px={3} py={1} borderRadius="md" fontWeight="700" letterSpacing="wider" textTransform="uppercase">
                                                 Active Loop
                                               </Badge>
-                                              <Badge colorScheme="purple" variant="solid" fontSize="xs" px={2} py={1} borderRadius="full">
+                                              <Badge colorScheme="purple" bg="purple.500" color="white" variant="solid" fontSize="10px" px={3} py={1} borderRadius="md" fontWeight="700" letterSpacing="wider" textTransform="uppercase">
                                                 {loopLabel}
                                               </Badge>
                                             </HStack>
                                             {matchScore > 0 && (
-                                              <Badge colorScheme="purple" fontSize="2xs">
+                                              <Badge colorScheme="purple" fontSize="10px" fontWeight="700" px={2} py={1} borderRadius="md">
                                                 {matchScore}% Match
                                               </Badge>
                                             )}
                                           </Flex>
 
-                                          <HStack spacing={2} align="center" flexWrap="wrap" mt={2}>
-                                            <Heading size="sm" noOfLines={2} lineHeight="1.3">
-                                              {summary.yourGive}
-                                            </Heading>
-                                            <Text fontSize="xs" color="gray.500">→</Text>
-                                            <Heading size="sm" noOfLines={2} lineHeight="1.3">
-                                              {summary.yourGet}
-                                            </Heading>
-                                          </HStack>
+                                          <Box>
+                                            <HStack spacing={2} align="center" flexWrap="wrap">
+                                              <Heading fontSize="md" fontWeight="700" color="gray.800" noOfLines={2} lineHeight="1.3" letterSpacing="tight">
+                                                {summary.yourGive}
+                                              </Heading>
+                                              <Text fontSize="xs" fontWeight="700" color="gray.400">→</Text>
+                                              <Heading fontSize="md" fontWeight="700" color="gray.800" noOfLines={2} lineHeight="1.3" letterSpacing="tight">
+                                                {summary.yourGet}
+                                              </Heading>
+                                            </HStack>
+                                          </Box>
 
                                           <HStack spacing={1} mt={1}>
                                             {nextParticipant && (
@@ -4734,10 +4790,10 @@ const Dashboard: React.FC = () => {
                                                   color="white"
                                                 />
                                                 <Box flex={1} minW={0}>
-                                                  <Text fontSize="xs" fontWeight="medium" color="gray.800" noOfLines={1}>
+                                                  <Text fontSize="sm" fontWeight="600" color="gray.800" noOfLines={1} letterSpacing="tight">
                                                     {nextParticipant.user_name || 'Unknown User'}
                                                   </Text>
-                                                  <Text fontSize="2xs" color="gray.500">
+                                                  <Text fontSize="10px" fontWeight="500" color="gray.400" textTransform="uppercase" letterSpacing="wider">
                                                     {desiredItems}
                                                   </Text>
                                                 </Box>
@@ -4747,9 +4803,11 @@ const Dashboard: React.FC = () => {
                                         </VStack>
                                       </CardHeader>
 
-                                      <CardFooter pt={0} pb={3}>
+                                      <CardFooter pt={0} pb={4} px={4}>
                                         <Button
-                                          size="sm"
+                                          size="md"
+                                          borderRadius="2xl"
+                                          fontWeight="600"
                                           colorScheme="brand"
                                           w="full"
                                           onClick={(e) => {
@@ -4757,8 +4815,9 @@ const Dashboard: React.FC = () => {
                                             handleViewMultiWayTradeDetails(trade)
                                           }}
                                           leftIcon={<Icon as={ViewIcon} />}
-                                          _hover={{ transform: 'scale(1.02)', shadow: 'md' }}
-                                          transition="all 0.2s"
+                                          _hover={{ transform: 'translateY(-2px)' }}
+                                          transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
+                                          shadow="md"
                                         >
                                           View Trade
                                         </Button>
@@ -5129,47 +5188,49 @@ const Dashboard: React.FC = () => {
                                             h="100%"
                                             display="flex"
                                             flexDirection="column"
-                                            _hover={{
-                                              shadow: 'lg',
-                                              transform: 'translateY(-4px)',
-                                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                              borderColor: 'blue.500',
-                                            }}
-                                            transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                            borderRadius="2xl"
+                                            overflow="hidden"
+                                            borderWidth="0"
                                             borderLeftWidth="4px"
                                             borderLeftColor="blue.400"
-                                            borderColor="blue.200"
+                                            shadow="sm"
+                                            _hover={{
+                                              shadow: 'md',
+                                              transform: 'translateY(-3px)',
+                                              transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+                                            }}
+                                            transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
                                             cursor="pointer"
                                             onClick={() => handleViewMultiWayTradeDetails(trade)}
                                           >
-                                            <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
+                                            <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={2} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
                                               {firstParticipantImage ? (
-                                                <Image src={firstParticipantImage} alt="Item" w="full" h="full" objectFit="cover" />
+                                                <Image src={firstParticipantImage} alt="Item" w="full" h="full" objectFit="cover" borderRadius="xl" shadow="sm" />
                                               ) : (
-                                                <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
-                                                  <Text fontSize="xs" color="gray.500">Item</Text>
+                                                <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center" borderRadius="xl" shadow="sm">
+                                                  <Text fontSize="xs" fontWeight="600" color="gray.500">Item</Text>
                                                 </Box>
                                               )}
                                             </Box>
 
-                                            <CardHeader pb={2} flex={1}>
-                                              <Badge colorScheme="blue" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
+                                            <CardHeader pb={2} pt={3} flex={1}>
+                                              <Badge colorScheme="blue" bg="blue.100" color="blue.700" variant="solid" fontSize="10px" px={3} py={1} borderRadius="md" fontWeight="700" letterSpacing="wider" textTransform="uppercase" mb={2}>
                                                 Your Action
                                               </Badge>
-                                              <Heading size="sm" noOfLines={2}>
+                                              <Heading fontSize="md" fontWeight="700" color="gray.800" noOfLines={2} lineHeight="1.3">
                                                 {summary.yourGive}
                                               </Heading>
-                                              <Text fontSize="xs" color="gray.500" mt={2}>
+                                              <Text fontSize="sm" fontWeight="600" color="gray.500" mt={1}>
                                                 → {summary.yourGet}
                                               </Text>
                                             </CardHeader>
 
-                                            <CardFooter pt={0} pb={3}>
+                                            <CardFooter pt={0} pb={4} px={4}>
                                               <HStack w="full" spacing={2}>
-                                                <Button size="sm" colorScheme="green" flex={1} onClick={(e) => { e.stopPropagation(); handleJoinMultiWayTrade(trade) }} isLoading={multiWayTradeJoining}>
+                                                <Button size="md" fontWeight="600" borderRadius="2xl" colorScheme="green" flex={1} onClick={(e) => { e.stopPropagation(); handleJoinMultiWayTrade(trade) }} isLoading={multiWayTradeJoining}>
                                                   Accept
                                                 </Button>
-                                                <Button size="sm" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
+                                                <Button size="md" fontWeight="600" borderRadius="2xl" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
                                                   Decline
                                                 </Button>
                                               </HStack>
@@ -5198,30 +5259,32 @@ const Dashboard: React.FC = () => {
                                             h="100%"
                                             display="flex"
                                             flexDirection="column"
-                                            _hover={{
-                                              shadow: 'lg',
-                                              transform: 'translateY(-4px)',
-                                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                              borderColor: 'orange.500',
-                                            }}
-                                            transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                            borderRadius="2xl"
+                                            overflow="hidden"
+                                            borderWidth="0"
                                             borderLeftWidth="4px"
                                             borderLeftColor="orange.400"
-                                            borderColor="orange.200"
+                                            shadow="sm"
+                                            _hover={{
+                                              shadow: 'md',
+                                              transform: 'translateY(-3px)',
+                                              transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+                                            }}
+                                            transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
                                             cursor="pointer"
                                             onClick={() => handleViewMultiWayTradeDetails(trade)}
                                           >
-                                            <CardHeader pb={2} flex={1}>
-                                              <Badge colorScheme="orange" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
+                                            <CardHeader pb={2} pt={4} flex={1}>
+                                              <Badge colorScheme="orange" bg="orange.100" color="orange.700" variant="solid" fontSize="10px" px={3} py={1} borderRadius="md" fontWeight="700" letterSpacing="wider" textTransform="uppercase" mb={2}>
                                                 Waiting...
                                               </Badge>
-                                              <Heading size="sm" noOfLines={2}>
+                                              <Heading fontSize="md" fontWeight="700" color="gray.800" noOfLines={2} lineHeight="1.3">
                                                 {summary.yourGive} → {summary.yourGet}
                                               </Heading>
                                             </CardHeader>
 
-                                            <CardFooter pt={0} pb={3}>
-                                              <Button size="sm" colorScheme="orange" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
+                                            <CardFooter pt={0} pb={4} px={4}>
+                                              <Button size="md" fontWeight="600" borderRadius="2xl" colorScheme="orange" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
                                                 View Trade
                                               </Button>
                                             </CardFooter>
@@ -5245,35 +5308,35 @@ const Dashboard: React.FC = () => {
                                         return (
                                           <Box
                                             key={trade.id || trade.loop_id || trade.chain_id}
-                                            p={4}
-                                            bg={cardBg}
-                                            borderRadius="lg"
-                                            borderWidth="1px"
-                                            borderColor="purple.200"
+                                            p={5}
+                                            bg="white"
+                                            borderRadius="2xl"
+                                            borderWidth="0"
+                                            shadow="sm"
                                             cursor="pointer"
-                                            transition="all 0.2s"
-                                            _hover={{ borderColor: 'purple.400', transform: 'translateY(-2px)', shadow: 'md' }}
+                                            transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
+                                            _hover={{ transform: 'translateY(-3px)', shadow: 'md' }}
                                             onClick={() => handleViewMultiWayTradeDetails(trade)}
                                           >
-                                            <VStack align="stretch" spacing={3}>
+                                            <VStack align="stretch" spacing={4}>
                                               <HStack justify="space-between">
-                                                <Badge colorScheme="purple" variant="subtle">Auto Match</Badge>
+                                                <Badge colorScheme="purple" bg="purple.100" color="purple.700" variant="solid" fontSize="10px" px={3} py={1} borderRadius="md" fontWeight="700" letterSpacing="wider" textTransform="uppercase">Auto Match</Badge>
                                                 {matchScore > 0 && (
-                                                  <Badge colorScheme={matchScore > 80 ? 'green' : 'orange'}>
+                                                  <Badge colorScheme={matchScore > 80 ? 'green' : 'orange'} variant="solid" fontSize="10px" px={2} py={1} borderRadius="md" fontWeight="700">
                                                     {matchScore}% Match
                                                   </Badge>
                                                 )}
                                               </HStack>
                                               
                                               <Box w="full" textAlign="center" py={2}>
-                                                <Text fontSize="xs" color="gray.600">
+                                                <Text fontSize="sm" fontWeight="700" color="gray.800">
                                                   {trade.participants?.length >= 3
                                                     ? trade.participants.map((p: any) => p.product_title).join(' → ')
                                                     : `${summary.yourGive} → ${summary.yourGet}`}
                                                 </Text>
                                               </Box>
                                               
-                                              <Button size="sm" colorScheme="purple" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
+                                              <Button size="md" fontWeight="600" borderRadius="2xl" colorScheme="purple" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
                                                 Review & Start
                                               </Button>
                                             </VStack>

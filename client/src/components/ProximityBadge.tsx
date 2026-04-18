@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Badge, Tooltip, Spinner, HStack, Icon } from '@chakra-ui/react'
+import { Badge, Tooltip, Spinner, HStack, Icon, useColorModeValue } from '@chakra-ui/react'
 import { FaMapMarkerAlt } from 'react-icons/fa'
 import { api } from '../services/api'
 import { DistanceResult } from '../types'
@@ -84,10 +84,21 @@ const ProximityBadge: React.FC<ProximityBadgeProps> = ({ type, targetId, showIco
 
   return (
     <Tooltip label={`Distance: ${(distance.distance_km ?? 0).toFixed(2)} km (${(distance.distance_miles ?? 0).toFixed(2)} miles)`}>
-      <Badge colorScheme={getColorScheme()} variant="subtle" fontSize="xs">
+      <Badge 
+        bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')} 
+        color={useColorModeValue('brand.600', 'brand.300')}
+        variant="solid" 
+        fontSize="10px"
+        fontWeight="800"
+        borderRadius="full"
+        px={2.5}
+        py={1}
+        shadow="sm"
+        backdropFilter="blur(8px)"
+      >
         <HStack spacing={1}>
           {showIcon && <Icon as={FaMapMarkerAlt} />}
-          <span>{formatDistance()}</span>
+          <span>{formatDistance().toUpperCase()}</span>
         </HStack>
       </Badge>
     </Tooltip>

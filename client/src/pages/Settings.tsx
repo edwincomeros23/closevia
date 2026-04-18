@@ -43,6 +43,11 @@ import {
   Icon,
   Spinner,
   Tooltip,
+  Tabs,
+  TabList,
+  TabPanels,
+  TabPanel,
+  Tab,
 } from '@chakra-ui/react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
@@ -50,14 +55,14 @@ import { useAuth } from '../contexts/AuthContext'
 import { getImageUrl } from '../utils/imageUtils'
 import VerifiedAvatar from '../components/VerifiedAvatar'
 import FloatingTab from '../components/FloatingTab'
-import { 
-  FaUserCircle, 
-  FaBell, 
-  FaPalette, 
-  FaLock, 
-  FaSignOutAlt, 
-  FaTrash, 
-  FaEye, 
+import {
+  FaUserCircle,
+  FaBell,
+  FaPalette,
+  FaLock,
+  FaSignOutAlt,
+  FaTrash,
+  FaEye,
   FaEyeSlash,
   FaUpload,
   FaCheckCircle,
@@ -143,7 +148,7 @@ const SettingsPage: React.FC = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
 
-  
+
   // Modals
   const { isOpen: isPasswordModalOpen, onOpen: onPasswordModalOpen, onClose: onPasswordModalClose } = useDisclosure()
   const { isOpen: isPhoneModalOpen, onOpen: onPhoneModalOpen, onClose: onPhoneModalClose } = useDisclosure()
@@ -590,7 +595,7 @@ const SettingsPage: React.FC = () => {
 
       // Update server-side profile (name/email/profile_picture)
       console.log('📸 Saving profile with picture URL:', profileUrlToSave)
-      
+
       // DON'T save cache busters to the database - they're only for display
       if (updateProfile) {
         await updateProfile({
@@ -629,7 +634,7 @@ const SettingsPage: React.FC = () => {
 
       if (resp.data && resp.data.success) {
         console.log('📸 Profile updated successfully on backend, response:', resp.data)
-        
+
         // Refresh context user so changes persist across pages
         try {
           await refreshUser()
@@ -734,7 +739,8 @@ const SettingsPage: React.FC = () => {
     const code = schoolEmailCode.trim()
     if (code.length !== 6) {
       toast({
-        id: "settings-enter-6-digit-code", title: 'Enter 6-digit code', description: 'The code from your email has 6 digits.', status: 'warning', duration: 3000, isClosable: true })
+        id: "settings-enter-6-digit-code", title: 'Enter 6-digit code', description: 'The code from your email has 6 digits.', status: 'warning', duration: 3000, isClosable: true
+      })
       return
     }
     setSchoolEmailVerifyLoading(true)
@@ -756,7 +762,8 @@ const SettingsPage: React.FC = () => {
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Invalid or expired code'
       toast({
-        id: "settings-verification-failed", title: 'Verification failed', description: message, status: 'error', duration: 4000, isClosable: true })
+        id: "settings-verification-failed", title: 'Verification failed', description: message, status: 'error', duration: 4000, isClosable: true
+      })
     } finally {
       setSchoolEmailVerifyLoading(false)
     }
@@ -768,12 +775,14 @@ const SettingsPage: React.FC = () => {
     try {
       await api.post('/api/users/verification/resend-school-email-code')
       toast({
-        id: "settings-code-resent", title: 'Code resent', description: 'Check your school email for the new code.', status: 'success', duration: 3000, isClosable: true })
+        id: "settings-code-resent", title: 'Code resent', description: 'Check your school email for the new code.', status: 'success', duration: 3000, isClosable: true
+      })
       setResendSchoolCooldown(60)
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Could not resend'
       toast({
-        id: "settings-resend-failed", title: 'Resend failed', description: message, status: 'error', duration: 4000, isClosable: true })
+        id: "settings-resend-failed", title: 'Resend failed', description: message, status: 'error', duration: 4000, isClosable: true
+      })
     } finally {
       setVerificationLoading(false)
     }
@@ -787,9 +796,9 @@ const SettingsPage: React.FC = () => {
     try {
       const keys = ['token', 'auth_token', 'access_token', 'refresh_token', 'session']
       keys.forEach((k) => {
-        try { localStorage.removeItem(k) } catch {}
-        try { sessionStorage.removeItem(k) } catch {}
-        try { document.cookie = `${k}=; Max-Age=0; path=/;` } catch {}
+        try { localStorage.removeItem(k) } catch { }
+        try { sessionStorage.removeItem(k) } catch { }
+        try { document.cookie = `${k}=; Max-Age=0; path=/;` } catch { }
       })
     } catch (e) {
       // ignore
@@ -807,7 +816,7 @@ const SettingsPage: React.FC = () => {
     }
 
     toast({
-        id: "settings-logged-out",
+      id: "settings-logged-out",
       title: 'Logged out',
       description: 'You have been successfully logged out.',
       status: 'success',
@@ -817,21 +826,21 @@ const SettingsPage: React.FC = () => {
 
     // Navigate to login page and close any open logout dialog
     navigate('/login')
-    try { onLogoutModalClose() } catch {}
+    try { onLogoutModalClose() } catch { }
   }
 
   // Handle account deletion
   const handleDeleteAccount = async () => {
     try {
       await api.delete('/api/users/account')
-      
+
       // Clear client-side storage
       try {
         const keys = ['token', 'auth_token', 'access_token', 'refresh_token', 'session']
         keys.forEach((k) => {
-          try { localStorage.removeItem(k) } catch {}
-          try { sessionStorage.removeItem(k) } catch {}
-          try { document.cookie = `${k}=; Max-Age=0; path=/;` } catch {}
+          try { localStorage.removeItem(k) } catch { }
+          try { sessionStorage.removeItem(k) } catch { }
+          try { document.cookie = `${k}=; Max-Age=0; path=/;` } catch { }
         })
       } catch (e) {
         // ignore
@@ -855,7 +864,7 @@ const SettingsPage: React.FC = () => {
 
       // Navigate to login/home
       navigate('/')
-      try { onDeleteAccountClose() } catch {}
+      try { onDeleteAccountClose() } catch { }
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Failed to delete account'
       toast({
@@ -870,537 +879,676 @@ const SettingsPage: React.FC = () => {
   }
 
   return (
-    <Box minH="100vh" bg={pageBg} py={6} position="relative" pb={{ base: '100px', md: '80px' }}>
-      <Container maxW="container.lg" py={0}>
+    <Box minH="100vh" bg={pageBg} pb={{ base: '100px', md: '80px' }}>
+      <Container maxW="container.md" py={8}>
         <VStack spacing={6} align="stretch">
-          {/* Header */}
-          <Flex justify="space-between" align="center" flexWrap="wrap" gap={4}>
-            <Box>
-              <Heading size="lg" mb={1} color={useColorModeValue('gray.800', 'white')}>
-                Settings
-              </Heading>
-            </Box>
-            <HStack spacing={3}>
-              {saveStatus === 'saved' && (
-                <Badge colorScheme="green" px={3} py={1} borderRadius="full" fontSize="sm">
-                  <HStack spacing={1}>
-                    <Icon as={FaCheckCircle} />
-                    <Text>Saved</Text>
-                  </HStack>
-                </Badge>
-              )}
-              {/* Moved logout to header: small logout icon button */}
-              <IconButton
-                aria-label="Logout"
-                icon={<FaSignOutAlt />}
-                size="sm"
-                variant="outline"
-                colorScheme="orange"
-                onClick={onLogoutModalOpen}
-                title="Logout"
-              />
-            </HStack>
-          </Flex>
 
-          {/* Account Section */}
-          <Card
-            bg={cardBg}
-            borderRadius="lg"
-            overflow="hidden"
-            variant="outline"
-            borderColor={borderColor}
-            _hover={{ boxShadow: 'md' }}
-            transition="all 0.2s"
-          >
-            <CardHeader pb={3}>
-              <HStack spacing={3}>
-                <Icon as={FaUserCircle} color="brand.500" boxSize={5} />
-                <Heading size="md">Account</Heading>
-              </HStack>
-            </CardHeader>
-            <CardBody pt={0}>
-              <VStack spacing={6} align="stretch">
-                {/* Profile Picture */}
-                <FormControl>
-                  <FormLabel>Profile Picture</FormLabel>
-                  <HStack spacing={4}>
-                    <Tooltip label="Blue check means your account is verified." hasArrow>
-                      <Box>
-                        <VerifiedAvatar
-                          key={profileImage || 'no-image'} // Force re-render when image changes
-                          size="xl"
-                          src={profileImage || undefined}
-                          name={username || user?.name || 'User'}
-                          bg="brand.500"
-                          isVerified={user?.verification_status === 'verified' || user?.verified || false}
-                        />
-                      </Box>
-                    </Tooltip>
-                    <VStack align="start" spacing={2}>
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        display="none"
-                        id="profile-image-upload"
-                      />
-                      <Button
-                        as="label"
-                        htmlFor="profile-image-upload"
-                        leftIcon={<FaUpload />}
-                        variant="outline"
-                        size="sm"
-                        cursor="pointer"
-                        isLoading={uploadingImage}
-                        loadingText="Uploading..."
-                      >
-                        Upload Photo
-                      </Button>
-                      <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')}>
-                        JPG, PNG, or WEBP. Max size 5MB.
-                      </Text>
-                      <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')}>
-                        Avatar check badge indicates verified account status.
-                      </Text>
-                    </VStack>
-                  </HStack>
-                </FormControl>
+          {/* Tabs Container */}
+          <Tabs variant="unstyled" isLazy>
 
-                <Divider />
-
-                {/* Display Name */}
-                <FormControl>
-                  <FormLabel>Display Name</FormLabel>
-                  <Input
-                    value={username}
-                    onChange={(e) => {
-                      setUsername(e.target.value)
-                      setHasUnsavedChanges(true)
-                    }}
-                    placeholder="Your public display name"
-                  />
-                </FormControl>
-
-                {/* Phone Number */}
-                <FormControl>
-                  <HStack justify="space-between" mb={2}>
-                    <FormLabel mb={0}>Phone Number</FormLabel>
-                    <HStack spacing={2}>
-                      {phoneVerified ? (
-                        <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>
-                          <HStack spacing={1}>
-                            <Icon as={FaCheckCircle} boxSize={3} />
-                            <Text fontSize="2xs">Verified</Text>
-                          </HStack>
-                        </Badge>
-                      ) : (
-                        <Badge colorScheme="orange" variant="subtle" borderRadius="full" px={2}>
-                          <Text fontSize="2xs">Unverified</Text>
-                        </Badge>
-                      )}
-                    </HStack>
-                  </HStack>
-
-                  <HStack spacing={2}>
-                    <Input
-                      type="tel"
-                      value={phoneNumber}
-                      onChange={(e) => {
-                        const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 15)
-                        setPhoneNumber(digitsOnly)
-                        if (phoneVerified && digitsOnly !== ((user as any)?.phone || '')) {
-                          setPhoneVerified(false)
-                        }
-                        setHasUnsavedChanges(true)
-                      }}
-                      placeholder="e.g. 09171234567"
-                    />
-                    <Button
-                      size="sm"
-                      colorScheme="orange"
-                      variant="ghost"
-                      fontSize="xs"
-                      isDisabled={!phoneNumber.trim() || phoneVerified}
-                      onClick={() => {
-                        setPhoneOtpCode('')
-                        setPhoneOtpSent(false)
-                        setResendPhoneCooldown(0)
-                        onPhoneModalOpen()
-                      }}
-                    >
-                      {phoneVerified ? 'Verified' : 'Verify'}
-                    </Button>
-                  </HStack>
-
-                  {phoneNumber && !validatePhone(phoneNumber) && (
-                    <Text fontSize="xs" color="red.500" mt={1}>
-                      Phone number must be 10 to 15 digits.
-                    </Text>
-                  )}
-
-                  {!phoneVerified && phoneNumber && validatePhone(phoneNumber) && (
-                    <Text fontSize="xs" color="orange.500" mt={2}>
-                      Add your phone number to strengthen account trust for trades and delivery.
-                    </Text>
-                  )}
-                </FormControl>
-
-                {/* Email */}
-                <FormControl>
-                  <HStack justify="space-between" mb={2}>
-                    <FormLabel mb={0}>Email Address</FormLabel>
-                    <HStack spacing={2}>
-                      {user?.verified ? (
-                        <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>
-                          <HStack spacing={1}>
-                            <Icon as={FaCheckCircle} boxSize={3} />
-                            <Text fontSize="2xs">Verified</Text>
-                          </HStack>
-                        </Badge>
-                      ) : (
-                        <Badge colorScheme="orange" variant="subtle" borderRadius="full" px={2}>
-                          <Text fontSize="2xs">Unverified</Text>
-                        </Badge>
-                      )}
-                    </HStack>
-                  </HStack>
-                  <HStack spacing={2}>
-                    <Input
-                      type="email"
-                      value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value)
-                        setHasUnsavedChanges(true)
-                      }}
-                      placeholder="you@example.com"
-                    />
-                    {!user?.verified && email === user?.email && (
-                      <Button
-                        size="sm"
-                        colorScheme="orange"
-                        variant="ghost"
-                        fontSize="xs"
-                        isLoading={verificationLoading}
-                        onClick={async () => {
-                          setVerificationLoading(true)
-                          try {
-                            await api.post('/api/auth/resend-verification', { email: user?.email })
-                            toast({
-                              title: 'Verification email sent',
-                              description: 'Please check your inbox for the code.',
-                              status: 'info',
-                              duration: 5000,
-                              isClosable: true,
-                            })
-                            // Redirect to verification page
-                            navigate('/verify-email', { state: { email: user?.email } })
-                          } catch (err: any) {
-                            toast({
-                              title: 'Error',
-                              description: err.response?.data?.error || 'Failed to send verification email',
-                              status: 'error',
-                              duration: 3000,
-                              isClosable: true,
-                            })
-                          } finally {
-                            setVerificationLoading(false)
-                          }
-                        }}
-                      >
-                        Verify Now
-                      </Button>
-                    )}
-                  </HStack>
-                  {email && !validateEmail(email) && (
-                    <Text fontSize="xs" color="red.500" mt={1}>
-                      Please enter a valid email address
-                    </Text>
-                  )}
-                  {!user?.verified && (
-                    <Text fontSize="xs" color="orange.500" mt={2}>
-                      ⚠️ Your email is not verified. Some features may be restricted.
-                    </Text>
-                  )}
-                </FormControl>
-
-                <Divider />
-
-                {/* Change Password */}
-                <FormControl>
-                  <FormLabel>Password</FormLabel>
-                  <Button
-                    leftIcon={<FaLock />}
-                    variant="outline"
-                    size="sm"
-                    onClick={onPasswordModalOpen}
-                  >
-                    Change Password
-                  </Button>
-                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
-                    Keep your account secure by updating your password regularly.
-                  </Text>
-                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
-                    {getPasswordChangedLabel()}
-                  </Text>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Session</FormLabel>
-                  <Button
-                    leftIcon={<FaSignOutAlt />}
-                    colorScheme="orange"
-                    variant="outline"
-                    size="sm"
-                    onClick={onLogoutModalOpen}
-                  >
-                    Logout
-                  </Button>
-                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
-                    Sign out from this device.
-                  </Text>
-                </FormControl>
-              </VStack>
-            </CardBody>
-          </Card>
-
-          {/* School ID Verification Section - hidden for admins */}
-          {user?.role !== 'admin' && <Card
-            bg={cardBg}
-            borderRadius="lg"
-            overflow="hidden"
-            variant="outline"
-            borderColor={borderColor}
-            _hover={{ boxShadow: 'md' }}
-            transition="all 0.2s"
-          >
-            <CardHeader pb={3}>
-              <HStack spacing={3} justify="space-between" flexWrap="wrap" gap={2}>
-                <HStack spacing={3} minW={0}>
-                  <Icon as={FaEnvelope} color="brand.500" boxSize={5} flexShrink={0} />
-                  <Heading size={{ base: 'sm', md: 'md' }}>School Verification</Heading>
+            {/* Sticky Header Pill */}
+            <Box
+              position="sticky"
+              top={{ base: '40px', md: '64px' }}
+              zIndex={20}
+              bg={cardBg}
+              borderRadius="2xl"
+              p={{ base: 4, md: 5 }}
+              border="1px"
+              borderColor={borderColor}
+              shadow="sm"
+              transform="translateY(-20px)"
+            >
+              {/* Header Title & Actions */}
+              <Flex justify="space-between" align="center" mb={4}>
+                <HStack spacing={3}>
+                  <Icon as={FiSettings} boxSize={5} color={useColorModeValue('brand.500', 'brand.300')} />
+                  <Heading size="md" color={useColorModeValue('gray.800', 'white')}>
+                    Settings
+                  </Heading>
                 </HStack>
-                <Badge
-                  colorScheme={
-                    verificationStatus === 'verified'
-                      ? 'green'
-                      : verificationStatus === 'pending'
-                      ? 'orange'
-                      : verificationStatus === 'rejected'
-                      ? 'red'
-                      : 'gray'
-                  }
-                  borderRadius="full"
-                  px={3}
-                  py={1}
-                  fontSize="xs"
-                >
-                  {verificationStatus === 'verified'
-                    ? 'Verified Student'
-                    : verificationStatus === 'pending'
-                    ? 'Pending Review'
-                    : verificationStatus === 'rejected'
-                    ? 'Rejected'
-                    : 'Not Verified'}
-                </Badge>
-              </HStack>
-            </CardHeader>
-            <CardBody pt={0}>
-              <VStack spacing={4} align="stretch">
-                <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.300')}>
-                  Verifying your school ID helps other students trust your listings and trades.
-                  This is optional – you can continue using Clovia without verification.
-                </Text>
-
-                <FormControl>
-                  <FormLabel>School</FormLabel>
-                  <Select
-                    value={schoolName}
-                    onChange={(e) => setSchoolName(e.target.value)}
-                    maxW="300px"
-                  >
-                    <option value="">Select your school</option>
-                    <option value="WMSU">Western Mindanao State University (WMSU)</option>
-                  </Select>
-                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
-                    Supported schools right now: WMSU only.
-                  </Text>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Official School Email</FormLabel>
-                  <HStack spacing={2} align="flex-end" flexWrap="wrap">
-                    <Input
-                      type="email"
-                      value={schoolEmail}
-                      onChange={(e) => setSchoolEmail(e.target.value)}
-                      placeholder="you@wmsu.edu.ph"
-                      isDisabled={!!(user as any)?.school_email_verified_at}
-                      flex={1}
-                      minW="150px"
-                    />
-                    <Button
-                      size="sm"
-                      colorScheme="brand"
-                      onClick={showSchoolOtpStep ? handleResendSchoolEmailCode : handleStartVerification}
-                      isLoading={verificationLoading}
-                      isDisabled={!!(user as any)?.school_email_verified_at || (showSchoolOtpStep && resendSchoolCooldown > 0)}
-                    >
-                      {showSchoolOtpStep ? (resendSchoolCooldown > 0 ? `Resend in ${resendSchoolCooldown}s` : 'Resend Code') : 'Send Code'}
-                    </Button>
-                  </HStack>
-                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
-                    Only official school emails from approved schools (currently WMSU). We'll send a verification code to confirm it's your email.
-                  </Text>
-                </FormControl>
-
-                {showSchoolOtpStep && !(user as any)?.school_email_verified_at && (
-                  <Box p={4} bg={schoolOtpBoxBg} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
-                    <Text fontSize="sm" fontWeight="medium" mb={3}>Enter the 6-digit code we sent to your school email</Text>
-                    <HStack spacing={2} align="flex-end" flexWrap="wrap">
-                      <Input
-                        maxLength={6}
-                        value={schoolEmailCode}
-                        onChange={(e) => setSchoolEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        placeholder="000000"
-                        fontFamily="mono"
-                        fontSize="lg"
-                        w="120px"
-                      />
-                      <Button
-                        size="sm"
-                        colorScheme="green"
-                        onClick={handleVerifySchoolEmailCode}
-                        isLoading={schoolEmailVerifyLoading}
-                        isDisabled={schoolEmailCode.trim().length !== 6}
-                      >
-                        Verify Code
-                      </Button>
-                    </HStack>
-                  </Box>
-                )}
-
-                {(user as any)?.school_email_verified_at && (
-                  <HStack color="green.600" fontSize="sm">
-                    <Icon as={FaCheckCircle} />
-                    <Text>School email verified.</Text>
-                  </HStack>
-                )}
-              </VStack>
-            </CardBody>
-          </Card>}
-
-          {/* Notifications Section */}
-          <Card
-            bg={cardBg}
-            borderRadius="lg"
-            overflow="hidden"
-            variant="outline"
-            borderColor={borderColor}
-            _hover={{ boxShadow: 'md' }}
-            transition="all 0.2s"
-          >
-            <CardHeader pb={3}>
-              <HStack spacing={3}>
-                <Icon as={FaBell} color="brand.500" boxSize={5} />
-                <Heading size="md">Notifications</Heading>
-              </HStack>
-            </CardHeader>
-            <CardBody pt={0}>
-              <VStack spacing={6} align="stretch">
-                {/* Email Notifications */}
-                <Flex justify="space-between" align="center">
-                  <Box>
-                    <FormLabel mb={1}>
-                      <HStack spacing={2}>
-                        <Icon as={FaEnvelope} />
-                        <Text>Email Notifications</Text>
+                <HStack spacing={3}>
+                  {saveStatus === 'saved' && (
+                    <Badge colorScheme="green" px={3} py={1} borderRadius="full" fontSize="sm">
+                      <HStack spacing={1}>
+                        <Icon as={FaCheckCircle} />
+                        <Text>Saved</Text>
                       </HStack>
-                    </FormLabel>
-                    <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
-                      Receive updates and offers via email
-                    </Text>
-                  </Box>
-                  <Switch
-                    isChecked={emailNotifications}
-                    onChange={(e) => {
-                      setEmailNotifications(e.target.checked)
-                      setHasUnsavedChanges(true)
-                    }}
-                    colorScheme="brand"
-                    size="lg"
+                    </Badge>
+                  )}
+                  {/* Logout Button */}
+                  <IconButton
+                    aria-label="Logout"
+                    icon={<FaSignOutAlt />}
+                    size="sm"
+                    variant="ghost"
+                    colorScheme="orange"
+                    onClick={onLogoutModalOpen}
+                    title="Logout"
                   />
-                </Flex>
+                </HStack>
+              </Flex>
 
-                {/* Push Notifications */}
-                <Flex justify="space-between" align="center">
-                  <Box>
-                    <FormLabel mb={1}>
-                      <HStack spacing={2}>
-                        <Icon as={FaMobile} />
-                        <Text>Push Notifications</Text>
-                      </HStack>
-                    </FormLabel>
-                    <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
-                      Receive in-app and browser notifications
-                    </Text>
-                  </Box>
-                  <Switch
-                    isChecked={pushNotifications}
-                    onChange={(e) => {
-                      setPushNotifications(e.target.checked)
-                      setHasUnsavedChanges(true)
-                    }}
-                    colorScheme="brand"
-                    size="lg"
-                  />
-                </Flex>
-
-                <Divider />
-              </VStack>
-            </CardBody>
-          </Card>
-
-          {/* Delete Account Section - Subtle but Dangerous */}
-          <Card
-            bg={useColorModeValue('red.50', 'rgba(245, 75, 85, 0.1)')}
-            borderRadius="lg"
-            overflow="hidden"
-            variant="outline"
-            borderColor={useColorModeValue('red.200', 'red.700')}
-            _hover={{ boxShadow: 'md', borderColor: useColorModeValue('red.300', 'red.600') }}
-            transition="all 0.2s"
-            mt={8}
-          >
-            <CardHeader pb={3}>
-              <HStack spacing={3}>
-                <Icon as={FaTrash} color="red.500" boxSize={5} />
-                <Heading size="md" color="red.700">Delete Account</Heading>
-              </HStack>
-            </CardHeader>
-            <CardBody pt={0}>
-              <VStack spacing={4} align="stretch">
-                <Text fontSize="sm" color={useColorModeValue('red.700', 'red.200')}>
-                  Permanently delete your account and all associated data. This action cannot be undone.
-                </Text>
-                <Button
-                  colorScheme="red"
-                  variant="outline"
-                  leftIcon={<FaTrash />}
-                  onClick={() => {
-                    setDeleteConfirmText('')
-                    onDeleteAccountOpen()
+              {/* Horizontal scrollable tab list */}
+              <TabList
+                w="full"
+                overflowX="auto"
+                sx={{ '&::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none' }}
+                gap={{ base: 2, md: 3 }}
+                display="flex"
+                flexWrap="nowrap"
+              >
+                <Tab
+                  flexShrink={0}
+                  justifyContent="flex-start"
+                  whiteSpace="nowrap"
+                  borderRadius={{ base: "full", md: "xl" }}
+                  px={{ base: 5, md: 4 }}
+                  py={{ base: 2.5, md: 3 }}
+                  fontSize="sm"
+                  fontWeight="600"
+                  color={useColorModeValue('gray.600', 'gray.400')}
+                  bg={useColorModeValue('white', 'gray.800')}
+                  border="1px solid"
+                  borderColor={useColorModeValue('gray.200', 'gray.700')}
+                  shadow="sm"
+                  _selected={{
+                    bg: useColorModeValue('brand.500', 'brand.600'),
+                    color: 'white',
+                    borderColor: 'transparent',
+                    shadow: 'md',
+                    transform: 'translateY(-1px)'
                   }}
-                  w="fit-content"
-                  size="sm"
+                  _hover={{ bg: useColorModeValue('gray.50', 'gray.700'), transform: 'translateY(-1px)', shadow: 'md' }}
+                  transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                ><Icon as={FaUserCircle} mr={2} boxSize={4} /> Account</Tab>
+
+                {user?.role !== 'admin' && (
+                  <Tab
+                    flexShrink={0}
+                    justifyContent="flex-start"
+                    whiteSpace="nowrap"
+                    borderRadius={{ base: "full", md: "xl" }}
+                    px={{ base: 5, md: 4 }}
+                    py={{ base: 2.5, md: 3 }}
+                    fontSize="sm"
+                    fontWeight="600"
+                    color={useColorModeValue('gray.600', 'gray.400')}
+                    bg={useColorModeValue('white', 'gray.800')}
+                    border="1px solid"
+                    borderColor={useColorModeValue('gray.200', 'gray.700')}
+                    shadow="sm"
+                    _selected={{
+                      bg: useColorModeValue('brand.500', 'brand.600'),
+                      color: 'white',
+                      borderColor: 'transparent',
+                      shadow: 'md',
+                      transform: 'translateY(-1px)'
+                    }}
+                    _hover={{ bg: useColorModeValue('gray.50', 'gray.700'), transform: 'translateY(-1px)', shadow: 'md' }}
+                    transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                  ><Icon as={FaEnvelope} mr={2} boxSize={4} /> Education</Tab>
+                )}
+
+                <Tab
+                  flexShrink={0}
+                  justifyContent="flex-start"
+                  whiteSpace="nowrap"
+                  borderRadius={{ base: "full", md: "xl" }}
+                  px={{ base: 5, md: 4 }}
+                  py={{ base: 2.5, md: 3 }}
+                  fontSize="sm"
+                  fontWeight="600"
+                  color={useColorModeValue('gray.600', 'gray.400')}
+                  bg={useColorModeValue('white', 'gray.800')}
+                  border="1px solid"
+                  borderColor={useColorModeValue('gray.200', 'gray.700')}
+                  shadow="sm"
+                  _selected={{
+                    bg: useColorModeValue('brand.500', 'brand.600'),
+                    color: 'white',
+                    borderColor: 'transparent',
+                    shadow: 'md',
+                    transform: 'translateY(-1px)'
+                  }}
+                  _hover={{ bg: useColorModeValue('gray.50', 'gray.700'), transform: 'translateY(-1px)', shadow: 'md' }}
+                  transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                ><Icon as={FaBell} mr={2} boxSize={4} /> Notifications</Tab>
+
+                <Tab
+                  flexShrink={0}
+                  justifyContent="flex-start"
+                  whiteSpace="nowrap"
+                  borderRadius={{ base: "full", md: "xl" }}
+                  px={{ base: 5, md: 4 }}
+                  py={{ base: 2.5, md: 3 }}
+                  fontSize="sm"
+                  fontWeight="600"
+                  color={useColorModeValue('red.600', 'red.400')}
+                  bg={useColorModeValue('white', 'gray.800')}
+                  border="1px solid"
+                  borderColor={useColorModeValue('red.200', 'red.800')}
+                  shadow="sm"
+                  _selected={{
+                    bg: useColorModeValue('red.500', 'red.600'),
+                    color: 'white',
+                    borderColor: 'transparent',
+                    shadow: 'md',
+                    transform: 'translateY(-1px)'
+                  }}
+                  _hover={{ bg: useColorModeValue('red.50', 'red.900'), transform: 'translateY(-1px)', shadow: 'md' }}
+                  transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                ><Icon as={FaTrash} mr={2} boxSize={4} /> Danger Zone</Tab>
+              </TabList>
+            </Box>
+
+            <TabPanels mt={6}>
+              {/* Profile/Account Tab */}
+              <TabPanel p={0} m={0}>
+                <Card
+                  bg={cardBg}
+                  borderRadius="2xl"
+                  overflow="hidden"
+                  variant="outline"
+                  borderColor={borderColor}
+                  shadow="sm"
                 >
-                  Delete Account
-                </Button>
-              </VStack>
-            </CardBody>
-          </Card>
+                  <CardHeader pb={3}>
+                    <HStack spacing={3}>
+                      <Icon as={FaUserCircle} color="brand.500" boxSize={5} />
+                      <Heading size="md">Account</Heading>
+                    </HStack>
+                  </CardHeader>
+                  <CardBody pt={0}>
+                    <VStack spacing={6} align="stretch">
+                      {/* Profile Picture */}
+                      <FormControl>
+                        <FormLabel>Profile Picture</FormLabel>
+                        <HStack spacing={4}>
+                          <Tooltip label="Blue check means your account is verified." hasArrow>
+                            <Box>
+                              <VerifiedAvatar
+                                key={profileImage || 'no-image'} // Force re-render when image changes
+                                size="xl"
+                                src={profileImage || undefined}
+                                name={username || user?.name || 'User'}
+                                bg="brand.500"
+                                isVerified={user?.verification_status === 'verified' || user?.verified || false}
+                              />
+                            </Box>
+                          </Tooltip>
+                          <VStack align="start" spacing={2}>
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              display="none"
+                              id="profile-image-upload"
+                            />
+                            <Button
+                              as="label"
+                              htmlFor="profile-image-upload"
+                              leftIcon={<FaUpload />}
+                              variant="outline"
+                              size="sm"
+                              cursor="pointer"
+                              isLoading={uploadingImage}
+                              loadingText="Uploading..."
+                            >
+                              Upload Photo
+                            </Button>
+                            <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')}>
+                              JPG, PNG, or WEBP. Max size 5MB.
+                            </Text>
+                            <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')}>
+                              Avatar check badge indicates verified account status.
+                            </Text>
+                          </VStack>
+                        </HStack>
+                      </FormControl>
+
+                      <Divider />
+
+                      {/* Display Name */}
+                      <FormControl>
+                        <FormLabel>Display Name</FormLabel>
+                        <Input
+                          value={username}
+                          onChange={(e) => {
+                            setUsername(e.target.value)
+                            setHasUnsavedChanges(true)
+                          }}
+                          placeholder="Your public display name"
+                        />
+                      </FormControl>
+
+                      {/* Phone Number */}
+                      <FormControl>
+                        <HStack justify="space-between" mb={2}>
+                          <FormLabel mb={0}>Phone Number</FormLabel>
+                          <HStack spacing={2}>
+                            {phoneVerified ? (
+                              <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>
+                                <HStack spacing={1}>
+                                  <Icon as={FaCheckCircle} boxSize={3} />
+                                  <Text fontSize="2xs">Verified</Text>
+                                </HStack>
+                              </Badge>
+                            ) : (
+                              <Badge colorScheme="orange" variant="subtle" borderRadius="full" px={2}>
+                                <Text fontSize="2xs">Unverified</Text>
+                              </Badge>
+                            )}
+                          </HStack>
+                        </HStack>
+
+                        <HStack spacing={2}>
+                          <Input
+                            type="tel"
+                            value={phoneNumber}
+                            onChange={(e) => {
+                              const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 15)
+                              setPhoneNumber(digitsOnly)
+                              if (phoneVerified && digitsOnly !== ((user as any)?.phone || '')) {
+                                setPhoneVerified(false)
+                              }
+                              setHasUnsavedChanges(true)
+                            }}
+                            placeholder="e.g. 09171234567"
+                          />
+                          <Button
+                            size="sm"
+                            colorScheme="orange"
+                            variant="ghost"
+                            fontSize="xs"
+                            isDisabled={!phoneNumber.trim() || phoneVerified}
+                            onClick={() => {
+                              setPhoneOtpCode('')
+                              setPhoneOtpSent(false)
+                              setResendPhoneCooldown(0)
+                              onPhoneModalOpen()
+                            }}
+                          >
+                            {phoneVerified ? 'Verified' : 'Verify'}
+                          </Button>
+                        </HStack>
+
+                        {phoneNumber && !validatePhone(phoneNumber) && (
+                          <Text fontSize="xs" color="red.500" mt={1}>
+                            Phone number must be 10 to 15 digits.
+                          </Text>
+                        )}
+
+                        {!phoneVerified && phoneNumber && validatePhone(phoneNumber) && (
+                          <Text fontSize="xs" color="orange.500" mt={2}>
+                            Add your phone number to strengthen account trust for trades and delivery.
+                          </Text>
+                        )}
+                      </FormControl>
+
+                      {/* Email */}
+                      <FormControl>
+                        <HStack justify="space-between" mb={2}>
+                          <FormLabel mb={0}>Email Address</FormLabel>
+                          <HStack spacing={2}>
+                            {user?.verified ? (
+                              <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>
+                                <HStack spacing={1}>
+                                  <Icon as={FaCheckCircle} boxSize={3} />
+                                  <Text fontSize="2xs">Verified</Text>
+                                </HStack>
+                              </Badge>
+                            ) : (
+                              <Badge colorScheme="orange" variant="subtle" borderRadius="full" px={2}>
+                                <Text fontSize="2xs">Unverified</Text>
+                              </Badge>
+                            )}
+                          </HStack>
+                        </HStack>
+                        <HStack spacing={2}>
+                          <Input
+                            type="email"
+                            value={email}
+                            onChange={(e) => {
+                              setEmail(e.target.value)
+                              setHasUnsavedChanges(true)
+                            }}
+                            placeholder="you@example.com"
+                          />
+                          {!user?.verified && email === user?.email && (
+                            <Button
+                              size="sm"
+                              colorScheme="orange"
+                              variant="ghost"
+                              fontSize="xs"
+                              isLoading={verificationLoading}
+                              onClick={async () => {
+                                setVerificationLoading(true)
+                                try {
+                                  await api.post('/api/auth/resend-verification', { email: user?.email })
+                                  toast({
+                                    title: 'Verification email sent',
+                                    description: 'Please check your inbox for the code.',
+                                    status: 'info',
+                                    duration: 5000,
+                                    isClosable: true,
+                                  })
+                                  // Redirect to verification page
+                                  navigate('/verify-email', { state: { email: user?.email } })
+                                } catch (err: any) {
+                                  toast({
+                                    title: 'Error',
+                                    description: err.response?.data?.error || 'Failed to send verification email',
+                                    status: 'error',
+                                    duration: 3000,
+                                    isClosable: true,
+                                  })
+                                } finally {
+                                  setVerificationLoading(false)
+                                }
+                              }}
+                            >
+                              Verify Now
+                            </Button>
+                          )}
+                        </HStack>
+                        {email && !validateEmail(email) && (
+                          <Text fontSize="xs" color="red.500" mt={1}>
+                            Please enter a valid email address
+                          </Text>
+                        )}
+                        {!user?.verified && (
+                          <Text fontSize="xs" color="orange.500" mt={2}>
+                            ⚠️ Your email is not verified. Some features may be restricted.
+                          </Text>
+                        )}
+                      </FormControl>
+
+                      <Divider />
+
+                      {/* Change Password */}
+                      <FormControl>
+                        <FormLabel>Password</FormLabel>
+                        <Button
+                          leftIcon={<FaLock />}
+                          variant="outline"
+                          size="sm"
+                          onClick={onPasswordModalOpen}
+                        >
+                          Change Password
+                        </Button>
+                        <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
+                          Keep your account secure by updating your password regularly.
+                        </Text>
+                        <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                          {getPasswordChangedLabel()}
+                        </Text>
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel>Session</FormLabel>
+                        <Button
+                          leftIcon={<FaSignOutAlt />}
+                          colorScheme="orange"
+                          variant="outline"
+                          size="sm"
+                          onClick={onLogoutModalOpen}
+                        >
+                          Logout
+                        </Button>
+                        <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
+                          Sign out from this device.
+                        </Text>
+                      </FormControl>
+                    </VStack>
+                  </CardBody>
+                </Card>
+              </TabPanel>
+
+              {/* School ID Verification Section - hidden for admins */}
+              {user?.role !== 'admin' && (
+                <TabPanel p={0} m={0}>
+                  <Card
+                    bg={cardBg}
+                    borderRadius="2xl"
+                    overflow="hidden"
+                    variant="outline"
+                    borderColor={borderColor}
+                    shadow="sm"
+                  >
+                    <CardHeader pb={3}>
+                      <HStack spacing={3} justify="space-between" flexWrap="wrap" gap={2}>
+                        <HStack spacing={3} minW={0}>
+                          <Icon as={FaEnvelope} color="brand.500" boxSize={5} flexShrink={0} />
+                          <Heading size={{ base: 'sm', md: 'md' }}>School Verification</Heading>
+                        </HStack>
+                        <Badge
+                          colorScheme={
+                            verificationStatus === 'verified'
+                              ? 'green'
+                              : verificationStatus === 'pending'
+                                ? 'orange'
+                                : verificationStatus === 'rejected'
+                                  ? 'red'
+                                  : 'gray'
+                          }
+                          borderRadius="full"
+                          px={3}
+                          py={1}
+                          fontSize="xs"
+                        >
+                          {verificationStatus === 'verified'
+                            ? 'Verified Student'
+                            : verificationStatus === 'pending'
+                              ? 'Pending Review'
+                              : verificationStatus === 'rejected'
+                                ? 'Rejected'
+                                : 'Not Verified'}
+                        </Badge>
+                      </HStack>
+                    </CardHeader>
+                    <CardBody pt={0}>
+                      <VStack spacing={4} align="stretch">
+                        <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.300')}>
+                          Verifying your school ID helps other students trust your listings and trades.
+                          This is optional – you can continue using Clovia without verification.
+                        </Text>
+
+                        <FormControl>
+                          <FormLabel>School</FormLabel>
+                          <Select
+                            value={schoolName}
+                            onChange={(e) => setSchoolName(e.target.value)}
+                            maxW="300px"
+                          >
+                            <option value="">Select your school</option>
+                            <option value="WMSU">Western Mindanao State University (WMSU)</option>
+                          </Select>
+                          <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                            Supported schools right now: WMSU only.
+                          </Text>
+                        </FormControl>
+
+                        <FormControl>
+                          <FormLabel>Official School Email</FormLabel>
+                          <HStack spacing={2} align="flex-end" flexWrap="wrap">
+                            <Input
+                              type="email"
+                              value={schoolEmail}
+                              onChange={(e) => setSchoolEmail(e.target.value)}
+                              placeholder="you@wmsu.edu.ph"
+                              isDisabled={!!(user as any)?.school_email_verified_at}
+                              flex={1}
+                              minW="150px"
+                            />
+                            <Button
+                              size="sm"
+                              colorScheme="brand"
+                              onClick={showSchoolOtpStep ? handleResendSchoolEmailCode : handleStartVerification}
+                              isLoading={verificationLoading}
+                              isDisabled={!!(user as any)?.school_email_verified_at || (showSchoolOtpStep && resendSchoolCooldown > 0)}
+                            >
+                              {showSchoolOtpStep ? (resendSchoolCooldown > 0 ? `Resend in ${resendSchoolCooldown}s` : 'Resend Code') : 'Send Code'}
+                            </Button>
+                          </HStack>
+                          <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                            Only official school emails from approved schools (currently WMSU). We'll send a verification code to confirm it's your email.
+                          </Text>
+                        </FormControl>
+
+                        {showSchoolOtpStep && !(user as any)?.school_email_verified_at && (
+                          <Box p={4} bg={schoolOtpBoxBg} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
+                            <Text fontSize="sm" fontWeight="medium" mb={3}>Enter the 6-digit code we sent to your school email</Text>
+                            <HStack spacing={2} align="flex-end" flexWrap="wrap">
+                              <Input
+                                maxLength={6}
+                                value={schoolEmailCode}
+                                onChange={(e) => setSchoolEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                placeholder="000000"
+                                fontFamily="mono"
+                                fontSize="lg"
+                                w="120px"
+                              />
+                              <Button
+                                size="sm"
+                                colorScheme="green"
+                                onClick={handleVerifySchoolEmailCode}
+                                isLoading={schoolEmailVerifyLoading}
+                                isDisabled={schoolEmailCode.trim().length !== 6}
+                              >
+                                Verify Code
+                              </Button>
+                            </HStack>
+                          </Box>
+                        )}
+
+                        {(user as any)?.school_email_verified_at && (
+                          <HStack color="green.600" fontSize="sm">
+                            <Icon as={FaCheckCircle} />
+                            <Text>School email verified.</Text>
+                          </HStack>
+                        )}
+                      </VStack>
+                    </CardBody>
+                  </Card>
+                </TabPanel>
+              )}
+
+              {/* Notifications Section */}
+              <TabPanel p={0} m={0}>
+                <Card
+                  bg={cardBg}
+                  borderRadius="2xl"
+                  overflow="hidden"
+                  variant="outline"
+                  borderColor={borderColor}
+                  shadow="sm"
+                >
+                  <CardHeader pb={3}>
+                    <HStack spacing={3}>
+                      <Icon as={FaBell} color="brand.500" boxSize={5} />
+                      <Heading size="md">Notifications</Heading>
+                    </HStack>
+                  </CardHeader>
+                  <CardBody pt={0}>
+                    <VStack spacing={6} align="stretch">
+                      {/* Email Notifications */}
+                      <Flex justify="space-between" align="center">
+                        <Box>
+                          <FormLabel mb={1}>
+                            <HStack spacing={2}>
+                              <Icon as={FaEnvelope} />
+                              <Text>Email Notifications</Text>
+                            </HStack>
+                          </FormLabel>
+                          <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
+                            Receive updates and offers via email
+                          </Text>
+                        </Box>
+                        <Switch
+                          isChecked={emailNotifications}
+                          onChange={(e) => {
+                            setEmailNotifications(e.target.checked)
+                            setHasUnsavedChanges(true)
+                          }}
+                          colorScheme="brand"
+                          size="lg"
+                        />
+                      </Flex>
+
+                      {/* Push Notifications */}
+                      <Flex justify="space-between" align="center">
+                        <Box>
+                          <FormLabel mb={1}>
+                            <HStack spacing={2}>
+                              <Icon as={FaMobile} />
+                              <Text>Push Notifications</Text>
+                            </HStack>
+                          </FormLabel>
+                          <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
+                            Receive in-app and browser notifications
+                          </Text>
+                        </Box>
+                        <Switch
+                          isChecked={pushNotifications}
+                          onChange={(e) => {
+                            setPushNotifications(e.target.checked)
+                            setHasUnsavedChanges(true)
+                          }}
+                          colorScheme="brand"
+                          size="lg"
+                        />
+                      </Flex>
+
+                      <Divider />
+                    </VStack>
+                  </CardBody>
+                </Card>
+              </TabPanel>
+
+              {/* Delete Account Section - Subtle but Dangerous */}
+              <TabPanel p={0} m={0}>
+                <Card
+                  bg={useColorModeValue('red.50', 'rgba(245, 75, 85, 0.1)')}
+                  borderRadius="2xl"
+                  overflow="hidden"
+                  variant="outline"
+                  borderColor={useColorModeValue('red.200', 'red.700')}
+                  shadow="sm"
+                >
+                  <CardHeader pb={3}>
+                    <HStack spacing={3}>
+                      <Icon as={FaTrash} color="red.500" boxSize={5} />
+                      <Heading size="md" color="red.700">Delete Account</Heading>
+                    </HStack>
+                  </CardHeader>
+                  <CardBody pt={0}>
+                    <VStack spacing={4} align="stretch">
+                      <Text fontSize="sm" color={useColorModeValue('red.700', 'red.200')}>
+                        Permanently delete your account and all associated data. This action cannot be undone.
+                      </Text>
+                      <Button
+                        colorScheme="red"
+                        variant="outline"
+                        leftIcon={<FaTrash />}
+                        onClick={() => {
+                          setDeleteConfirmText('')
+                          onDeleteAccountOpen()
+                        }}
+                        w="fit-content"
+                        size="sm"
+                      >
+                        Delete Account
+                      </Button>
+                    </VStack>
+                  </CardBody>
+                </Card>
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
         </VStack>
       </Container>
- 
+
       {/* Sticky Save Button */}
       {hasUnsavedChanges && (
         <Box
@@ -1437,7 +1585,7 @@ const SettingsPage: React.FC = () => {
                     }
                     setHasUnsavedChanges(false)
                     toast({
-        id: "settings-changes-discarded",
+                      id: "settings-changes-discarded",
                       title: 'Changes discarded',
                       description: 'Your changes have been reset.',
                       status: 'info',

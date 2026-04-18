@@ -496,7 +496,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           <VStack spacing={3} align="stretch">
             <HStack spacing={3} align="center">
               <Icon as={FaTruck} color="green.600" />
-              <Text fontWeight="bold" fontSize="sm">Buyout Delivery Tracking</Text>
+              <Text fontWeight="600" fontSize="sm">Buyout Delivery Tracking</Text>
               <Badge ml="auto" colorScheme={deliveryStatusColorScheme} fontSize="xs">
                 {deliveryStatus.replace(/_/g, ' ').toUpperCase()}
               </Badge>
@@ -569,7 +569,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                         <Text fontWeight="medium" color="gray.700">
                           {(isUserBuyer ? deliveryState.buyerDeliveryType : deliveryState.sellerDeliveryType) === 'standard' ? 'Standard' : 'Express'} Delivery
                         </Text>
-                        <Text fontSize="sm" fontWeight="bold" color="green.600">
+                        <Text fontSize="sm" fontWeight="600" color="green.600">
                           G�{deliveryOptions[isUserBuyer ? deliveryState.buyerDeliveryType || deliveryState.deliveryType : deliveryState.sellerDeliveryType || deliveryState.deliveryType as any]?.fee}
                         </Text>
                       </VStack>
@@ -605,7 +605,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                             {type === 'standard' ? 'Standard' : 'Express'}
                           </Text>
                         </HStack>
-                        <Text fontSize={["sm", "md"]} fontWeight="bold" flexShrink={0}>
+                        <Text fontSize={["sm", "md"]} fontWeight="600" flexShrink={0}>
                           G�{option.fee}
                         </Text>
                       </HStack>
@@ -657,7 +657,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 <Text fontSize="xs" color="gray.500">Return fee is collected at seller pickup</Text>
               </VStack>
             </HStack>
-            <Text fontSize="sm" fontWeight="bold" color="green.600">
+            <Text fontSize="sm" fontWeight="600" color="green.600">
               G�{deliveryFee.toFixed(2)}
             </Text>
           </HStack>
@@ -1103,7 +1103,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       {completionStatus?.buyer_completed && completionStatus?.seller_completed && (
         <Box p={3} bg="green.50" borderRadius="md" borderWidth="2px" borderColor="green.300" textAlign="center">
           <Icon as={FiCheck} boxSize={6} color="green.500" mb={2} mx="auto" display="block" />
-          <Text fontWeight="bold" color="green.700" mb={1} fontSize="sm">
+          <Text fontWeight="600" color="green.700" mb={1} fontSize="sm">
             Trade Completed Successfully! =���
           </Text>
           <Text fontSize="xs" color="green.600">
@@ -2632,21 +2632,22 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   return (
     <>
       <Modal isOpen={isOpen} onClose={onClose} size={["sm", "md", "lg", "6xl"]} isCentered scrollBehavior="inside">
-        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        <ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
         <ModalContent
-          bg={cardBg}
-          borderRadius={["md", "lg", "xl"]}
-          boxShadow="xl"
+          bg="white"
+          borderRadius="3xl"
+          boxShadow="2xl"
           maxH="90vh"
           mx={[2, 4]}
           display="flex"
           flexDirection="column"
+          overflow="hidden"
         >
-          <ModalHeader>
-            <HStack spacing={2} fontSize={["sm", "md"]} w="full" justify="space-between">
-              <HStack spacing={2}>
-                <Icon as={FaHandshake} color="brand.500" />
-                <Text>Trade Details</Text>
+          <ModalHeader pt={6} pb={5} px={6}>
+            <HStack spacing={2} w="full" justify="space-between">
+              <HStack spacing={3}>
+                <Icon as={FaHandshake} color="brand.500" boxSize={6} />
+                <Text fontSize="2xl" fontWeight="600" color="gray.800" letterSpacing="tight">Trade Details</Text>
                 <Badge
                   colorScheme={
                     trade.status === 'active'
@@ -2672,64 +2673,31 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
               
               {/* Action Buttons - Top Right Corner */}
               <HStack spacing={1}>
-                {(trade?.status === 'active' || trade?.status === 'accepted') && (
-                  <Button
-                    size="sm"
-                    colorScheme="orange"
-                    variant="ghost"
-                    onClick={() => setShowDisputeDialog(true)}
-                    leftIcon={<Icon as={FaExclamationTriangle} boxSize={3} />}
-                    fontSize="xs"
-                    px={2}
-                    py={1}
-                    h="auto"
-                    minW="auto"
-                    isDisabled={canUserReview}
-                  >
-                    Dispute
-                  </Button>
-                )}
-                {(trade?.status === 'active' || trade?.status === 'accepted') && (
-                  <Button
-                    size="sm"
-                    colorScheme="red"
-                    variant="ghost"
-                    onClick={() => setShowCancelDialog(true)}
-                    leftIcon={<Icon as={FaTimesCircle} boxSize={3} />}
-                    fontSize="xs"
-                    px={2}
-                    py={1}
-                    h="auto"
-                    minW="auto"
-                    isDisabled={cancelingTrade || canUserReview}
-                  >
-                    Cancel
-                  </Button>
-                )}
+                <ModalCloseButton position="static" mt={0} />
               </HStack>
             </HStack>
           </ModalHeader>
 
           <ModalBody
-            overflowY={tabIndex === 1 ? "hidden" : "auto"}
+            overflow="hidden"
             flex={1}
             p={[3, 4, 6]}
-            display={tabIndex === 1 ? "flex" : "block"}
-            flexDirection={tabIndex === 1 ? "column" : undefined}
-            minH={tabIndex === 1 ? 0 : undefined}
+            display="flex"
+            flexDirection="column"
+            minH={{ base: '50vh', lg: '65vh' }}
           >
             <Tabs
               colorScheme="brand"
               index={tabIndex}
               onChange={(i) => setTabIndex(i)}
-              display={tabIndex === 1 ? "flex" : "block"}
-              flexDirection={tabIndex === 1 ? "column" : undefined}
-              flex={tabIndex === 1 ? 1 : undefined}
-              minH={tabIndex === 1 ? 0 : undefined}
+              display="flex"
+              flexDirection="column"
+              flex={1}
+              overflow="hidden"
             >
-              <TabList fontSize={["sm", "md"]}>
-                <Tab>Overview</Tab>
-                <Tab>
+              <TabList px={6} pt={2} pb={4} mb={0} fontSize="md">
+                <Tab px={5} fontWeight="600">Overview</Tab>
+                <Tab px={5} fontWeight="600">
                   Chat
                   {messages.length > 0 && (
                     <Badge ml={2} colorScheme="blue" borderRadius="full" fontSize="xs">
@@ -2737,27 +2705,66 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     </Badge>
                   )}
                 </Tab>
-                <Tab>
+                <Tab px={5} fontWeight="600">
                   {trade?.trade_option === 'delivery' ? 'Buyout Delivery' : trade?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup'}
                 </Tab>
               </TabList>
 
               <TabPanels
-                flex={tabIndex === 1 ? 1 : undefined}
-                minH={tabIndex === 1 ? 0 : undefined}
-                overflow={tabIndex === 1 ? "hidden" : undefined}
-                display={tabIndex === 1 ? "flex" : undefined}
-                flexDirection={tabIndex === 1 ? "column" : undefined}
+                flex={1}
+                overflow="hidden"
+                display="flex"
+                flexDirection="column"
               >
                 {/* Overview Tab */}
-                <TabPanel px={[0, 2]}>
+                <TabPanel px={[0, 2]} flex={1} overflowY="auto" display="flex" flexDirection="column">
                   <VStack spacing={[4, 6]} align="stretch">
+                    {(trade?.status === 'active' || trade?.status === 'accepted') && (
+                      <Card variant="outline" bg="white" borderRadius="2xl" shadow="sm">
+                        <CardBody p={4}>
+                          <HStack justify="space-between" align="center">
+                            <Box>
+                              <Text fontWeight="600" fontSize="sm" color="gray.800">Trade Management Actions</Text>
+                              <Text fontSize="xs" color="gray.500">Need to cancel or report a problem?</Text>
+                            </Box>
+                            <HStack spacing={2}>
+                              {(trade?.status === 'accepted' || (trade?.trade_option === 'meetup' && trade?.meetup_status === 'accepted')) && (
+                                <Button
+                                  size="sm"
+                                  colorScheme="orange"
+                                  onClick={() => setShowDisputeDialog(true)}
+                                  leftIcon={<Icon as={FaExclamationTriangle} boxSize={3} />}
+                                  borderRadius="full"
+                                  px={4}
+                                  isDisabled={canUserReview}
+                                >
+                                  Dispute
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                colorScheme="red"
+                                variant="outline"
+                                onClick={() => setShowCancelDialog(true)}
+                                leftIcon={<Icon as={FaTimesCircle} boxSize={3} />}
+                                borderRadius="full"
+                                px={4}
+                                isDisabled={cancelingTrade || canUserReview}
+                              >
+                                Cancel Trade
+                              </Button>
+                            </HStack>
+                          </HStack>
+                        </CardBody>
+                      </Card>
+                    )}
                     {/* Trade Option Display - Locked for Ongoing Trades */}
                     {trade?.trade_option && (
                       <Card
-                        variant="outline"
-                        borderWidth="2px"
-                        borderColor={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange.400' : 'blue.400') : 'green.400'}
+                        variant="unstyled"
+                        borderRadius="2xl"
+                        borderWidth="0"
+                        shadow="sm"
                         bg={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange.50' : 'blue.50') : 'green.50'}
                       >
                         <CardBody p={4}>
@@ -2775,7 +2782,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 />
                               </Box>
                               <VStack align="start" spacing={1}>
-                                <Text fontWeight="bold" fontSize="md" color={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange.700' : 'blue.700') : 'green.700'}>
+                                <Text fontWeight="600" fontSize="md" color={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange.700' : 'blue.700') : 'green.700'}>
                                   Trade Option: {trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup') : 'Delivery'}
                                 </Text>
                                 {trade.trade_option === 'meetup' ? (
@@ -2863,11 +2870,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     {/* Caution Warning */}
                     {trade.trade_option === 'meetup' ? (
                       <Box
-                        p={4}
+                        p={5}
                         bg="orange.50"
-                        borderRadius="md"
-                        borderWidth="1px"
-                        borderColor="orange.200"
+                        borderRadius="2xl"
+                        borderWidth="0"
+                        shadow="sm"
                       >
                         <HStack spacing={3} align="start">
                           <Icon as={FaExclamationTriangle} color="orange.500" boxSize={5} mt={0.5} />
@@ -2889,11 +2896,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       </Box>
                     ) : (
                       <Box
-                        p={4}
+                        p={5}
                         bg="orange.50"
-                        borderRadius="md"
-                        borderWidth="1px"
-                        borderColor="orange.200"
+                        borderRadius="2xl"
+                        borderWidth="0"
+                        shadow="sm"
                       >
                         <HStack spacing={3} align="start">
                           <Icon as={FaExclamationTriangle} color="orange.500" boxSize={5} mt={0.5} />
@@ -2919,11 +2926,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                     {/* Trade Partner Info */}
                     <Box
-                      p={4}
+                      p={5}
                       bg="gray.50"
-                      borderRadius="md"
-                      borderWidth="1px"
-                      borderColor={borderColor}
+                      borderRadius="2xl"
+                      borderWidth="0"
+                      shadow="sm"
                       cursor="pointer"
                       _hover={{ bg: 'gray.100' }}
                       onClick={() => navigate(`/users/${isUserBuyer ? trade?.seller_id : trade?.buyer_id}`)}
@@ -2955,7 +2962,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                     {/* Products Overview */}
                     <Box>
-                      <Text fontWeight="semibold" mb={4} fontSize="md">
+                      <Text fontWeight="600" fontSize="sm" textTransform="uppercase" letterSpacing="widest" color="gray.500" mb={4}>
                         Trade Items
                       </Text>
                     </Box>
@@ -2965,8 +2972,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     ) : (
                       <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="full">
                         {/* Requested Product (What you're giving) */}
-                        <Card variant="outline" borderColor="blue.300" h="full">
-                          <CardBody display="flex" flexDirection="column">
+                        <Card variant="unstyled" borderRadius="2xl" borderWidth="0" shadow="sm" bg="white" h="full">
+                          <CardBody display="flex" flexDirection="column" p={5}>
                             <VStack spacing={3} align="stretch" h="full">
                               <HStack>
                                 <Badge colorScheme={
@@ -2996,10 +3003,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     />
                                   </Box>
                                   <Box flex={1}>
-                                    <Text fontWeight="semibold" fontSize="sm" noOfLines={2}>
+                                    <Text fontWeight="600" fontSize="sm" color="gray.800" noOfLines={2}>
                                       {requestedProduct.title}
                                     </Text>
-                                    <Text fontSize="xs" color="gray.600" noOfLines={3} mt={1}>
+                                    <Badge bg="yellow.100" color="yellow.700" borderRadius="md" px={2} py={0.5} fontSize="10px" fontWeight="600" mt={2} mb={1}>
+                                      ₱{Number(requestedProduct.price || requestedProduct.estimated_value_min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </Badge>
+                                    <Text fontSize="xs" fontWeight="500" color="gray.500" noOfLines={3} mt={1}>
                                       {requestedProduct.description}
                                     </Text>
                                   </Box>
@@ -3012,8 +3022,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </Card>
 
                         {/* Offered Products (What you're receiving) */}
-                        <Card variant="outline" borderColor="green.300" h="full">
-                          <CardBody display="flex" flexDirection="column">
+                        <Card variant="unstyled" borderRadius="2xl" borderWidth="0" shadow="sm" bg="white" h="full">
+                          <CardBody display="flex" flexDirection="column" p={5}>
                             <VStack spacing={3} align="stretch" h="full">
                               <HStack>
                                 <Badge colorScheme={
@@ -3044,9 +3054,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                           width={300}
                                         />
                                       </Box>
-                                      <Text fontSize="xs" fontWeight="medium" noOfLines={2}>
-                                        {product.title}
-                                      </Text>
+                                      <Box>
+                                        <Text fontSize="xs" fontWeight="600" color="gray.800" noOfLines={2}>
+                                          {product.title}
+                                        </Text>
+                                        <Badge bg="yellow.100" color="yellow.700" borderRadius="md" px={2} py={0.5} fontSize="9px" fontWeight="600" mt={1}>
+                                          ₱{Number(product.price || product.estimated_value_min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </Badge>
+                                      </Box>
                                     </VStack>
                                   ))}
                                 </SimpleGrid>
@@ -3207,7 +3222,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     {/* Messages Area */}
                     <Box
                       flex={1}
-                      minH={0}
                       overflowY="auto"
                       p={[2, 3, 4]}
                       bg="gray.50"
@@ -3349,7 +3363,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                 </TabPanel>
 
                 {/* Meetup/Delivery Tab */}
-                <TabPanel px={[0, 2]}>
+                <TabPanel px={[0, 2]} flex={1} overflowY="auto" display="flex" flexDirection="column">
                   {trade?.trade_option === 'delivery' ? (
                     <DeliveryTab
                       deliveryState={deliveryState}
@@ -3549,131 +3563,87 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 eventHandlers={{ click: () => setSelectedLocation(loc.name) }}
                               >
                                 <Popup>
-                                  <b>{loc.name}</b><br />{loc.address}
-                                </Popup>
+                                   <b>{loc.name}</b><br />{loc.address}
+                                 </Popup>
                               </Marker>
                             ))}
                           </MapContainer>
                         </Box>
 
-                        <SimpleGrid columns={[1, 2]} spacing={[1, 1.5]} maxH={["280px", "350px"]} overflowY="auto" pr={2} css={{
-                          '&::-webkit-scrollbar': {
-                            width: '4px',
-                          },
-                          '&::-webkit-scrollbar-track': {
-                            width: '6px',
-                          },
-                          '&::-webkit-scrollbar-thumb': {
-                            background: 'brand.500',
-                            borderRadius: '24px',
-                          },
-                        }}>
-                          {suggestedLocations.map((location, index) => {
-                            const isSelected = selectedLocation === location.name
-                            const isPartner = location.isPartner
-                            const isNearest = location.name === nearestLocationName // Dynamic nearest
-                            // textColor is hoisted below as locationTextColor
+                        {/* Predefined Locations Compact Scroll */}
+                        <Box>
+                          <Text fontSize="xs" fontWeight="600" color="gray.500" textTransform="uppercase" letterSpacing="wider" mb={2}>
+                            Predefined locations &amp; partners
+                          </Text>
+                          <Box
+                            maxH="140px"
+                            overflowY="auto"
+                            pr={1}
+                            css={{
+                              '&::-webkit-scrollbar': { width: '3px' },
+                              '&::-webkit-scrollbar-thumb': { background: 'var(--chakra-colors-brand-400)', borderRadius: '24px' },
+                            }}
+                          >
+                            <VStack spacing={1} align="stretch">
+                              {suggestedLocations.map((location, index) => {
+                                const isSelected = selectedLocation === location.name
+                                const isPartner = location.isPartner
+                                const isNearest = location.name === nearestLocationName
+                                const bothParitiesConfirmed = buyerMeetupConfirmed && sellerMeetupConfirmed
+                                const isLocked = bothParitiesConfirmed && trade.meetup_location !== undefined
 
-                            // Check if location selection should be locked
-                            // Lock ONLY if both parties have confirmed (can only negotiate by resetting)
-                            const bothParitiesConfirmed = buyerMeetupConfirmed && sellerMeetupConfirmed
-                            const isLocked = bothParitiesConfirmed && trade.meetup_location !== undefined
-
-                            return (
-                              <Card
-                                key={`location-${location.name}`}
-                                variant="outline"
-                                cursor={isLocked ? (isSelected ? "default" : "not-allowed") : "pointer"}
-                                opacity={isLocked && !isSelected ? 0.5 : 1}
-                                borderWidth={isPartner ? '2px' : isSelected ? '2px' : '1px'}
-                                borderColor={isPartner ? 'orange.400' : isSelected ? 'brand.500' : isNearest ? 'blue.300' : borderColor}
-                                bg={isSelected ? 'brand.50' : isPartner ? partnerBg : isNearest ? nearestBg : 'white'}
-                                onClick={() => {
-                                  if (!isLocked) {
-                                    setSelectedLocation(location.name)
-                                  } else if (!isSelected) {
-                                    toast({
-                                      id: "location-locked",
-                                      title: 'Location Locked',
-                                      description: `Both parties confirmed different locations. Click "Change My Selection" to modify your choice, or message them to negotiate.`,
-                                      status: 'warning',
-                                      duration: 3000,
-                                      isClosable: true,
-                                    })
-                                  }
-                                }}
-                                transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                                _hover={{
-                                  borderColor: isLocked ? undefined : (isPartner ? 'orange.500' : isSelected ? 'brand.600' : 'brand.400'),
-                                  shadow: isLocked ? undefined : 'md',
-                                  transform: isLocked ? undefined : 'translateY(-2px)',
-                                }}
-                              >
-                                <CardBody p={[1.5, 2]}>
-                                  <VStack spacing={0.5} align="stretch">
-                                    {/* Location Icon & Info */}
-                                    <HStack spacing={1.5} flex={1}>
-                                      <Box
-                                        p={1}
-                                        bg={isPartner ? partnerIconBg : defaultIconBg}
-                                        borderRadius="sm"
-                                        display="flex"
-                                        alignItems="center"
-                                        justifyContent="center"
-                                        flexShrink={0}
-                                      >
-                                        <Icon
-                                          as={isPartner ? FaStore : FaMapMarkerAlt}
-                                          color={isPartner ? 'orange.500' : isSelected ? 'brand.500' : isNearest ? 'blue.500' : 'gray.500'}
-                                          boxSize={isPartner ? 4 : 3.5}
-                                        />
-                                      </Box>
-
-                                      <VStack align="start" spacing={0.25} flex={1} minW={0}>
-                                        <HStack spacing={0.5} flexWrap="wrap">
-                                          <Text fontWeight="semibold" fontSize={["10px", "xs"]} color={locationTextColor} noOfLines={1}>
-                                            {location.name}
-                                          </Text>
-                                          {isPartner && (
-                                            <Badge colorScheme="orange" fontSize="2xs" px={0.5} py={0}>
-                                              G��
-                                            </Badge>
-                                          )}
-                                        </HStack>
-                                        <Text fontSize={["2xs", "2xs"]} color="gray.600" noOfLines={1}>
-                                          {location.address}
+                                return (
+                                  <HStack
+                                    key={`location-${location.name}`}
+                                    px={3}
+                                    py={1.5}
+                                    borderRadius="lg"
+                                    borderWidth="1px"
+                                    borderColor={isPartner ? 'orange.300' : isSelected ? 'brand.400' : isNearest ? 'blue.200' : 'gray.200'}
+                                    bg={isSelected ? 'brand.50' : isPartner ? 'orange.50' : isNearest ? 'blue.50' : 'white'}
+                                    cursor={isLocked ? (isSelected ? 'default' : 'not-allowed') : 'pointer'}
+                                    opacity={isLocked && !isSelected ? 0.5 : 1}
+                                    onClick={() => {
+                                      if (!isLocked) {
+                                        setSelectedLocation(location.name)
+                                      } else if (!isSelected) {
+                                        toast({
+                                          id: 'location-locked',
+                                          title: 'Location Locked',
+                                          description: `Both parties confirmed. Click "Change My Selection" to modify.`,
+                                          status: 'warning',
+                                          duration: 3000,
+                                          isClosable: true,
+                                        })
+                                      }
+                                    }}
+                                    transition="all 0.15s"
+                                    _hover={isLocked ? {} : { borderColor: isPartner ? 'orange.400' : 'brand.400', bg: isSelected ? 'brand.50' : 'gray.50' }}
+                                    spacing={2}
+                                  >
+                                    <Icon
+                                      as={isPartner ? FaStore : FaMapMarkerAlt}
+                                      color={isPartner ? 'orange.500' : isSelected ? 'brand.500' : isNearest ? 'blue.400' : 'gray.400'}
+                                      boxSize={3}
+                                      flexShrink={0}
+                                    />
+                                    <VStack align="start" spacing={0} flex={1} minW={0}>
+                                      <HStack spacing={1}>
+                                        <Text fontSize="xs" fontWeight={isSelected ? '600' : '500'} color={isSelected ? 'brand.700' : 'gray.800'} noOfLines={1}>
+                                          {location.name}
                                         </Text>
-                                        <Badge
-                                          colorScheme={
-                                            location.type === 'cafe'
-                                              ? 'orange'
-                                              : location.type === 'mall'
-                                                ? 'blue'
-                                                : 'green'
-                                          }
-                                          variant="subtle"
-                                          fontSize="2xs"
-                                          px={0.5}
-                                          py={0}
-                                          w="fit-content"
-                                        >
-                                          {location.type}
-                                        </Badge>
-                                      </VStack>
-                                    </HStack>
-
-                                    {/* Selection Indicator */}
-                                    {isSelected && (
-                                      <HStack justify="center" flexShrink={0}>
-                                        <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />
+                                        {isPartner && <Badge colorScheme="orange" fontSize="2xs" px={1}>Partner</Badge>}
+                                        {isNearest && !isPartner && <Badge colorScheme="blue" fontSize="2xs" px={1}>Nearest</Badge>}
                                       </HStack>
-                                    )}
-                                  </VStack>
-                                </CardBody>
-                              </Card>
-                            )
-                          })}
-                        </SimpleGrid>
+                                      <Text fontSize="2xs" color="gray.500" noOfLines={1}>{location.address}</Text>
+                                    </VStack>
+                                    {isSelected && <Icon as={FaCheckCircle} color="brand.500" boxSize={3} flexShrink={0} />}
+                                  </HStack>
+                                )
+                              })}
+                            </VStack>
+                          </Box>
+                        </Box>
                       </Box>
                       )}
 
@@ -3949,7 +3919,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         >
                           <AlertDialogOverlay>
                             <AlertDialogContent>
-                              <AlertDialogHeader fontSize="lg" fontWeight="bold">
+                              <AlertDialogHeader fontSize="lg" fontWeight="600">
                                 Report Meetup Issue
                               </AlertDialogHeader>
                               <AlertDialogBody>
@@ -4035,7 +4005,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           {/* Header */}
                           <HStack justify="center" spacing={2} py={[1, 2]}>
                             <Icon as={FaHandshake} color="blue.500" boxSize={4} />
-                            <Text fontWeight="bold" fontSize={["sm", "md"]} color="blue.700">
+                            <Text fontWeight="600" fontSize={["sm", "md"]} color="blue.700">
                               {trade?.meeting_type === 'pickup' ? 'Pickup Agreement' : 'Meetup Agreement'}
                             </Text>
                           </HStack>
@@ -4064,7 +4034,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   textAlign="center"
                                 >
                                   <Icon as={FaCheckCircle} color="green.500" boxSize={6} mb={1} />
-                                  <Text fontWeight="bold" color="green.700" fontSize={["sm", "md"]}>
+                                  <Text fontWeight="600" color="green.700" fontSize={["sm", "md"]}>
                                     You Both Agreed!
                                   </Text>
                                   <Text fontSize={["xs", "sm"]} color="green.600" mt={0.5}>
@@ -4137,7 +4107,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   w="full"
                                 >
                                   <Icon as={FaExclamationTriangle} color="orange.500" boxSize={5} mb={1} />
-                                  <Text fontWeight="bold" color="orange.700" fontSize={["xs", "sm"]}>
+                                  <Text fontWeight="600" color="orange.700" fontSize={["xs", "sm"]}>
                                     Different Selections
                                   </Text>
                                   <Text fontSize="xs" color="orange.600" mt={0.5}>
@@ -4148,7 +4118,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 {/* Show both selections side by side */}
                                 <SimpleGrid columns={2} spacing={[2, 2]} w="full">
                                   <Box p={[2, 2.5]} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={0.5}>
+                                    <Text fontSize="xs" fontWeight="600" color="gray.500" mb={0.5}>
                                       {isUserBuyer ? 'You picked:' : `${trade.buyer_name} picked:`}
                                     </Text>
                                     <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
@@ -4159,7 +4129,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     </Text>
                                   </Box>
                                   <Box p={[2, 2.5]} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={0.5}>
+                                    <Text fontSize="xs" fontWeight="600" color="gray.500" mb={0.5}>
                                       {isUserSeller ? 'You picked:' : `${trade.seller_name} picked:`}
                                     </Text>
                                     <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
@@ -4200,7 +4170,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               {/* Show proposed schedule */}
                               {buyerMeetupConfirmed && !sellerMeetupConfirmed && isUserSeller && (
                                 <Box p={[2, 2.5]} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                                  <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={1}>
+                                  <Text fontSize="xs" fontWeight="600" color="gray.500" mb={1}>
                                     Proposed Schedule:
                                   </Text>
                                   <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
@@ -4214,7 +4184,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                               {sellerMeetupConfirmed && !buyerMeetupConfirmed && isUserBuyer && (
                                 <Box p={[2, 2.5]} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                                  <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={1}>
+                                  <Text fontSize="xs" fontWeight="600" color="gray.500" mb={1}>
                                     Proposed Schedule:
                                   </Text>
                                   <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
@@ -4314,16 +4284,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
               </TabPanels>
             </Tabs>
           </ModalBody>
-
-          {/* Modal Footer with Close Button Only */}
-          <ModalFooter pt={2} pb={4} px={[3, 4, 6]} borderTop="1px" borderTopColor="gray.200">
-            <Button
-              variant="ghost"
-              onClick={onClose}
-            >
-              Close
-            </Button>
-          </ModalFooter>
         </ModalContent>
       </Modal>
 
@@ -4338,7 +4298,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       >
         <AlertDialogOverlay>
           <AlertDialogContent bg={cardBg} borderRadius={["md", "lg"]}>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+            <AlertDialogHeader fontSize="lg" fontWeight="600">
               <HStack spacing={2}>
                 <Icon as={FaExclamationTriangle} color="red.500" boxSize={5} />
                 <Text>Cancel This Trade?</Text>
@@ -4362,10 +4322,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                   </Text>
                 </Box>
                 <Text fontSize="sm" color="gray.600">
-                  Product: <Text as="span" fontWeight="bold">{requestedProduct?.title || 'Unknown Product'}</Text>
+                  Product: <Text as="span" fontWeight="600">{requestedProduct?.title || 'Unknown Product'}</Text>
                 </Text>
                 <Text fontSize="sm" color="gray.600">
-                  With: <Text as="span" fontWeight="bold">{tradingPartner}</Text>
+                  With: <Text as="span" fontWeight="600">{tradingPartner}</Text>
                 </Text>
               </VStack>
             </AlertDialogBody>

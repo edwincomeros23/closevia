@@ -10,9 +10,10 @@ import {
   Flex,
   Tooltip,
   Icon,
+  useColorModeValue,
 } from '@chakra-ui/react'
 import { StarIcon } from '@chakra-ui/icons'
-import { FaMoneyBillWave, FaHandshake, FaExchangeAlt, FaRocket } from 'react-icons/fa'
+import { FaMoneyBillWave, FaHandshake, FaExchangeAlt, FaRocket, FaCheckCircle } from 'react-icons/fa'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
@@ -153,17 +154,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
     <Box
       key={product.id}
       bg="white"
-      rounded="lg"
+      borderRadius="2xl"
       shadow="sm"
       borderWidth="1px"
-      borderColor="gray.100"
+      borderColor={useColorModeValue('gray.200', 'gray.700')}
       overflow="hidden"
-      transition="all 0.2s ease"
+      transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
       w="full"
       h="full"
       display="flex"
       flexDirection="column"
-      _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
+      _hover={{ boxShadow: 'lg', transform: 'translateY(-4px)', borderColor: 'brand.200', cursor: 'pointer' }}
       onClick={handleCardClick}
     >
       {/* Image section */}
@@ -182,8 +183,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
         />
 
         {/* Top-right image badges */}
-        <Box position="absolute" top={{ base: 1.5, md: 2 }} right={{ base: 1.5, md: 2 }} zIndex={1}>
-          <Box display="flex" flexDirection="column" gap={1} alignItems="flex-end">
+        <Box position="absolute" top={{ base: 2, md: 3 }} right={{ base: 2, md: 3 }} zIndex={1}>
+          <Box display="flex" flexDirection="column" gap={1.5} alignItems="flex-end">
             {isStagnant && onBoostClick && (
               <Tooltip label="Boost this listing" placement="left" hasArrow>
                 <Button
@@ -212,22 +213,20 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
             {showPriceOverlay && (
               <Box
-                px={{ base: 1.5, md: 2.5 }}
-                py={{ base: 0.75, md: 1.5 }}
-                bg="blackAlpha.700"
-                color="white"
-                borderRadius="lg"
+                px={{ base: 1.5, md: 3 }}
+                py={{ base: 0.5, md: 1.5 }}
+                bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')}
+                color={useColorModeValue('gray.800', 'white')}
+                borderRadius="full"
                 textAlign="right"
                 display="inline-flex"
                 flexDirection="column"
                 alignItems="flex-end"
                 w="auto"
-                borderWidth="1px"
-                borderColor="whiteAlpha.300"
-                boxShadow="md"
-                backdropFilter="blur(4px)"
+                boxShadow="sm"
+                backdropFilter="blur(8px)"
               >
-                <Text fontSize={{ base: '2xs', md: 'xs' }} fontWeight="bold" lineHeight="1.2" letterSpacing="0.01em">
+                <Text fontSize={{ base: '9px', md: 'xs' }} fontWeight="800" lineHeight="1.2">
                   {product.price && product.price > 0
                     ? `₱${formatPriceCompact(product.price)}`
                     : product.estimated_value_min && product.estimated_value_max
@@ -235,17 +234,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
                       : 'Price Unavailable'}
                 </Text>
                 {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
-                  <Text display={{ base: 'none', sm: 'block' }} fontSize="2xs" color="brand.100" lineHeight="1.25" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
+                  <Text display={{ base: 'none', sm: 'block' }} fontSize="2xs" color={useColorModeValue('brand.600', 'brand.300')} lineHeight="1.25" mt={0.5} fontWeight="700" whiteSpace="nowrap">
                     📊 Market Est. ₱{formatPriceUltraCompact(product.estimated_value_min)} – ₱{formatPriceUltraCompact(product.estimated_value_max)}
                   </Text>
                 )}
                 {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
-                  <Text display={{ base: 'block', sm: 'none' }} fontSize="2xs" color="brand.100" lineHeight="1.2" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
+                  <Text display={{ base: 'block', sm: 'none' }} fontSize="2xs" color={useColorModeValue('brand.600', 'brand.300')} lineHeight="1.2" mt={0.5} fontWeight="700" whiteSpace="nowrap">
                     📊 Est. ₱{formatPriceUltraCompact(product.estimated_value_min)}-₱{formatPriceUltraCompact(product.estimated_value_max)}
                   </Text>
                 )}
                 {(!product.price || product.price <= 0) && product.estimated_value_min && product.estimated_value_max && (
-                  <Text fontSize="2xs" color="brand.100" lineHeight="1.25" mt={0.5} fontWeight="medium">
+                  <Text fontSize="2xs" color={useColorModeValue('green.600', 'green.300')} mt={0.5} fontWeight="700">
                     📊 Market Est. range
                   </Text>
                 )}
@@ -255,7 +254,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         </Box>
 
         {(product.tradeMatchScore != null && product.tradeMatchScore > 0) || isBoosted ? (
-          <Box position="absolute" top={2} left={2} display="flex" flexDirection="column" gap={1}>
+          <Box position="absolute" top={{ base: 2, md: 3 }} left={{ base: 2, md: 3 }} display="flex" flexDirection="column" gap={1.5} alignItems="flex-start">
             {product.tradeMatchScore != null && product.tradeMatchScore > 0 && (
               <Tooltip
                 hasArrow
@@ -269,14 +268,18 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 <Badge
                   variant="solid"
                   borderRadius="full"
-                  px={2}
-                  py={0.5}
-                  fontSize="10px"
-                  fontWeight="bold"
-                  bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
+                  px={{ base: 1.5, md: 2.5 }}
+                  py={{ base: 0.5, md: 1 }}
+                  fontSize={{ base: '8px', md: '10px' }}
+                  fontWeight="800"
+                  bg="brand.500"
                   color="white"
+                  shadow="sm"
+                  letterSpacing="0.5px"
                 >
-                  <Text display={{ base: 'block', md: 'none' }}>{product.tradeMatchScore}% ✓</Text>
+                  <Text display={{ base: 'flex', md: 'none' }} alignItems="center">
+                    {product.tradeMatchScore}% <Icon as={FaCheckCircle} ml={1} boxSize="9px" />
+                  </Text>
                   <Text display={{ base: 'none', md: 'block' }}>{product.tradeMatchScore}% Ready</Text>
                 </Badge>
               </Tooltip>
@@ -284,20 +287,21 @@ const ProductCard: React.FC<ProductCardProps> = ({
             {isBoosted && (
               <Tooltip label={boostTimeRemaining ? `Boosted for ${boostTimeRemaining} more` : 'Boosted'} placement="top-start" hasArrow>
                 <Badge
-                  colorScheme="orange"
                   variant="solid"
                   borderRadius="full"
-                  px={2}
-                  py={0.5}
-                  fontSize="10px"
-                  fontWeight="bold"
-                  bg="orange.500"
-                  color="white"
+                  px={{ base: 1.5, md: 2.5 }}
+                  py={{ base: 0.5, md: 1 }}
+                  fontSize={{ base: '8px', md: '10px' }}
+                  fontWeight="800"
+                  bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')}
+                  color={useColorModeValue('brand.600', 'brand.300')}
+                  shadow="sm"
+                  backdropFilter="blur(8px)"
                   display="inline-flex"
                   alignItems="center"
                   gap={1}
                 >
-                  <StarIcon boxSize={2.5} />
+                  <StarIcon boxSize={{ base: 2, md: 2.5 }} />
                   Boosted
                 </Badge>
               </Tooltip>
@@ -305,20 +309,21 @@ const ProductCard: React.FC<ProductCardProps> = ({
             {product.premium && (
               <Tooltip label="Boosted listing" placement="top-start" hasArrow>
                 <Badge
-                  colorScheme="yellow"
                   variant="solid"
                   borderRadius="full"
-                  px={2}
-                  py={0.5}
-                  fontSize="10px"
-                  fontWeight="bold"
-                  bg="yellow.400"
-                  color="gray.800"
+                  px={{ base: 1.5, md: 2.5 }}
+                  py={{ base: 0.5, md: 1 }}
+                  fontSize={{ base: '8px', md: '10px' }}
+                  fontWeight="800"
+                  bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')}
+                  color={useColorModeValue('brand.600', 'brand.300')}
+                  shadow="sm"
+                  backdropFilter="blur(8px)"
                   display="inline-flex"
                   alignItems="center"
                   gap={1}
                 >
-                  <StarIcon boxSize={2.5} />
+                  <StarIcon boxSize={{ base: 2, md: 2.5 }} />
                   Boosted
                 </Badge>
               </Tooltip>
@@ -342,14 +347,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
         )}
 
         {/* Location badge - Using accurate ProximityBadge */}
-        <Box position="absolute" bottom={2} left={2}>
+        <Box position="absolute" bottom={{ base: 2, md: 3 }} left={{ base: 2, md: 3 }}>
           <ProximityBadge type="product" targetId={product.id} showIcon={true} />
         </Box>
       </Box>
 
       {/* Info section */}
       <Box
-        p={{ base: 2, md: 2.5 }}
+        p={{ base: 3, md: 4 }}
         display="flex"
         flexDirection="column"
         flex={1}
@@ -494,19 +499,22 @@ const ProductCard: React.FC<ProductCardProps> = ({
         )}
 
         {/* Action buttons */}
-        <HStack spacing={1} mt="auto" flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+        <HStack spacing={{ base: 1.5, md: 2 }} mt="auto" pt={2} w="full">
           <Tooltip label="Trade" placement="top">
             <Button
-              size="xs"
-              variant="outline"
-              colorScheme="brand"
+              size="sm"
+              bg={useColorModeValue('brand.50', 'brand.900')}
+              color={useColorModeValue('brand.600', 'brand.200')}
               leftIcon={<Icon as={FaExchangeAlt} />}
               flex={1}
-              fontSize={{ base: '11px', md: '12px' }}
+              px={{ base: 1, md: 3 }}
+              borderRadius="xl"
+              fontSize={{ base: '10px', md: '13px' }}
+              fontWeight="700"
               onClick={handleTradeClick}
               isDisabled={product.status === 'sold'}
               transition="all 0.2s"
-              _hover={{ transform: 'translateY(-1px)' }}
+              _hover={{ bg: useColorModeValue('brand.100', 'brand.800'), transform: 'translateY(-2px)', shadow: 'sm' }}
               _active={{ transform: 'scale(0.98)' }}
             >
               {product.status === 'sold' ? 'Sold' : 'Trade'}
@@ -514,13 +522,16 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </Tooltip>
 
           <Button
-            size="xs"
-            variant="outline"
-            colorScheme="orange"
+            size="sm"
+            bg={useColorModeValue('orange.50', 'orange.900')}
+            color={useColorModeValue('orange.600', 'orange.200')}
             leftIcon={<Icon as={FaMoneyBillWave} />}
             flex={1}
-            fontSize={{ base: '11px', md: '12px' }}
-            _hover={{ transform: 'translateY(-1px)' }}
+            px={{ base: 1, md: 3 }}
+            borderRadius="xl"
+            fontSize={{ base: '10px', md: '13px' }}
+            fontWeight="700"
+            _hover={{ bg: useColorModeValue('orange.100', 'orange.800'), transform: 'translateY(-2px)', shadow: 'sm' }}
             _active={{ transform: 'scale(0.98)' }}
             onClick={handleBuyoutClick}
             isDisabled={product.status === 'sold'}
@@ -533,14 +544,15 @@ const ProductCard: React.FC<ProductCardProps> = ({
             <IconButton
               aria-label="View offers"
               icon={<FaHandshake />}
-              size="xs"
-              variant="outline"
-              colorScheme="blue"
+              size="sm"
+              bg={useColorModeValue('blue.50', 'blue.900')}
+              color={useColorModeValue('blue.600', 'blue.200')}
+              borderRadius="xl"
               onClick={handleViewOffers}
               isDisabled={product.status === 'sold'}
               flexShrink={0}
               transition="all 0.2s"
-              _hover={{ transform: 'translateY(-1px)' }}
+              _hover={{ bg: useColorModeValue('blue.100', 'blue.800'), transform: 'translateY(-2px)', shadow: 'sm' }}
               _active={{ transform: 'scale(0.98)' }}
             />
           </Tooltip>
