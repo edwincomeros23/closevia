@@ -416,7 +416,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
           <HStack justify="space-between">
             <Text fontWeight={titleFontWeight} fontSize={titleSize} noOfLines={2}>{p.title}</Text>
             {/* Show premium only on full (requested) cards, hide for compact (offered) */}
-            {p.premium && !compact && <Badge colorScheme="yellow" fontSize={compact ? 'xs' : undefined}>Premium</Badge>}
+            {p.premium && !compact && <Badge colorScheme="yellow" fontSize={compact ? 'xs' : undefined}>Boosted</Badge>}
           </HStack>
 
           {/* Hide status / barter badges in compact (offered) mode */}
