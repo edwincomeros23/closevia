@@ -52,7 +52,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const hasFixedLocation = useMemo(() => {
     const locationType = targetProduct?.location_type
     if (locationType === 'current_location' || locationType === 'pickup_location') return true
-    if (targetProduct?.pickup_address && targetProduct.pickup_address.trim()) return true
+    if ((targetProduct as any)?.pickup_address && (targetProduct as any).pickup_address.trim()) return true
     if (targetProduct?.location && targetProduct.location.trim()) return true
     return false
   }, [targetProduct])
