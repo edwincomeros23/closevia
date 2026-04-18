@@ -1121,9 +1121,9 @@ const ProductDetail: React.FC = () => {
 
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%" pb={{ base: 20, lg: 6 }}>
-      <Container maxW="container.xl" py={8}>
+      <Container maxW="container.xl" py={{ base: 4, md: 8 }}>
         <VStack spacing={8} align="stretch">
-          <Box bg="white" rounded="lg" overflow="hidden">
+          <Box bg="white" borderRadius="3xl" overflow="hidden" shadow="xl" p={{ base: 2, md: 4 }}>
             <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6}>
               {/* Product Media Gallery */}
               <VStack spacing={3} align="stretch" p={{ base: 2, md: 4 }}>
@@ -1210,13 +1210,14 @@ const ProductDetail: React.FC = () => {
 
               {/* Product Details */}
               <Box
-                p={{ base: 3, md: 4, lg: 6 }}
+                p={{ base: 4, md: 5, lg: 6 }}
                 display="flex"
                 flexDirection="column"
                 bg={detailBg}
-                borderRadius="8px"
-                borderWidth="1px"
-                borderColor={detailBorder}
+                borderRadius="3xl"
+                borderWidth="0"
+                boxShadow="sm"
+                bgGradient="linear(to-br, gray.50, white)"
                 maxW="560px"
                 w="100%"
                 mx="auto"
@@ -1456,49 +1457,45 @@ const ProductDetail: React.FC = () => {
                   <Divider borderColor={detailBorder} />
 
                   {/* Product Info: Location, Condition, Category */}
-                  <Box
-                    p={2}
-                    borderRadius="8px"
-                    bg="transparent"
-                  >
+                  <Box px={1} bg="transparent">
                     <Wrap spacing={2} align="center">
                       {product.location && (
                         <WrapItem>
-                          <HStack spacing={1} px={2} py={1} borderRadius="full" bg={detailSurface} borderWidth="1px" borderColor={detailBorder}>
-                            <Text fontSize="xs" fontWeight="600" color="brand.600">📍</Text>
-                            <Text fontSize="xs" color={detailText} fontWeight="500">{product.location}</Text>
+                          <HStack spacing={1} px={3} py={1.5} borderRadius="full" bg="white" shadow="sm">
+                            <Text fontSize="xs" fontWeight="600" color="brand.500">📍</Text>
+                            <Text fontSize="xs" color={detailText} fontWeight="700">{product.location}</Text>
                           </HStack>
                         </WrapItem>
                       )}
                       
                       {product.condition && (
                         <WrapItem>
-                          <HStack spacing={1} px={2} py={1} borderRadius="full" bg={detailSurface} borderWidth="1px" borderColor={detailBorder}>
-                            <Text fontSize="xs" color={detailMuted}>Condition:</Text>
-                            <Text fontSize="xs" color={detailText} fontWeight="500" textTransform="capitalize">{product.condition}</Text>
+                          <HStack spacing={1} px={3} py={1.5} borderRadius="full" bg="white" shadow="sm">
+                            <Text fontSize="xs" color={detailMuted} fontWeight="600">Condition:</Text>
+                            <Text fontSize="xs" color={detailText} fontWeight="800" textTransform="capitalize">{product.condition}</Text>
                           </HStack>
                         </WrapItem>
                       )}
                       
                       {product.category && (
                         <WrapItem>
-                          <HStack spacing={1} px={2} py={1} borderRadius="full" bg={detailSurface} borderWidth="1px" borderColor={detailBorder}>
-                            <Text fontSize="xs" color={detailMuted}>Category:</Text>
-                            <Text fontSize="xs" color={detailText} fontWeight="500">{product.category}</Text>
+                          <HStack spacing={1} px={3} py={1.5} borderRadius="full" bg="white" shadow="sm">
+                            <Text fontSize="xs" color={detailMuted} fontWeight="600">Category:</Text>
+                            <Text fontSize="xs" color={detailText} fontWeight="800">{product.category}</Text>
                           </HStack>
                         </WrapItem>
                       )}
                     </Wrap>
                   </Box>
 
-                  <Divider borderColor={detailBorder} />
+                  <Divider borderColor={detailBorder} opacity={0.6} />
 
                   <Box
-                    p={4}
-                    borderRadius="8px"
-                    bg={detailSurface}
-                    borderWidth="1px"
-                    borderColor={detailBorder}
+                    p={5}
+                    borderRadius="2xl"
+                    bg="white"
+                    shadow="sm"
+                    borderWidth="0"
                   >
                     <Heading size="sm" mb={3} color={detailText} fontWeight="600">
                       Description
@@ -1534,18 +1531,19 @@ const ProductDetail: React.FC = () => {
                 <VStack spacing={{ base: 3, md: 4 }} mt={{ base: 2, md: 3 }} pt={0}>
                   {!isOwner && product.status === 'available' && (
                     <VStack spacing={{ base: 2, md: 3 }} w="full">
-                        <HStack w="full" spacing={2} align="stretch">
+                        <HStack w="full" spacing={3} align="stretch">
                           <Tooltip label={hasPendingOfferOnProduct ? "You already have a pending offer on this product" : "Propose a trade"}>
                             <Button
                               flex={1}
                               size="lg"
-                              borderRadius="12px"
+                              borderRadius="2xl"
+                              fontWeight="800"
                               bg={hasPendingOfferOnProduct ? 'gray.300' : 'brand.500'}
                               color="white"
-                              _hover={hasPendingOfferOnProduct ? { bg: 'gray.300' } : { bg: 'brand.600', transform: 'translateY(-1px)' }}
+                              _hover={hasPendingOfferOnProduct ? { bg: 'gray.300' } : { bg: 'brand.600', transform: 'translateY(-2px)' }}
                               _active={{ transform: 'scale(0.98)' }}
-                              boxShadow={hasPendingOfferOnProduct ? 'none' : 'sm'}
-                              transition="all 0.18s ease"
+                              boxShadow={hasPendingOfferOnProduct ? 'none' : 'md'}
+                              transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
                               onClick={openTrade}
                               isDisabled={hasPendingOfferOnProduct}
                               opacity={hasPendingOfferOnProduct ? 0.7 : 1}
@@ -1557,16 +1555,17 @@ const ProductDetail: React.FC = () => {
                             <Button
                               flex={1}
                               size="lg"
-                              borderRadius="12px"
+                              borderRadius="2xl"
+                              fontWeight="800"
                               variant="outline"
                               colorScheme="orange"
                               borderWidth="2px"
                               bg="white"
                               borderColor="orange.300"
                               color="orange.600"
-                              _hover={{ bg: 'orange.50', borderColor: 'orange.500', transform: 'translateY(-1px)' }}
+                              _hover={{ bg: 'orange.50', borderColor: 'orange.500', transform: 'translateY(-2px)', shadow: 'sm' }}
                               _active={{ transform: 'scale(0.98)' }}
-                              transition="all 0.18s ease"
+                              transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
                               onClick={openBuyout}
                               isDisabled={hasPendingOfferOnProduct}
                               opacity={hasPendingOfferOnProduct ? 0.7 : 1}
@@ -1578,19 +1577,20 @@ const ProductDetail: React.FC = () => {
                             <IconButton
                               aria-label="View offers"
                               icon={<FaHandshake />}
-                              w={{ base: "40px", md: "48px" }}
-                              h={{ base: "40px", md: "48px" }}
-                              minW={{ base: "40px", md: "48px" }}
-                              borderRadius="12px"
+                              w={{ base: "48px", md: "52px" }}
+                              h={{ base: "48px", md: "52px" }}
+                              minW={{ base: "48px", md: "52px" }}
+                              borderRadius="2xl"
                               variant="outline"
                               colorScheme="brand"
+                              borderWidth="2px"
                               borderColor="brand.200"
                               color="brand.600"
-                              bg="white"
+                              bg="brand.50"
                               onClick={handleViewOffers}
-                              _hover={{ bg: 'brand.50', borderColor: 'brand.400', transform: 'translateY(-1px)' }}
+                              _hover={{ bg: 'brand.100', borderColor: 'brand.400', transform: 'translateY(-2px)', shadow: 'sm' }}
                               _active={{ transform: 'scale(0.98)' }}
-                              transition="all 0.18s ease"
+                              transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
                             />
                           </Tooltip>
                         </HStack>
@@ -1605,8 +1605,12 @@ const ProductDetail: React.FC = () => {
                           colorScheme="gray"
                           size="lg"
                           flex={1}
-                          borderRadius="8px"
+                          fontWeight="800"
+                          borderRadius="2xl"
+                          borderWidth="2px"
                           borderColor="gray.200"
+                          _hover={{ bg: 'gray.50', borderColor: 'gray.300', transform: 'translateY(-2px)' }}
+                          transition="all 0.2s"
                           onClick={() => navigate(`/edit-product/${product.id}`)}
                         >
                           Edit Product
@@ -1616,8 +1620,12 @@ const ProductDetail: React.FC = () => {
                           colorScheme="gray"
                           size="lg"
                           flex={1}
-                          borderRadius="8px"
+                          fontWeight="800"
+                          borderRadius="2xl"
+                          borderWidth="2px"
                           borderColor="gray.200"
+                          _hover={{ bg: 'gray.50', borderColor: 'gray.300', transform: 'translateY(-2px)' }}
+                          transition="all 0.2s"
                           onClick={() => navigate('/dashboard')}
                         >
                           View Dashboard
@@ -1630,10 +1638,13 @@ const ProductDetail: React.FC = () => {
                             colorScheme="purple"
                             size="lg"
                             flex={1}
-                            borderRadius="8px"
+                            fontWeight="800"
+                            borderRadius="2xl"
                             leftIcon={<FiStar />}
                             isLoading={upgradingPremium}
                             onClick={handleUpgradeToPremium}
+                            _hover={{ bg: 'purple.600', transform: 'translateY(-2px)', shadow: 'md' }}
+                            transition="all 0.2s"
                           >
                             Upgrade to Premium
                           </Button>
@@ -1641,11 +1652,14 @@ const ProductDetail: React.FC = () => {
                         <Button
                           colorScheme="blue"
                           size="lg"
+                          fontWeight="800"
                           flex={!product.premium ? 1 : 2}
-                          borderRadius="8px"
+                          borderRadius="2xl"
                           leftIcon={<FiTrendingUp />}
                           isLoading={boosting}
                           onClick={handleBoostNow}
+                          _hover={{ bg: 'blue.600', transform: 'translateY(-2px)', shadow: 'md' }}
+                          transition="all 0.2s"
                         >
                           Boost listing
                         </Button>

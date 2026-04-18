@@ -2402,32 +2402,38 @@ const AddProduct: React.FC = () => {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <Box minH="100vh" bg={pageBg} py={4}>
-      <Box p={{ base: 4, md: 6 }} maxW="3xl" mx="auto">
-        <VStack spacing={3} align="stretch">
-          {/* Compact Header with Minimal Step Indicator */}
+    <Box minH="100vh" bg={useColorModeValue('#FFFDF1', 'gray.900')} py={8}>
+      <Box px={{ base: 4, md: 8 }} maxW="3xl" mx="auto">
+        <VStack spacing={6} align="stretch">
+          {/* Detailed Header with Premium Typography */}
           <HStack justify="space-between" align="center" spacing={3}>
-            <Heading size="sm" color="brand.500">Post a Product</Heading>
+            <VStack align="start" spacing={0}>
+              <Heading size="md" color="brand.600" fontWeight="800" letterSpacing="tight">Post a Product</Heading>
+              <Text fontSize="xs" color="gray.500" fontWeight="600">Complete the steps below to list your item</Text>
+            </VStack>
             
-            {/* Compact Step Dots */}
-            <HStack spacing={1.5}>
+            {/* Soft Pill Step Dots */}
+            <HStack spacing={2}>
               {stepLabels.map((step) => (
                 <Tooltip key={step.number} label={step.title} placement="top" hasArrow>
                   <Circle
-                    size={{ base: '28px', sm: '32px' }}
-                    bg={currentStep === step.number ? 'brand.500' : currentStep > step.number ? 'brand.200' : 'gray.200'}
+                    size={{ base: '32px', sm: '36px' }}
+                    bg={currentStep === step.number ? 'brand.500' : currentStep > step.number ? 'brand.100' : 'white'}
+                    borderWidth={currentStep > step.number ? '0' : '1px'}
+                    borderColor={currentStep === step.number ? 'transparent' : 'gray.200'}
                     cursor={currentStep !== step.number ? 'pointer' : 'default'}
                     onClick={() => currentStep > step.number && setCurrentStep(step.number)}
-                    transition="all 0.2s"
-                    _hover={currentStep !== step.number ? { transform: 'scale(1.1)', shadow: 'md' } : {}}
+                    transition="all 0.3s cubic-bezier(.08,.52,.52,1)"
+                    shadow={currentStep === step.number ? 'md' : 'sm'}
+                    _hover={currentStep !== step.number ? { transform: 'translateY(-2px)', shadow: 'md' } : {}}
                     display="flex"
                     alignItems="center"
                     justifyContent="center"
                   >
                     <Text
-                      fontSize={{ base: '10px', sm: '12px' }}
-                      fontWeight="bold"
-                      color={currentStep >= step.number ? 'white' : 'gray.600'}
+                      fontSize={{ base: '11px', sm: '13px' }}
+                      fontWeight="800"
+                      color={currentStep === step.number ? 'white' : currentStep > step.number ? 'brand.600' : 'gray.400'}
                     >
                       {currentStep > step.number ? '✓' : step.number}
                     </Text>
@@ -2437,23 +2443,34 @@ const AddProduct: React.FC = () => {
             </HStack>
           </HStack>
 
-          {/* Step Content */}
-          <Box bg={bgColor} p={{ base: 4, md: 6 }} borderRadius="xl" shadow="sm" border="1px" borderColor={borderColor}>
+          {/* Elevated Step Content Card */}
+          <Box 
+            bg={bgColor} 
+            p={{ base: 6, md: 8 }} 
+            borderRadius="2xl" 
+            shadow="xl" 
+            borderWidth="0" 
+            position="relative" 
+            overflow="hidden"
+          >
             {currentStep === 1 && renderStep1()}
             {currentStep === 2 && renderStep2()}
             {currentStep === 3 && renderStep3()}
           </Box>
 
-          {/* Navigation - Mobile Friendly Button Sizing */}
-          <HStack justify="space-between" pb={{ base: 20, sm: 0 }} pt={2} spacing={{ base: 2, sm: 3 }}>
+          {/* Premium Fluid Navigation Buttons */}
+          <HStack justify="space-between" pb={{ base: 24, sm: 8 }} pt={2} spacing={{ base: 3, sm: 4 }}>
             <Button
               leftIcon={<ArrowBackIcon />}
               onClick={() => setCurrentStep(s => Math.max(1, s - 1))}
               isDisabled={currentStep === 1}
               variant="outline"
-              size={{ base: "sm", sm: "md" }}
-              fontSize={{ base: "xs", sm: "sm" }}
-              minH={{ base: "36px", sm: "40px" }}
+              size={{ base: "md", sm: "lg" }}
+              fontSize="sm"
+              borderRadius="xl"
+              fontWeight="700"
+              colorScheme="gray"
+              boxShadow="sm"
             >
               Back
             </Button>
@@ -2469,12 +2486,18 @@ const AddProduct: React.FC = () => {
                   rightIcon={<ArrowForwardIcon />}
                   onClick={handleNextClick}
                   isDisabled={!canProceed()}
-                  colorScheme="brand"
-                  size={{ base: "sm", sm: "md" }}
-                  fontSize={{ base: "xs", sm: "sm" }}
-                  minH={{ base: "36px", sm: "40px" }}
+                  bg="brand.500"
+                  color="white"
+                  _hover={{ bg: 'brand.600', transform: 'translateY(-2px)' }}
+                  _active={{ transform: 'scale(0.98)' }}
+                  size={{ base: "md", sm: "lg" }}
+                  fontSize="sm"
+                  borderRadius="xl"
+                  fontWeight="800"
+                  boxShadow="md"
+                  transition="all 0.2s"
                 >
-                  {!isGenerating && !canMakeAIRequest() && currentStep === 1 ? 'Limit Reached' : 'Next'}
+                  {!isGenerating && !canMakeAIRequest() && currentStep === 1 ? 'Limit Reached' : 'Next Step'}
                 </Button>
               </Tooltip>
             ) : (
@@ -2482,14 +2505,20 @@ const AddProduct: React.FC = () => {
                 onClick={handleSubmit}
                 isLoading={isSubmitting}
                 loadingText="Posting..."
-                colorScheme="brand"
-                size={{ base: "sm", sm: "md" }}
-                fontSize={{ base: "xs", sm: "sm" }}
-                minH={{ base: "36px", sm: "40px" }}
-                px={{ base: 4, sm: 8 }}
+                bg="brand.500"
+                color="white"
+                _hover={{ bg: 'brand.600', transform: 'translateY(-2px)' }}
+                _active={{ transform: 'scale(0.98)' }}
+                size={{ base: "md", sm: "lg" }}
+                fontSize="sm"
+                borderRadius="xl"
+                fontWeight="800"
+                boxShadow="lg"
+                px={{ base: 6, sm: 10 }}
                 leftIcon={<CheckIcon />}
+                transition="all 0.2s"
               >
-                Post Product
+                Publish Product
               </Button>
             )}
           </HStack>

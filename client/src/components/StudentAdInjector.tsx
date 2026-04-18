@@ -105,16 +105,16 @@ export const StudentAdCard: React.FC<{ ad: StudentAd }> = ({ ad }) => {
     <Box
       key={ad.id}
       bg="linear-gradient(135deg, #fff9e6 0%, #fffdf1 100%)"
-      rounded="lg"
+      borderRadius="2xl"
       overflow="hidden"
-      border="2px"
-      borderColor="orange.300"
-      boxShadow="0 4px 6px rgba(237, 137, 54, 0.1)"
-      transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+      borderWidth="1px"
+      borderColor="orange.200"
+      boxShadow="sm"
+      transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
       cursor="pointer"
       _hover={{
-        transform: 'translateY(-8px)',
-        boxShadow: '0 12px 16px rgba(237, 137, 54, 0.25)',
+        transform: 'translateY(-4px)',
+        boxShadow: 'lg',
         borderColor: 'orange.400',
       }}
       onClick={handleAdClick}
@@ -126,39 +126,37 @@ export const StudentAdCard: React.FC<{ ad: StudentAd }> = ({ ad }) => {
         }
       }}
       w="full"
+      h="full"
+      display="flex"
+      flexDirection="column"
     >
-      {/* Badge */}
-      {/* Match product-card image sizing: fixed on mobile, square on desktop */}
-      <Box
-        position="relative"
-        w={{ base: '170px', md: 'full' }}
-        h={{ base: '170px', md: 'auto' }}
-        pt={{ base: '0', md: '100%' }}
-        overflow="hidden"
-        bg="gray.100"
-        mx={{ base: 'auto', md: '0' }}
-      >
+      {/* Badge & Image */}
+      <Box position="relative" w="full" pt="100%" overflow="hidden" bg="white">
         <Badge
           position="absolute"
-          top={2}
-          left={2}
+          top={{ base: 2, md: 3 }}
+          left={{ base: 2, md: 3 }}
           colorScheme="orange"
           variant="solid"
           fontSize="xs"
-          fontWeight="bold"
+          fontWeight="800"
           zIndex={10}
           display="flex"
           alignItems="center"
           gap={1}
+          borderRadius="full"
+          px={2.5}
+          py={1}
+          shadow="sm"
         >
-          <FaShop size={14} />
+          <FaShop size={12} />
           SHOPEE AD
         </Badge>
 
         <Image
           src={ad.imageUrl || PLACEHOLDER_IMAGE}
           alt={ad.title}
-          position={{ base: 'static', md: 'absolute' }}
+          position="absolute"
           top={0}
           left={0}
           w="100%"
@@ -172,49 +170,54 @@ export const StudentAdCard: React.FC<{ ad: StudentAd }> = ({ ad }) => {
       </Box>
 
       {/* Content */}
-      {/* Match product-card info sizing */}
-      <VStack spacing={2} p={4} align="stretch" h={{ base: 128, md: 140 }} justify="space-between">
-        {/* Title */}
-        <Heading
-          size="sm"
-          fontSize="sm"
-          fontWeight="600"
-          color="gray.800"
-          noOfLines={2}
-          lineHeight="1.3"
-        >
-          {ad.title}
-        </Heading>
-
-        {/* Category & Price */}
-        <HStack spacing={2} justify="space-between" w="100%">
-          {ad.category && (
-            <Badge colorScheme="blue" variant="subtle" fontSize="xs">
-              {ad.category}
-            </Badge>
-          )}
-          {ad.price && (
-            <Text fontSize="sm" fontWeight="bold" color="orange.600">
-              {ad.price}
-            </Text>
-          )}
-        </HStack>
+      <Flex p={{ base: 3, md: 4 }} direction="column" flex={1} justify="space-between">
+        <Box>
+          <Heading
+            size="sm"
+            fontSize={{ base: '12px', md: '13px' }}
+            fontWeight="700"
+            color="gray.800"
+            noOfLines={2}
+            lineHeight="1.3"
+            mb={2}
+          >
+            {ad.title}
+          </Heading>
+          
+          <HStack spacing={2} justify="space-between" w="100%" mb={3}>
+            {ad.category && (
+              <Badge colorScheme="blue" variant="subtle" fontSize={{ base: '9px', md: '10px' }} px={2} borderRadius="sm">
+                {ad.category}
+              </Badge>
+            )}
+            {ad.price && (
+              <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color="orange.600">
+                {ad.price}
+              </Text>
+            )}
+          </HStack>
+        </Box>
 
         {/* CTA Button */}
         <Button
-          size="sm"
+          size={{ base: 'xs', md: 'sm' }}
           colorScheme="orange"
           w="100%"
-          mt="auto"
           rightIcon={<ExternalLinkIcon />}
-          fontSize="xs"
-          fontWeight="600"
-          onClick={handleAdClick}
-          _hover={{ bg: 'orange.500' }}
+          fontSize={{ base: '11px', md: '12px' }}
+          fontWeight="800"
+          borderRadius="xl"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleAdClick(e as any);
+          }}
+          _hover={{ bg: 'orange.500', transform: 'translateY(-1px)' }}
+          transition="all 0.2s"
+          h={{ base: '32px', md: '36px' }}
         >
           View on Shopee
         </Button>
-      </VStack>
+      </Flex>
     </Box>
   )
 }

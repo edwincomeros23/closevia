@@ -703,27 +703,27 @@ const Premium: React.FC = () => {
       {/* 3-Tier Pricing Cards */}
       <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} alignItems="stretch">
         {/* ── Free Tier ── */}
-        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} overflow="hidden" opacity={0.8} h="100%">
-          <CardBody>
-            <VStack spacing={5} align="stretch">
+        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} borderRadius="3xl" overflow="hidden" opacity={0.8} h="100%" shadow="sm" transition="all 0.3s" _hover={{ opacity: 1, shadow: 'md' }}>
+          <CardBody p={8}>
+            <VStack spacing={6} align="stretch">
               <VStack spacing={1} align="start">
-                <Text fontWeight="bold" fontSize="lg">Free</Text>
-                <Text fontWeight="bold" fontSize="sm" color={mutedText}>Perfect to Start</Text>
+                <Text fontWeight="800" fontSize="xl" letterSpacing="tight">Free</Text>
+                <Text fontWeight="600" fontSize="sm" color={mutedText}>Perfect to Start</Text>
               </VStack>
               <HStack align="baseline" spacing={1}>
-                <Text fontSize="4xl" fontWeight="extrabold">₱0</Text>
-                <Text color={mutedText}>/ month</Text>
+                <Text fontSize="4xl" fontWeight="900" letterSpacing="tighter">₱0</Text>
+                <Text color={mutedText} fontWeight="600">/ month</Text>
               </HStack>
-              <Text fontSize="xs" color="gray.400">Forever free</Text>
-              <Divider />
+              <Text fontSize="xs" color="gray.400" fontWeight="600">Forever free</Text>
+              <Divider borderColor={borderColor} />
               <FeatureSection title="Listings" features={freeFeatures.listings} color="gray" />
-              <Divider />
+              <Divider borderColor={borderColor} />
               <FeatureSection title="Trading" features={freeFeatures.trading} color="gray" />
-              <Divider />
-              <Button variant="outline" colorScheme="gray" size="lg" isDisabled opacity={0.6}>
+              <Divider borderColor={borderColor} />
+              <Button variant="outline" colorScheme="gray" size="lg" borderRadius="xl" isDisabled opacity={0.6} fontWeight="700">
                 Your Current Plan
               </Button>
-              <Text fontSize="xs" textAlign="center" color={mutedText}>
+              <Text fontSize="xs" textAlign="center" color={mutedText} fontWeight="600">
                 Upgrade anytime to unlock premium features
               </Text>
             </VStack>
@@ -733,127 +733,136 @@ const Premium: React.FC = () => {
         {/* ── Plus Tier ── */}
         <Card
           bg={cardBg}
-          borderWidth="2px"
-          borderColor="blue.400"
+          borderWidth="0"
+          borderRadius="3xl"
           overflow="hidden"
           position="relative"
-          shadow="lg"
+          shadow="xl"
           h="100%"
+          transform={{ base: 'none', lg: 'scale(1.03)' }}
+          zIndex={2}
         >
-          <Box position="absolute" top={0} left={0} right={0} h="4px" bg="linear-gradient(90deg, #3182CE, #63B3ED)" />
+          <Box position="absolute" top={0} left={0} right={0} h="6px" bg="linear-gradient(90deg, #3182CE, #63B3ED)" />
           <Badge
-            position="absolute" top={3} right={3} colorScheme="blue" variant="solid"
-            borderRadius="full" px={3} py={1} fontSize="xs"
+            position="absolute" top={4} right={4} bg="blue.500" color="white"
+            borderRadius="full" px={3} py={1} fontSize="10px" fontWeight="800" shadow="sm" letterSpacing="0.5px"
           >
             MOST POPULAR
           </Badge>
-          <CardBody>
-            <VStack spacing={5} align="stretch">
+          <CardBody p={8}>
+            <VStack spacing={6} align="stretch">
               <VStack spacing={1} align="start">
                 <HStack spacing={2}>
-                  <Icon as={FaStar} color="blue.400" />
-                  <Text fontWeight="bold" fontSize="lg">Plus</Text>
+                  <Icon as={FaStar} color="blue.500" fontSize="xl" />
+                  <Text fontWeight="800" fontSize="2xl" letterSpacing="tight">Plus</Text>
                 </HStack>
               </VStack>
               <VStack align="start" spacing={0}>
                 <HStack align="baseline" spacing={1}>
-                  <Text fontSize="4xl" fontWeight="extrabold" color="blue.600">
+                  <Text fontSize="5xl" fontWeight="900" color="blue.600" letterSpacing="tighter">
                     {isYearly ? '₱699' : '₱79'}
                   </Text>
-                  <Text color={mutedText}>/ {isYearly ? 'year' : 'month'}</Text>
+                  <Text color={mutedText} fontWeight="600">/ {isYearly ? 'year' : 'month'}</Text>
                 </HStack>
                 {isYearly ? (
-                  <HStack spacing={2}>
-                    <Text fontSize="sm" color={mutedText} textDecoration="line-through">₱948/yr</Text>
-                    <Badge colorScheme="green" variant="subtle" borderRadius="full" fontSize="xs">save 26%</Badge>
+                  <HStack spacing={2} pt={1}>
+                    <Text fontSize="sm" color={mutedText} textDecoration="line-through" fontWeight="600">₱948/yr</Text>
+                    <Badge colorScheme="green" variant="subtle" borderRadius="full" fontSize="10px" fontWeight="800" px={2}>save 26%</Badge>
                   </HStack>
                 ) : (
-                  <Text fontSize="sm" color={mutedText}>
+                  <Text fontSize="sm" color={mutedText} fontWeight="600" pt={1}>
                     or ₱699/year{' '}
-                    <Text as="span" color="green.500" fontWeight="bold">save 26%</Text>
+                    <Text as="span" color="green.500" fontWeight="800">save 26%</Text>
                   </Text>
                 )}
               </VStack>
-              <Divider />
+              <Divider borderColor={borderColor} />
               <FeatureSection title="Listings" features={plusFeatures.listings} color="blue" />
-              <Divider />
+              <Divider borderColor={borderColor} />
               <FeatureSection title="Trading" features={plusFeatures.trading} color="blue" />
-              <Divider />
-              <Divider />
+              <Divider borderColor={borderColor} />
               <FeatureSection title="Profile" features={plusFeatures.profile} color="blue" />
-              <Button
-                colorScheme="blue" size="lg" leftIcon={<FaStar />}
-                isLoading={upgrading === 'plus'} onClick={() => handleUpgrade('plus')}
-                isDisabled={currentTier !== 'free'}
-                w="full"
-                _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }} transition="all 0.2s"
-              >
-                Get Plus
-              </Button>
+              <Box pt={2}>
+                <Button
+                  colorScheme="blue" size="lg" leftIcon={<FaStar />}
+                  isLoading={upgrading === 'plus'} onClick={() => handleUpgrade('plus')}
+                  isDisabled={currentTier !== 'free'}
+                  w="full"
+                  borderRadius="2xl"
+                  fontWeight="800"
+                  _hover={{ transform: 'translateY(-2px)', shadow: 'md' }} transition="all 0.2s"
+                >
+                  Get Plus
+                </Button>
+              </Box>
             </VStack>
           </CardBody>
         </Card>
 
         {/* ── Pro Tier ── */}
         <Card
-          bg={cardBg}
-          borderWidth="2px"
-          borderColor="purple.400"
+          bg={useColorModeValue('purple.50', 'gray.800')}
+          borderWidth="1px"
+          borderColor={useColorModeValue('purple.100', 'purple.800')}
+          borderRadius="3xl"
           overflow="hidden"
           position="relative"
-          shadow="lg"
+          shadow="xl"
           h="100%"
         >
-          <Box position="absolute" top={0} left={0} right={0} h="4px" bg="linear-gradient(90deg, #9F7AEA, #805AD5, #6B46C1)" />
+          <Box position="absolute" top={0} left={0} right={0} h="6px" bg="linear-gradient(90deg, #9F7AEA, #805AD5, #6B46C1)" />
           <Badge
-            position="absolute" top={3} right={3} colorScheme="purple" variant="solid"
-            borderRadius="full" px={3} py={1} fontSize="xs"
+            position="absolute" top={4} right={4} bg="purple.500" color="white"
+            borderRadius="full" px={3} py={1} fontSize="10px" fontWeight="800" shadow="sm" letterSpacing="0.5px"
           >
             POWER TRADER
           </Badge>
-          <CardBody>
-            <VStack spacing={5} align="stretch">
+          <CardBody p={8}>
+            <VStack spacing={6} align="stretch">
               <VStack spacing={1} align="start">
                 <HStack spacing={2}>
-                  <Icon as={FaCrown} color="purple.400" />
-                  <Text fontWeight="bold" fontSize="lg">Pro</Text>
+                  <Icon as={FaCrown} color="purple.500" fontSize="xl" />
+                  <Text fontWeight="800" fontSize="2xl" letterSpacing="tight">Pro</Text>
                 </HStack>
               </VStack>
               <VStack align="start" spacing={0}>
                 <HStack align="baseline" spacing={1}>
-                  <Text fontSize="4xl" fontWeight="extrabold" color="purple.600">
+                  <Text fontSize="5xl" fontWeight="900" color="purple.600" letterSpacing="tighter">
                     {isYearly ? '₱1,099' : '₱129'}
                   </Text>
-                  <Text color={mutedText}>/ {isYearly ? 'year' : 'month'}</Text>
+                  <Text color={mutedText} fontWeight="600">/ {isYearly ? 'year' : 'month'}</Text>
                 </HStack>
                 {isYearly ? (
-                  <HStack spacing={2}>
-                    <Text fontSize="sm" color={mutedText} textDecoration="line-through">₱1,548/yr</Text>
-                    <Badge colorScheme="green" variant="subtle" borderRadius="full" fontSize="xs">save 24%</Badge>
+                  <HStack spacing={2} pt={1}>
+                    <Text fontSize="sm" color={mutedText} textDecoration="line-through" fontWeight="600">₱1,548/yr</Text>
+                    <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2} fontSize="10px" fontWeight="800">save 24%</Badge>
                   </HStack>
                 ) : (
-                  <Text fontSize="sm" color={mutedText}>
+                  <Text fontSize="sm" color={mutedText} fontWeight="600" pt={1}>
                     or ₱1,099/year{' '}
-                    <Text as="span" color="green.500" fontWeight="bold">save 24%</Text>
+                    <Text as="span" color="green.500" fontWeight="800">save 24%</Text>
                   </Text>
                 )}
               </VStack>
-              <Divider />
+              <Divider borderColor="purple.200" />
               <FeatureSection title="Listings" features={proFeatures.listings} color="purple" />
-              <Divider />
+              <Divider borderColor="purple.200" />
               <FeatureSection title="Trading" features={proFeatures.trading} color="purple" />
-              <Divider />
-              <Divider />
+              <Divider borderColor="purple.200" />
               <FeatureSection title="Profile" features={proFeatures.profile} color="purple" />
-              <Button
-                colorScheme="purple" size="lg" leftIcon={<FaCrown />}
-                isLoading={upgrading === 'pro'} onClick={() => handleUpgrade('pro')}
-                isDisabled={currentTier === 'pro'}
-                w="full"
-                _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }} transition="all 0.2s"
-              >
-                Get Pro
-              </Button>
+              <Box pt={2}>
+                <Button
+                  colorScheme="purple" size="lg" leftIcon={<FaCrown />}
+                  isLoading={upgrading === 'pro'} onClick={() => handleUpgrade('pro')}
+                  isDisabled={currentTier === 'pro'}
+                  w="full"
+                  borderRadius="2xl"
+                  fontWeight="800"
+                  _hover={{ transform: 'translateY(-2px)', shadow: 'md' }} transition="all 0.2s"
+                >
+                  Get Pro
+                </Button>
+              </Box>
             </VStack>
           </CardBody>
         </Card>

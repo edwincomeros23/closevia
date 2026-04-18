@@ -22,6 +22,7 @@ import {
   CardHeader,
   Divider,
   Skeleton,
+  Icon,
 } from '@chakra-ui/react'
 import {
   FiHeart,
@@ -31,6 +32,7 @@ import {
   FiArrowLeft,
   FiTrash2
 } from 'react-icons/fi'
+import { FaExchangeAlt, FaMoneyBillWave, FaHandshake } from 'react-icons/fa'
 import { AddIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { Product } from '../types'
@@ -209,31 +211,36 @@ const SavedProducts: React.FC = () => {
       <Box bg="#FFFDF1" minH="100vh" w="100%">
         <Container maxW="container.xl" py={8}>
           <VStack spacing={6} align="stretch">
-            <Flex justify="space-between" align="center">
-              <VStack align="start" spacing={2}>
-                <Skeleton height="28px" width="180px" />
-                <Skeleton height="16px" width="120px" />
-              </VStack>
-              <Skeleton height="36px" width="92px" borderRadius="md" />
-            </Flex>
+            <Box bg="white" borderRadius="2xl" p={{ base: 4, md: 5 }} border="1px" borderColor="gray.200">
+              <Flex justify="space-between" align="start">
+                <HStack spacing={3}>
+                  <Skeleton h="42px" w="42px" borderRadius="xl" />
+                  <VStack align="start" spacing={2}>
+                    <Skeleton h="24px" w="150px" borderRadius="md" />
+                    <Skeleton h="16px" w="100px" borderRadius="md" />
+                  </VStack>
+                </HStack>
+                <Skeleton h="32px" w="90px" borderRadius="full" />
+              </Flex>
+            </Box>
 
-            <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={6}>
-              {[1, 2, 3, 4, 5, 6].map((n) => (
-                <Card key={n}>
-                  <CardHeader pb={2}>
-                    <Skeleton height="180px" borderRadius="md" />
-                  </CardHeader>
-                  <CardBody pt={2}>
-                    <VStack align="stretch" spacing={3}>
-                      <Skeleton height="20px" width="80%" />
-                      <Skeleton height="14px" width="55%" />
-                      <Skeleton height="14px" width="40%" />
-                      <Skeleton height="34px" width="100%" borderRadius="md" />
+            <VStack spacing={3} align="stretch">
+              {[1, 2, 3, 4].map((n) => (
+                <Box key={n} bg="white" borderRadius="xl" border="1px" borderColor="gray.200" p={4}>
+                  <HStack spacing={4} align="center">
+                    <Skeleton boxSize={{ base: '72px', md: '84px' }} borderRadius="lg" />
+                    <VStack align="start" spacing={3} flex={1}>
+                      <Skeleton h="20px" w="60%" borderRadius="md" />
+                      <Skeleton h="14px" w="40%" borderRadius="md" />
+                      <HStack mt={1} w="full" justify="space-between">
+                         <Skeleton h="20px" w="80px" borderRadius="md" />
+                         <Skeleton h="24px" w="70px" borderRadius="full" />
+                      </HStack>
                     </VStack>
-                  </CardBody>
-                </Card>
+                  </HStack>
+                </Box>
               ))}
-            </SimpleGrid>
+            </VStack>
           </VStack>
         </Container>
       </Box>
@@ -266,144 +273,207 @@ const SavedProducts: React.FC = () => {
 
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
-      <Container maxW="container.xl" py={8}>
+      <Container maxW="container.md" py={8} px={{ base: 3, md: 4 }}>
         <VStack spacing={6} align="stretch">
           {/* Header */}
-          <Flex justify="space-between" align="center">
-            <HStack spacing={4}>
-              <VStack align="start" spacing={1}>
-                <Heading size="lg" color="brand.500">
-                  Saved Products
-                </Heading>
-                <Text color="gray.600">
-                  {savedProducts.length} {savedProducts.length === 1 ? 'item' : 'items'} saved
-                </Text>
-              </VStack>
-            </HStack>
-
-            <Button
-              leftIcon={<FiRefreshCw />}
-              onClick={() => fetchSavedProducts()}
-              colorScheme="blue"
-              variant="outline"
-              size="sm"
+          <Box
+            bg="white"
+            _dark={{ bg: 'gray.800' }}
+            borderRadius="2xl"
+            p={{ base: 4, md: 5 }}
+            border="1px"
+            borderColor="gray.200"
+            _dark={{ borderColor: 'gray.700' }}
+            position="sticky"
+            top={{ base: 2, md: 4 }}
+            zIndex={10}
+            boxShadow="0 1px 3px rgba(0,0,0,0.04)"
+          >
+            <Flex
+              align={{ base: 'start', md: 'center' }}
+              justify="space-between"
+              direction={{ base: 'column', md: 'row' }}
+              gap={3}
             >
-              Refresh
-            </Button>
-          </Flex>
-
-          {/* Saved Products Grid */}
-          {savedProducts.length === 0 ? (
-            <Card>
-              <CardBody textAlign="center" py={12}>
-                <VStack spacing={4}>
-                  <FiHeart size={48} color="#CBD5E0" />
-                  <Heading size="md" color="gray.500">
-                    No saved products yet
+              <HStack spacing={3}>
+                <Flex
+                  align="center"
+                  justify="center"
+                  w="42px"
+                  h="42px"
+                  borderRadius="xl"
+                  bg="red.50"
+                  color="red.500"
+                  flexShrink={0}
+                >
+                  <Icon as={FiHeart} boxSize={5} />
+                </Flex>
+                <VStack align="start" spacing={0}>
+                  <Heading size="md" color="gray.800" _dark={{ color: 'gray.100' }}>
+                    Saved Products
                   </Heading>
-                  <Text color="gray.600">
-                    Start exploring products and save the ones you like!
+                  <Text fontSize="sm" color="gray.500">
+                    {savedProducts.length} {savedProducts.length === 1 ? 'item' : 'items'} saved
                   </Text>
-                  <Button
-                    colorScheme="brand"
-                    onClick={() => navigate('/home')}
-                    leftIcon={<FiEye />}
-                  >
-                    Browse Products
-                  </Button>
                 </VStack>
-              </CardBody>
-            </Card>
+              </HStack>
+
+              <Button
+                leftIcon={<FiRefreshCw />}
+                onClick={() => fetchSavedProducts()}
+                colorScheme="blue"
+                variant="ghost"
+                size="sm"
+                borderRadius="full"
+              >
+                Refresh
+              </Button>
+            </Flex>
+          </Box>
+
+          {/* Saved Products List */}
+          {savedProducts.length === 0 ? (
+            <Box py={16} textAlign="center">
+              <VStack spacing={4}>
+                <Flex w="80px" h="80px" bg="red.50" color="red.300" borderRadius="full" align="center" justify="center">
+                  <FiHeart size={32} />
+                </Flex>
+                <Heading size="md" color="gray.600">
+                  No saved products yet
+                </Heading>
+                <Text color="gray.500">
+                  Start exploring products and save the ones you like!
+                </Text>
+                <Button
+                  colorScheme="brand"
+                  onClick={() => navigate('/home')}
+                  leftIcon={<FiEye />}
+                  borderRadius="full"
+                  mt={2}
+                >
+                  Browse Products
+                </Button>
+              </VStack>
+            </Box>
           ) : (
-            <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={3}>
+            <VStack spacing={3} align="stretch">
               {savedProducts.map((product) => (
-                <Card key={product.id} bg="white" shadow="sm" overflow="hidden" h="full">
-                  <Box position="relative">
-                    <Image
-                      src={getFirstImage(product.image_urls)}
-                      alt={product.title}
-                      h="120px"
-                      w="full"
-                      objectFit="cover"
-                      fallbackSrc="/no-image.svg"
-                    />
-                    <IconButton
-                      aria-label="Remove from saved"
-                      icon={<FiTrash2 />}
-                      position="absolute"
-                      top={1}
-                      right={1}
-                      size="xs"
-                      colorScheme="red"
-                      variant="solid"
-                      isLoading={removing === product.id}
-                      onClick={() => handleRemoveFromSaved(product.id)}
-                    />
-                  </Box>
-
-                  <CardBody py={2} px={2}>
-                    <VStack spacing={1.5} align="stretch">
-                      <Box>
-                        <Heading size="xs" color="brand.500" noOfLines={1} wordBreak="break-word">
-                          {product.title}
-                        </Heading>
-                        <Text color="gray.600" fontSize="xs" noOfLines={1} mt={0.5} wordBreak="break-word">
-                          {product.description}
-                        </Text>
-                      </Box>
-
-                      <HStack spacing={1} wrap="wrap" fontSize="xs">
+                <Box
+                  key={product.id}
+                  bg="white"
+                  borderRadius="xl"
+                  border="1px"
+                  borderColor="gray.200"
+                  p={4}
+                  cursor="pointer"
+                  transition="all 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
+                  _hover={{ shadow: 'md', transform: 'translateY(-2px)', borderColor: 'brand.300' }}
+                  onClick={() => handleViewProduct(product)}
+                  position="relative"
+                >
+                  <IconButton
+                    aria-label="Remove from saved"
+                    icon={<FiHeart fill="currentColor" />}
+                    position="absolute"
+                    top={3}
+                    right={3}
+                    size="sm"
+                    color="red.500"
+                    variant="ghost"
+                    _hover={{ bg: 'red.50' }}
+                    isLoading={removing === product.id}
+                    onClick={(e) => { e.stopPropagation(); handleRemoveFromSaved(product.id); }}
+                  />
+                  <HStack spacing={4} align="center">
+                    <Box boxSize={{ base: '72px', md: '84px' }} borderRadius="lg" overflow="hidden" flexShrink={0} bg="gray.100">
+                      <Image src={getFirstImage(product.image_urls)} alt={product.title} w="100%" h="100%" objectFit="cover" fallbackSrc="/no-image.svg" />
+                    </Box>
+                    <VStack align="start" spacing={1} flex={1} minW={0} justify="center">
+                      <HStack spacing={2} minW={0} mr={8}>
+                        <Text fontWeight="bold" fontSize={{ base: 'sm', md: 'md' }} noOfLines={1} color="gray.800">{product.title}</Text>
                         {product.premium && (
-                          <Badge colorScheme="yellow" size="xs">Premium</Badge>
+                          <Badge colorScheme="yellow" size="xs" fontSize="9px">Premium</Badge>
+                        )}
+                      </HStack>
+                      <Text fontSize="xs" color="gray.500" noOfLines={1}>{product.description || `by ${product.seller_name}`}</Text>
+                      
+                      <HStack spacing={2} mt={1} flexWrap="wrap" w="full">
+                        {product.allow_buying && product.price ? (
+                          <Text fontWeight="bold" fontSize="sm" color="brand.500">{formatCurrency(product.price)}</Text>
+                        ) : (
+                          <Badge colorScheme="green" fontSize="2xs" variant="subtle">Barter</Badge>
                         )}
                         <Badge
                           colorScheme={
                             product.status === 'available' ? 'green' :
                               product.status === 'locked' ? 'orange' : 'red'
                           }
-                          size="xs"
+                          fontSize="2xs"
+                          variant="subtle"
+                          borderRadius="sm"
+                          px={1.5}
                         >
                           {product.status}
                         </Badge>
-                      </HStack>
+                        
+                        <HStack spacing={1} flex={1} justify="flex-end" display={{ base: 'flex', sm: 'flex' }} flexWrap="nowrap">
+                          <Tooltip label="Trade" placement="top">
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              colorScheme="brand"
+                              leftIcon={<Icon as={FaExchangeAlt} />}
+                              fontSize={{ base: '10px', md: '11px' }}
+                              onClick={(e) => { e.stopPropagation(); handleViewProduct(product); }}
+                              isDisabled={product.status === 'sold'}
+                              transition="all 0.2s"
+                              _hover={{ transform: 'translateY(-1px)' }}
+                              _active={{ transform: 'scale(0.98)' }}
+                              borderRadius="full"
+                            >
+                              {product.status === 'sold' ? 'Sold' : 'Trade'}
+                            </Button>
+                          </Tooltip>
 
-                      <Box>
-                        <Text fontSize="sm" fontWeight="bold" color="brand.500">
-                          {product.price ? formatCurrency(product.price) : 'Barter Only'}
-                        </Text>
-                        <Text fontSize="xs" color="gray.500" noOfLines={1}>
-                          by {product.seller_name}
-                        </Text>
-                      </Box>
-
-                      <HStack spacing={1} pt={0.5}>
-                        <Button
-                          leftIcon={<FiEye />}
-                          colorScheme="blue"
-                          variant="outline"
-                          size="xs"
-                          flex={1}
-                          onClick={() => handleViewProduct(product)}
-                        >
-                          View
-                        </Button>
-                        {product.status === 'available' && (
                           <Button
-                            leftIcon={<FiShoppingCart />}
-                            colorScheme="brand"
                             size="xs"
-                            flex={1}
-                            onClick={() => handleViewProduct(product)}
+                            variant="outline"
+                            colorScheme="orange"
+                            leftIcon={<Icon as={FaMoneyBillWave} />}
+                            fontSize={{ base: '10px', md: '11px' }}
+                            _hover={{ transform: 'translateY(-1px)' }}
+                            _active={{ transform: 'scale(0.98)' }}
+                            onClick={(e) => { e.stopPropagation(); handleViewProduct(product); }}
+                            isDisabled={product.status === 'sold'}
+                            transition="all 0.2s"
+                            borderRadius="full"
                           >
-                            {product.price ? 'Buy' : 'Trade'}
+                            Buyout
                           </Button>
-                        )}
+
+                          <Tooltip label="View offers" placement="top">
+                            <IconButton
+                              aria-label="View offers"
+                              icon={<Icon as={FaHandshake} />}
+                              size="xs"
+                              variant="outline"
+                              colorScheme="blue"
+                              onClick={(e) => { e.stopPropagation(); handleViewProduct(product); }}
+                              isDisabled={product.status === 'sold'}
+                              flexShrink={0}
+                              transition="all 0.2s"
+                              _hover={{ transform: 'translateY(-1px)' }}
+                              _active={{ transform: 'scale(0.98)' }}
+                              borderRadius="full"
+                            />
+                          </Tooltip>
+                        </HStack>
                       </HStack>
                     </VStack>
-                  </CardBody>
-                </Card>
+                  </HStack>
+                </Box>
               ))}
-            </SimpleGrid>
+            </VStack>
           )}
         </VStack>
       </Container>

@@ -459,25 +459,25 @@ const EditProduct: React.FC = () => {
   }
 
   return (
-    <Box w="full" minH="100vh" bg="#FFFDF1" pb={24}>
-      {/* Header */}
-      <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" position="sticky" top={0} zIndex={10}>
-        <VStack spacing={0} maxW="container.md" mx="auto" p={{ base: 4, md: 6 }}>
-          <HStack w="full" justify="space-between" mb={3}>
-            <Text fontSize="sm" fontWeight="600" color="gray.600">
-              Edit Product
-            </Text>
-            <Text fontSize="sm" color="gray.500">
-              Update your listing
-            </Text>
-          </HStack>
+    <Box w="full" minH="100vh" bg="#FFFDF1" py={8} pb={24}>
+      <VStack spacing={6} maxW="container.md" mx="auto" px={{ base: 4, md: 8 }} align="stretch">
+        
+        {/* Header Block inline with premium flow */}
+        <VStack align="start" spacing={0} mb={2}>
+          <Heading size="md" color="brand.600" fontWeight="800" letterSpacing="tight">Edit Product</Heading>
+          <Text fontSize="xs" color="gray.500" fontWeight="600">Update the details of your listing below</Text>
         </VStack>
-      </Box>
 
-      {/* Main Content */}
-      <VStack spacing={6} maxW="container.md" mx="auto" p={{ base: 4, md: 6 }} align="stretch">
-        {/* White Card Container */}
-        <Box bg="white" p={{ base: 4, md: 6 }} rounded="lg" shadow="sm">
+        {/* Elevated Form Container */}
+        <Box 
+          bg="white" 
+          p={{ base: 6, md: 8 }} 
+          borderRadius="2xl" 
+          shadow="xl" 
+          borderWidth="0" 
+          position="relative" 
+          overflow="hidden"
+        >
           <form onSubmit={handleSubmit}>
             <VStack spacing={6} align="stretch">
                 {error && (
@@ -1001,18 +1001,27 @@ const EditProduct: React.FC = () => {
                   )}
                 </FormControl>
 
-                <Button
-                  type="submit"
-                  colorScheme="brand"
-                  size={{ base: 'sm', md: 'md' }}
-                  h={{ base: '32px', md: '36px' }}
-                  w="full"
-                  isLoading={loading}
-                  loadingText="Updating..."
-                  fontSize={{ base: '12px', md: '14px' }}
-                >
-                  Update Product
-                </Button>
+                <Box pt={4}>
+                  <Button
+                    type="submit"
+                    bg="brand.500"
+                    color="white"
+                    _hover={{ bg: 'brand.600', transform: 'translateY(-2px)', shadow: 'md' }}
+                    _active={{ transform: 'scale(0.98)' }}
+                    size={{ base: "md", sm: "lg" }}
+                    minH="48px"
+                    w="full"
+                    isLoading={loading}
+                    loadingText="Updating..."
+                    borderRadius="xl"
+                    fontWeight="800"
+                    fontSize="sm"
+                    boxShadow="sm"
+                    transition="all 0.2s"
+                  >
+                    Save Changes
+                  </Button>
+                </Box>
               </VStack>
             </form>
           </Box>

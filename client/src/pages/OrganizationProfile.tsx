@@ -302,66 +302,71 @@ const OrganizationProfile: React.FC = () => {
 
   return (
     <Box bg="#FFFDF1" minH="100vh" pb={{ base: '100px', md: 0 }}>
-      <Container maxW={{ base: 'full', md: '5xl' }} px={{ base: 0, md: 6 }} py={{ base: 3, md: 10 }}>
+      <Container maxW={{ base: 'full', md: '5xl' }} px={{ base: 4, md: 6 }} py={{ base: 6, md: 10 }}>
         <VStack align="stretch" spacing={{ base: 4, md: 6 }}>
-        <Box bg="white" borderWidth={{ base: 0, md: '1px' }} borderColor="gray.200" borderRadius={{ base: 0, md: '2xl' }} overflow="hidden" mx={{ base: 0, md: 0 }} boxShadow={{ base: 'none', md: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <Box h={{ base: '140px', md: '220px' }} bg="gray.100">
+        <Box bg="white" borderWidth="0" borderRadius={{ base: '2xl', md: '3xl' }} overflow="hidden" shadow="lg" transition="all 0.3s">
+          <Box h={{ base: '160px', md: '260px' }} bg="gray.100" position="relative">
             <Image src={getImageUrl((communityOrg?.cover_url || (org as any)?.org_cover_url || (org as any)?.background_image))} alt="Organization cover" w="full" h="full" objectFit="cover" />
+            <Box position="absolute" bottom="0" left="0" right="0" h="50%" bgGradient="linear(to-t, rgba(0,0,0,0.4), transparent)" />
           </Box>
 
-          <Box px={{ base: 4, md: 8 }} pb={{ base: 5, md: 8 }} pt={{ base: 3, md: 0 }} mt={{ base: '-40px', md: '-48px' }} position="relative">
-            <Box w={{ base: '80px', md: '110px' }} h={{ base: '80px', md: '110px' }} borderRadius="full" overflow="hidden" border={{ base: '4px solid', md: '5px solid' }} borderColor="white" bg="gray.100" mb={{ base: 3, md: 4 }} boxShadow={{ base: 'none', md: '0 2px 8px rgba(0,0,0,0.1)' }}>
+          <Box px={{ base: 4, md: 8 }} pb={{ base: 6, md: 8 }} pt={0} mt={{ base: '-50px', md: '-60px' }} position="relative">
+            <Box w={{ base: '100px', md: '130px' }} h={{ base: '100px', md: '130px' }} borderRadius="2xl" overflow="hidden" shadow="xl" border="4px solid white" bg="white" mb={{ base: 4, md: 5 }}>
               <Image src={getImageUrl((communityOrg?.logo_url || org?.org_logo_url || org?.profile_picture))} alt={(communityOrg?.name || org?.org_name || org?.name || 'Organization')} w="full" h="full" objectFit="cover" />
             </Box>
 
-            <VStack align="start" spacing={{ base: 2, md: 3 }}>
-              <HStack spacing={3} wrap="wrap">
-                <Heading size={{ base: 'md', md: 'xl' }}>{communityOrg?.name || org?.org_name || org?.name}</Heading>
-                <Badge colorScheme="teal" fontSize={{ base: 'xs', md: 'sm' }} px={{ base: 2, md: 3 }} py={{ base: 1, md: 1.5 }}>{communityOrg?.category || (org as any)?.org_category || 'Community'}</Badge>
-              </HStack>
-              <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }}>@{communityOrg?.slug || org?.org_handle || handle}</Text>
-              <Text color="gray.700" fontSize={{ base: 'sm', md: 'md' }} lineHeight="1.6">{communityOrg?.description || org?.bio || 'No description yet.'}</Text>
-
-              <VStack spacing={2} w="full" align="stretch">
-                {(communityOrg?.creator_user_id || org?.id) && !isCreator ? <Button as={RouterLink} to={`/users/${communityOrg?.creator_user_id || org?.id}`} variant="outline" size={{ base: 'xs', md: 'sm' }} w="full">View Owner Profile</Button> : null}
-                {!user ? <Button as={RouterLink} to="/login" colorScheme="teal" size={{ base: 'xs', md: 'sm' }} w="full">Login to Join</Button> : null}
-                {user && !isCreator && membershipStatus === 'none' ? <Button colorScheme="teal" size={{ base: 'xs', md: 'sm' }} onClick={handleJoinRequest} isLoading={joinLoading} w="full">Request to Join</Button> : null}
-                <HStack spacing={2} w="full" wrap="wrap">
-                  {user && membershipStatus === 'pending' ? <Badge colorScheme="orange" px={3} py={1} borderRadius="full">Join request pending</Badge> : null}
-                  {user && membershipStatus === 'approved' ? <Badge colorScheme="green" px={3} py={1} borderRadius="full">Approved member</Badge> : null}
-                  {isCreator ? <Badge colorScheme="purple" px={3} py={1} borderRadius="full">Creator Admin</Badge> : null}
+            <VStack align="start" spacing={{ base: 3, md: 4 }}>
+              <VStack align="start" spacing={1} w="full">
+                <HStack spacing={3} wrap="wrap" w="full">
+                  <Heading size={{ base: 'lg', md: 'xl' }} fontWeight="800" color="gray.800" letterSpacing="tight">{communityOrg?.name || org?.org_name || org?.name}</Heading>
+                  <Badge bg="brand.50" color="brand.600" px={3} py={1} borderRadius="full" fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="wider">{communityOrg?.category || (org as any)?.org_category || 'Community'}</Badge>
                 </HStack>
-                {isCreator ? <Button as={RouterLink} to="/organizations/new" size={{ base: 'xs', md: 'sm' }} colorScheme="teal" variant="outline" w="full">Create Another Organization</Button> : null}
+                <Text color="brand.500" fontWeight="700" fontSize={{ base: 'sm', md: 'md' }}>@{communityOrg?.slug || org?.org_handle || handle}</Text>
+              </VStack>
+              
+              <Text color="gray.600" fontSize={{ base: 'sm', md: 'md' }} lineHeight="tall" fontWeight="500">{communityOrg?.description || org?.bio || 'No description yet.'}</Text>
+
+              <VStack spacing={3} w="full" align="stretch" pt={2}>
+                {(communityOrg?.creator_user_id || org?.id) && !isCreator ? <Button as={RouterLink} to={`/users/${communityOrg?.creator_user_id || org?.id}`} variant="outline" size={{ base: 'sm', md: 'md' }} h="44px" borderRadius="xl" fontWeight="700" _hover={{ bg: 'gray.50' }} w="full">View Owner Profile</Button> : null}
+                {!user ? <Button as={RouterLink} to="/login" bg="brand.500" color="white" h="44px" borderRadius="xl" fontWeight="800" shadow="sm" _hover={{ bg: 'brand.600', transform: 'translateY(-2px)', shadow: 'md' }} transition="all 0.2s" size={{ base: 'sm', md: 'md' }} w="full">Login to Join</Button> : null}
+                {user && !isCreator && membershipStatus === 'none' ? <Button bg="brand.500" color="white" h="44px" borderRadius="xl" fontWeight="800" shadow="sm" _hover={{ bg: 'brand.600', transform: 'translateY(-2px)', shadow: 'md' }} transition="all 0.2s" size={{ base: 'sm', md: 'md' }} onClick={handleJoinRequest} isLoading={joinLoading} w="full">Request to Join</Button> : null}
+                
+                <HStack spacing={2} w="full" wrap="wrap" pt={1}>
+                  {user && membershipStatus === 'pending' ? <Badge colorScheme="orange" px={3} py={1.5} borderRadius="full" fontWeight="700">Join request pending</Badge> : null}
+                  {user && membershipStatus === 'approved' ? <Badge colorScheme="green" px={3} py={1.5} borderRadius="full" fontWeight="700">✔ Approved member</Badge> : null}
+                  {isCreator ? <Badge colorScheme="purple" px={3} py={1.5} borderRadius="full" fontWeight="700">⭐ Creator Admin</Badge> : null}
+                </HStack>
+                {isCreator ? <Button as={RouterLink} to="/organizations/new" size={{ base: 'sm', md: 'md' }} bg="brand.50" color="brand.600" variant="solid" borderRadius="xl" fontWeight="700" _hover={{ bg: 'brand.100' }} w={{ base: 'full', md: 'auto' }} px={6} alignSelf="flex-start">Create Another Organization</Button> : null}
               </VStack>
             </VStack>
           </Box>
         </Box>
 
         {communityOrg ? (
-          <Box bg="white" borderWidth={{ base: 0, md: '1px' }} borderColor="gray.200" borderRadius={{ base: 0, md: 'xl' }} p={{ base: 3, md: 6 }} boxShadow={{ base: 'none', md: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <Heading size={{ base: 'sm', md: 'lg' }} mb={{ base: 3, md: 5 }} color="gray.900">Organization Feed</Heading>
+          <Box bg="white" borderWidth="0" borderRadius={{ base: '2xl', md: '3xl' }} p={{ base: 5, md: 8 }} shadow="md">
+            <Heading size={{ base: 'md', md: 'lg' }} mb={{ base: 4, md: 6 }} color="gray.800" fontWeight="800" letterSpacing="tight">Organization Feed</Heading>
             {(membershipStatus === 'approved' || isCreator) ? (
-              <VStack align="stretch" spacing={{ base: 3, md: 4 }}>
+              <VStack align="stretch" spacing={{ base: 4, md: 6 }}>
                 {/* Trade feed: tagged products */}
-                <Box borderWidth="1px" borderColor="gray.200" borderRadius={{ base: 'md', md: 'lg' }} p={{ base: 3, md: 5 }} bg="white" boxShadow={{ base: 'none', md: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                  <Text fontSize={{ base: 'xs', md: 'md' }} fontWeight="700" color="gray.900" mb={2}>Tagged Trade Posts</Text>
+                <Box borderWidth="0" borderRadius="2xl" p={{ base: 4, md: 6 }} bg="brand.50" shadow="sm">
+                  <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color="brand.800" mb={3} letterSpacing="tight">🏷️ Tagged Trade Posts</Text>
                   {tradeFeed.length === 0 ? (
-                    <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }}>No tagged products yet.</Text>
+                    <Text color="brand.600" fontSize={{ base: 'xs', md: 'sm' }} fontWeight="500">No tagged products yet.</Text>
                   ) : (
                     <VStack align="stretch" spacing={3}>
                       {tradeFeed.map((g: any) => (
-                        <Box key={g.product_id} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+                        <Box key={g.product_id} borderWidth="0" borderRadius="xl" bg="white" p={4} shadow="sm">
                           <HStack justify="space-between" spacing={3} wrap="wrap">
-                            <VStack align="start" spacing={0} minW={0} flex={1}>
-                              <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="700" noOfLines={1}>{g.title || 'Untitled Product'}</Text>
-                              <Text fontSize={{ base: 'xs', md: 'sm' }} color="gray.600" noOfLines={2}>{g.description || ''}</Text>
-                              {g.category ? <Badge mt={1} colorScheme="teal" fontSize={{ base: '9px', md: 'xs' }}>{g.category}</Badge> : null}
+                            <VStack align="start" spacing={1} minW={0} flex={1}>
+                              <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color="gray.800" noOfLines={1}>{g.title || 'Untitled Product'}</Text>
+                              <Text fontSize={{ base: 'xs', md: 'sm' }} color="gray.500" fontWeight="500" noOfLines={2}>{g.description || ''}</Text>
+                              {g.category ? <Badge mt={1} bg="brand.50" color="brand.600" borderRadius="md" px={2} fontSize={{ base: '9px', md: 'xs' }}>{g.category}</Badge> : null}
                             </VStack>
-                            <HStack spacing={2}>
+                            <HStack spacing={3}>
                               {Array.isArray(g.members) && g.members.length > 0 ? (
-                                <Avatar size="sm" src={g.members[0]?.profile_picture ? getImageUrl(g.members[0].profile_picture) : undefined} name={g.members[0]?.name || 'Member'} />
+                                <Avatar size="sm" src={g.members[0]?.profile_picture ? getImageUrl(g.members[0].profile_picture) : undefined} name={g.members[0]?.name || 'Member'} border="2px solid white" shadow="sm" />
                               ) : null}
-                              <Button as={RouterLink} to={`/products/${g.product_id}`} size="sm" variant="outline">View</Button>
+                              <Button as={RouterLink} to={`/products/${g.product_id}`} size="sm" h="36px" borderRadius="xl" fontWeight="700" variant="outline" _hover={{ bg: 'gray.50', transform: 'translateY(-1px)', shadow: 'sm' }} transition="all 0.2s">View Item</Button>
                             </HStack>
                           </HStack>
                         </Box>
@@ -370,32 +375,61 @@ const OrganizationProfile: React.FC = () => {
                   )}
                 </Box>
 
-                <Box borderWidth="1px" borderColor="gray.200" borderRadius={{ base: 'md', md: 'lg' }} p={{ base: 3, md: 5 }} bg="gray.50" boxShadow={{ base: 'none', md: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                  <VStack align="stretch" spacing={{ base: 3, md: 4 }}>
-                    <Text fontSize={{ base: 'xs', md: 'md' }} fontWeight="700" color="gray.900">✨ Create a post</Text>
+                <Box borderWidth="0" borderRadius="2xl" p={{ base: 4, md: 6 }} bg="white" shadow="sm" border="1px solid" borderColor="gray.100">
+                  <VStack align="stretch" spacing={{ base: 4, md: 5 }}>
+                    <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color="gray.800" letterSpacing="tight">✨ Create a Post</Text>
 
                     {/* Post Type Selection */}
-                    <Select value={postType} onChange={(e) => setPostType(e.target.value as 'regular' | 'looking_for')} size="sm">
+                    <Select 
+                      value={postType} 
+                      onChange={(e) => setPostType(e.target.value as 'regular' | 'looking_for')} 
+                      size="md"
+                      borderRadius="xl"
+                      bg="gray.50"
+                      borderWidth="0"
+                      fontWeight="600"
+                      _focus={{ shadow: 'sm', bg: 'white' }}
+                    >
                       <option value="regular">📝 Regular Post</option>
                       <option value="looking_for">🔍 Looking for Trade</option>
                     </Select>
 
                     {postType === 'looking_for' && (
-                      <Box p={2} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
-                        <Text fontSize={{ base: '10px', md: 'xs' }} color="blue.700">💡 Share what items you're looking for in trades with other members</Text>
+                      <Box p={3} bg="brand.50" borderRadius="xl" borderWidth="0">
+                        <Text fontSize={{ base: 'xs', md: 'sm' }} color="brand.700" fontWeight="600">💡 Share what items you're looking for in trades with other members</Text>
                       </Box>
                     )}
 
-                    <Input value={postCategoryTag} onChange={(e) => setPostCategoryTag(e.target.value)} placeholder="Category tag (e.g., Cards, Electronics)" size="sm" />
-                    <Textarea value={postContent} onChange={(e) => setPostContent(e.target.value)} placeholder={postType === 'looking_for' ? 'Describe what items or trades you\'re looking for...' : 'Share something relevant to this organization'} rows={3} size="sm" />
+                    <Input 
+                      value={postCategoryTag} 
+                      onChange={(e) => setPostCategoryTag(e.target.value)} 
+                      placeholder="Category tag (e.g., Cards, Electronics)" 
+                      size="md" 
+                      borderRadius="xl"
+                      bg="gray.50"
+                      borderWidth="0"
+                      _focus={{ shadow: 'sm', bg: 'white' }}
+                    />
+                    <Textarea 
+                      value={postContent} 
+                      onChange={(e) => setPostContent(e.target.value)} 
+                      placeholder={postType === 'looking_for' ? 'Describe what items or trades you\'re looking for...' : 'Share something relevant to this organization'} 
+                      rows={3} 
+                      size="md" 
+                      borderRadius="xl"
+                      bg="gray.50"
+                      borderWidth="0"
+                      _focus={{ shadow: 'sm', bg: 'white' }}
+                      resize="none"
+                    />
 
                     {/* Image Preview */}
                     {imagePreviewUrls.length > 0 && (
                       <Box>
-                        <Text fontSize={{ base: '10px', md: 'xs' }} fontWeight="600" mb={2}>Attached photos ({imagePreviewUrls.length})</Text>
-                        <HStack spacing={2} wrap="wrap">
+                        <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" mb={2}>Attached photos ({imagePreviewUrls.length})</Text>
+                        <HStack spacing={3} wrap="wrap">
                           {imagePreviewUrls.map((url, idx) => (
-                            <Box key={idx} position="relative" w={{ base: '70px', md: '80px' }} h={{ base: '70px', md: '80px' }} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor="gray.200">
+                            <Box key={idx} position="relative" w={{ base: '80px', md: '100px' }} h={{ base: '80px', md: '100px' }} borderRadius="xl" overflow="hidden" shadow="sm">
                               <Image src={url} alt={`preview-${idx}`} w="full" h="full" objectFit="cover" />
                               <IconButton
                                 aria-label="remove"
@@ -403,8 +437,9 @@ const OrganizationProfile: React.FC = () => {
                                 size="xs"
                                 colorScheme="red"
                                 position="absolute"
-                                top={0}
-                                right={0}
+                                top={1}
+                                right={1}
+                                borderRadius="full"
                                 onClick={() => removeImage(idx)}
                               />
                             </Box>
@@ -413,123 +448,123 @@ const OrganizationProfile: React.FC = () => {
                       </Box>
                     )}
 
-                    {/* File Input - Mobile: Side by side buttons */}
-                    <HStack spacing={2} w="full" display={{ base: 'flex', md: 'none' }}>
-                      <Box as="label" htmlFor="org-post-images-mobile" flex={1} cursor="pointer">
+                    {/* File Input - Action Buttons */}
+                    <HStack justify="space-between" w="full" pt={1}>
+                      <Box as="label" htmlFor="org-post-images" cursor="pointer">
                         <Input
                           type="file"
                           multiple
                           accept="image/*"
                           onChange={handleImageSelect}
                           display="none"
-                          id="org-post-images-mobile"
+                          id="org-post-images"
                         />
                         <Button
                           as="div"
-                          size="sm"
-                          variant="outline"
+                          size="md"
+                          h="44px"
+                          borderRadius="xl"
+                          variant="ghost"
                           leftIcon={<AddIcon />}
                           cursor="pointer"
-                          w="full"
+                          fontWeight="700"
+                          color="gray.600"
+                          _hover={{ bg: 'gray.100' }}
                         >
                           Add Photos
                         </Button>
                       </Box>
-                      <Button colorScheme="teal" size="sm" onClick={handleCreatePost} isLoading={posting} flex={1}>Publish</Button>
+                      <Button 
+                        bg="brand.500" 
+                        color="white" 
+                        size="md" 
+                        h="44px"
+                        px={8}
+                        borderRadius="xl"
+                        fontWeight="800"
+                        shadow="sm"
+                        _hover={{ transform: 'translateY(-2px)', shadow: 'md', bg: 'brand.600' }}
+                        transition="all 0.2s"
+                        onClick={handleCreatePost} 
+                        isLoading={posting}
+                      >
+                        Publish Post
+                      </Button>
                     </HStack>
-
-                    {/* File Input - Desktop: Enhanced layout */}
-                    <VStack spacing={3} w="full" display={{ base: 'none', md: 'flex' }}>
-                      <Box as="label" htmlFor="org-post-images-desktop" w="full" cursor="pointer">
-                        <Input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          onChange={handleImageSelect}
-                          display="none"
-                          id="org-post-images-desktop"
-                        />
-                        <Button
-                          as="div"
-                          size="sm"
-                          variant="outline"
-                          leftIcon={<AddIcon />}
-                          cursor="pointer"
-                        >
-                          Add Photos
-                        </Button>
-                      </Box>
-                      <HStack justify="space-between" w="full">
-                        <Text fontSize="xs" color="gray.500">Posts are visible to members in org feed and on your public profile.</Text>
-                        <Button colorScheme="teal" size="sm" onClick={handleCreatePost} isLoading={posting}>Publish</Button>
-                      </HStack>
-                    </VStack>
                   </VStack>
                 </Box>
 
-                <Divider />
+                <Divider borderColor="gray.100" />
 
-                {feedPosts.length === 0 ? <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }}>No posts yet.</Text> : null}
+                {feedPosts.length === 0 ? <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }} fontWeight="500">No posts yet.</Text> : null}
                 {feedPosts.map((post) => (
-                  <Box key={post.id} borderWidth="1px" borderColor="gray.200" borderRadius={{ base: 'md', md: 'lg' }} p={{ base: 2.5, md: 4 }} bg="white" transition="all 0.2s" _hover={{ boxShadow: { base: 'none', md: '0 4px 12px rgba(0,0,0,0.1)' }, borderColor: { base: 'gray.200', md: 'gray.300' } }}>
-                    <VStack align="stretch" spacing={{ base: 2, md: 3 }}>
+                  <Box key={post.id} borderWidth="0" borderRadius="2xl" p={{ base: 4, md: 6 }} bg="white" transition="all 0.3s" shadow="sm" _hover={{ shadow: 'md', transform: 'translateY(-2px)' }} border="1px solid" borderColor="gray.50">
+                    <VStack align="stretch" spacing={{ base: 3, md: 4 }}>
                       <HStack justify="space-between" spacing={2} wrap="wrap">
-                        <HStack spacing={2} minW={0} flex={1}>
-                          <Avatar size={{ base: 'xs', md: 'sm' }} src={post.author_profile_picture ? getImageUrl(post.author_profile_picture) : undefined} name={post.author_name} />
+                        <HStack spacing={3} minW={0} flex={1}>
+                          <Avatar size={{ base: 'sm', md: 'md' }} src={post.author_profile_picture ? getImageUrl(post.author_profile_picture) : undefined} name={post.author_name} shadow="sm" />
                           <VStack spacing={0} align="start" minW={0} flex={1}>
-                            <Text fontSize={{ base: '11px', md: 'sm' }} fontWeight="600" noOfLines={1}>{post.author_name}</Text>
-                            <Badge colorScheme="gray" fontSize={{ base: '9px', md: 'xs' }} noOfLines={1}>{post.category_tag}</Badge>
+                            <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color="gray.800" noOfLines={1} letterSpacing="tight">{post.author_name}</Text>
+                            <Badge bg="gray.100" color="gray.600" fontSize={{ base: '9px', md: 'xs' }} px={2} py={0.5} borderRadius="md" fontWeight="700" noOfLines={1}>{post.category_tag}</Badge>
                           </VStack>
                         </HStack>
-                        {post.is_looking_for && <Badge colorScheme="blue" fontSize={{ base: '9px', md: 'xs' }}>🔍 Looking</Badge>}
+                        {post.is_looking_for && <Badge bg="blue.50" color="blue.600" px={2} py={1} borderRadius="full" fontSize={{ base: '9px', md: 'xs' }} fontWeight="700">🔍 Looking</Badge>}
                       </HStack>
-                      <Text fontSize={{ base: 'xs', md: 'sm' }} color="gray.700" whiteSpace="pre-wrap" mb={post.images && post.images.length > 0 ? 1 : 0}>{post.content}</Text>
+                      <Text fontSize={{ base: 'sm', md: 'md' }} color="gray.700" whiteSpace="pre-wrap" mb={post.images && post.images.length > 0 ? 2 : 0} lineHeight="tall">{post.content}</Text>
 
                       {/* Post Images */}
                       {post.images && post.images.length > 0 && (
-                        <HStack spacing={1} wrap="wrap" mb={1}>
+                        <HStack spacing={2} wrap="wrap" mb={2}>
                           {post.images.map((img: any, idx: number) => (
-                            <Image key={idx} src={getImageUrl(img)} alt={`post-${idx}`} w={{ base: '100px', md: '120px' }} h={{ base: '100px', md: '120px' }} objectFit="cover" borderRadius="md" />
+                            <Image key={idx} src={getImageUrl(img)} alt={`post-${idx}`} w={{ base: '120px', md: '150px' }} h={{ base: '120px', md: '150px' }} objectFit="cover" borderRadius="xl" shadow="sm" />
                           ))}
                         </HStack>
                       )}
 
                       {/* Comments Section */}
-                      <Box mt={2} pt={2} borderTopWidth="1px" borderColor="gray.200">
-                        <Text fontSize={{ base: '10px', md: 'xs' }} fontWeight="600" mb={2}>Comments ({post.comments_count || 0})</Text>
+                      <Box mt={3} pt={4} borderTopWidth="1px" borderColor="gray.100">
+                        <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="700" color="gray.500" textTransform="uppercase" mb={3}>Comments ({post.comments_count || 0})</Text>
 
                         {/* Comment Input */}
-                        <VStack spacing={1} mb={2}>
+                        <HStack spacing={2} mb={4}>
                           <Input
                             size={{ base: 'sm', md: 'md' }}
                             placeholder="Add a comment..."
                             value={commentText[post.id] || ''}
                             onChange={(e) => setCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
-                            fontSize={{ base: '12px', md: 'md' }}
+                            fontSize={{ base: 'sm', md: 'md' }}
+                            borderRadius="xl"
+                            borderWidth="0"
+                            bg="gray.50"
+                            _focus={{ shadow: 'sm', bg: 'white' }}
                           />
                           <Button
-                            w="full"
-                            size={{ base: 'xs', md: 'sm' }}
-                            colorScheme="teal"
-                            variant="outline"
+                            size={{ base: 'sm', md: 'md' }}
+                            bg="white"
+                            color="brand.500"
+                            borderWidth="1px"
+                            borderColor="gray.200"
+                            borderRadius="xl"
+                            fontWeight="800"
                             onClick={() => handleAddComment(post.id)}
                             isDisabled={!commentText[post.id]?.trim()}
-                            fontSize={{ base: '12px', md: 'md' }}
+                            _hover={commentText[post.id]?.trim() ? { transform: 'translateY(-1px)', shadow: 'sm', borderColor: 'brand.200' } : undefined}
+                            transition="all 0.2s"
                           >
                             Reply
                           </Button>
-                        </VStack>
+                        </HStack>
 
                         {/* Existing Comments */}
                         {postComments[post.id] && postComments[post.id].length > 0 && (
-                          <VStack align="stretch" spacing={1}>
+                          <VStack align="stretch" spacing={2}>
                             {postComments[post.id].map((comment: any) => (
-                              <Box key={comment.id} p={2} bg="gray.50" borderRadius="sm">
-                                <HStack spacing={1} mb={1} wrap="wrap">
-                                  <Avatar size="xs" name={comment.author_name} />
-                                  <Text fontSize={{ base: '10px', md: 'xs' }} fontWeight="600" noOfLines={1}>{comment.author_name}</Text>
+                              <Box key={comment.id} p={3} bg="gray.50" borderRadius="xl">
+                                <HStack spacing={2} mb={1} wrap="wrap">
+                                  <Avatar size="xs" name={comment.author_name} shadow="sm" />
+                                  <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="700" color="gray.800" noOfLines={1}>{comment.author_name}</Text>
                                 </HStack>
-                                <Text fontSize={{ base: '11px', md: 'xs' }} color="gray.700">{comment.content}</Text>
+                                <Text fontSize={{ base: 'sm', md: 'sm' }} color="gray.600" pl={8} lineHeight="tall">{comment.content}</Text>
                               </Box>
                             ))}
                           </VStack>
@@ -540,43 +575,45 @@ const OrganizationProfile: React.FC = () => {
                 ))}
               </VStack>
             ) : (
-              <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }}>Only approved members can view and interact with this feed.</Text>
+              <Box p={6} bg="gray.50" borderRadius="2xl" textAlign="center">
+                <Text color="gray.600" fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Only approved members can view and interact with this feed.</Text>
+              </Box>
             )}
           </Box>
         ) : null}
 
         {communityOrg && isCreator ? (
-          <Box bg="white" borderWidth={{ base: 0, md: '1px' }} borderColor="gray.200" borderRadius={{ base: 0, md: 'xl' }} p={{ base: 3, md: 6 }} boxShadow={{ base: 'none', md: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <Heading size={{ base: 'sm', md: 'lg' }} mb={{ base: 4, md: 6 }} color="gray.900">📦 Trade Feed</Heading>
+          <Box bg="white" borderWidth="0" borderRadius={{ base: '2xl', md: '3xl' }} p={{ base: 5, md: 8 }} shadow="md">
+            <Heading size={{ base: 'md', md: 'lg' }} mb={{ base: 4, md: 6 }} color="gray.800" fontWeight="800" letterSpacing="tight">📦 Trade Feed</Heading>
             {tradeFeedLoading ? (
-              <Spinner size="sm" />
+              <Spinner size="sm" color="brand.500" />
             ) : tradeFeedProducts.length === 0 ? (
-              <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }}>No products in trade feed yet.</Text>
+              <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }} fontWeight="500">No products in trade feed yet.</Text>
             ) : (
-              <Box display="grid" gridTemplateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }} gap={{ base: 3, md: 4 }}>
+              <Box display="grid" gridTemplateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }} gap={{ base: 4, md: 6 }}>
                 {tradeFeedProducts.map((product: any) => {
                   const imageUrls = typeof product.image_urls === 'string' ? 
                     (product.image_urls.startsWith('[') ? JSON.parse(product.image_urls) : [product.image_urls]) 
                     : product.image_urls || []
                   const firstImage = Array.isArray(imageUrls) ? imageUrls[0] : imageUrls
                   return (
-                    <Box key={product.product_id} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" transition="all 0.2s" _hover={{ boxShadow: '0 4px 12px rgba(0,0,0,0.1)', borderColor: 'teal.300' }}>
+                    <Box key={product.product_id} borderWidth="0" shadow="sm" borderRadius="2xl" overflow="hidden" transition="all 0.3s" _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }} bg="white" border="1px solid" borderColor="gray.50">
                       <Link as={RouterLink} to={`/products/${product.product_id}`} _hover={{ textDecoration: 'none' }}>
-                        <Box h="160px" bg="gray.100" overflow="hidden" cursor="pointer">
+                        <Box h="180px" bg="gray.50" overflow="hidden" cursor="pointer" position="relative">
                           {firstImage ? (
-                            <Image src={getImageUrl(firstImage)} alt={product.title} w="full" h="full" objectFit="cover" _hover={{ transform: 'scale(1.05)', transition: 'transform 0.2s' }} />
+                            <Image src={getImageUrl(firstImage)} alt={product.title} w="full" h="full" objectFit="cover" />
                           ) : (
-                            <Box w="full" h="full" display="flex" alignItems="center" justifyContent="center" bg="gray.200">
-                              <Text fontSize="xs" color="gray.500">No Image</Text>
+                            <Box w="full" h="full" display="flex" alignItems="center" justifyContent="center">
+                              <Text fontSize="xs" color="gray.400" fontWeight="600">No Image</Text>
                             </Box>
                           )}
                         </Box>
-                        <Box p={3}>
-                          <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="600" noOfLines={2} mb={1} _hover={{ color: 'teal.600' }}>{product.title}</Text>
-                          <Text fontSize={{ base: '10px', md: 'xs' }} color="gray.500" noOfLines={1} mb={2}>{product.category}</Text>
+                        <Box p={4}>
+                          <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color="gray.800" noOfLines={2} mb={1} letterSpacing="tight">{product.title}</Text>
+                          <Text fontSize="xs" color="gray.500" fontWeight="600" noOfLines={1} mb={3} textTransform="uppercase" letterSpacing="wider">{product.category}</Text>
                           <HStack justify="space-between">
-                            <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="700" color="teal.600">₱{product.price}</Text>
-                            <Badge colorScheme="blue" fontSize={{ base: '10px', md: 'xs' }}>{product.status}</Badge>
+                            <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="800" color="brand.500">₱{product.price}</Text>
+                            <Badge bg="brand.50" color="brand.600" px={2} py={0.5} borderRadius="md" fontSize="10px" fontWeight="700" textTransform="uppercase">{product.status}</Badge>
                           </HStack>
                         </Box>
                       </Link>
@@ -589,31 +626,31 @@ const OrganizationProfile: React.FC = () => {
         ) : null}
 
         {communityOrg && isCreator ? (
-          <Box bg="white" borderWidth={{ base: 0, md: '1px' }} borderColor="gray.200" borderRadius={{ base: 0, md: 'xl' }} p={{ base: 3, md: 6 }} boxShadow={{ base: 'none', md: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <Heading size={{ base: 'sm', md: 'lg' }} mb={{ base: 4, md: 6 }} color="gray.900">🔐 Admin Controls</Heading>
-            {adminLoading ? <Spinner size="sm" /> : (
-              <VStack align="stretch" spacing={{ base: 3, md: 8 }}>
+          <Box bg="white" borderWidth="0" borderRadius={{ base: '2xl', md: '3xl' }} p={{ base: 5, md: 8 }} shadow="md">
+            <Heading size={{ base: 'md', md: 'lg' }} mb={{ base: 4, md: 6 }} color="gray.800" fontWeight="800" letterSpacing="tight">🔐 Admin Controls</Heading>
+            {adminLoading ? <Spinner size="sm" color="brand.500" /> : (
+              <VStack align="stretch" spacing={{ base: 4, md: 8 }}>
                 {/* Desktop Grid Layout */}
                 <Box display={{ base: 'none', md: 'grid' }} gridTemplateColumns="1fr 1fr" gap={8}>
                   {/* Pending Requests */}
                   <Box>
-                    <Text fontSize="md" fontWeight="700" mb={4} color="gray.900">Pending Join Requests ({joinRequests.length})</Text>
-                    {joinRequests.length === 0 ? <Text fontSize="sm" color="gray.500">No pending requests.</Text> : null}
-                    <VStack align="stretch" spacing={3}>
+                    <Text fontSize="sm" fontWeight="800" mb={4} color="gray.500" textTransform="uppercase" letterSpacing="wider">Pending Join Requests ({joinRequests.length})</Text>
+                    {joinRequests.length === 0 ? <Text fontSize="sm" color="gray.400" fontWeight="500">No pending requests.</Text> : null}
+                    <VStack align="stretch" spacing={4}>
                       {joinRequests.map((request) => (
-                        <Box key={request.user_id} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3} transition="all 0.2s" _hover={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)', borderColor: 'gray.300' }}>
-                          <HStack justify="space-between" spacing={2} mb={3} wrap="wrap">
-                            <HStack spacing={2} minW={0} flex={1}>
-                              <Avatar size="md" src={request.profile_picture ? getImageUrl(request.profile_picture) : undefined} name={request.name} />
+                        <Box key={request.user_id} borderWidth="0" shadow="sm" borderRadius="2xl" p={4} bg="gray.50" transition="all 0.2s" _hover={{ transform: 'translateY(-2px)', shadow: 'md' }}>
+                          <HStack justify="space-between" spacing={3} mb={4} wrap="wrap">
+                            <HStack spacing={3} minW={0} flex={1}>
+                              <Avatar size="md" src={request.profile_picture ? getImageUrl(request.profile_picture) : undefined} name={request.name} shadow="sm" />
                               <VStack align="start" spacing={0} minW={0} flex={1}>
-                                <Text fontSize="sm" fontWeight="600" noOfLines={1}>{request.name}</Text>
-                                <Text fontSize="xs" color="gray.500" noOfLines={1}>Requested {new Date(request.requested_at).toLocaleString()}</Text>
+                                <Text fontSize="sm" fontWeight="800" color="gray.800" noOfLines={1}>{request.name}</Text>
+                                <Text fontSize="xs" fontWeight="600" color="gray.500" noOfLines={1}>Requested {new Date(request.requested_at).toLocaleDateString()}</Text>
                               </VStack>
                             </HStack>
                           </HStack>
-                          <HStack spacing={2} w="full">
-                            <Button flex={1} size="sm" colorScheme="green" onClick={() => handleDecide(request.user_id, 'approve')}>Approve</Button>
-                            <Button flex={1} size="sm" colorScheme="red" variant="outline" onClick={() => handleDecide(request.user_id, 'reject')}>Reject</Button>
+                          <HStack spacing={3} w="full">
+                            <Button flex={1} borderRadius="xl" fontWeight="800" size="sm" h="36px" bg="green.500" color="white" _hover={{ bg: 'green.600', transform: 'translateY(-1px)', shadow: 'sm' }} transition="all 0.2s" onClick={() => handleDecide(request.user_id, 'approve')}>Approve</Button>
+                            <Button flex={1} borderRadius="xl" fontWeight="800" size="sm" h="36px" bg="white" color="red.500" borderWidth="1px" borderColor="red.100" _hover={{ bg: 'red.50', borderColor: 'red.200' }} onClick={() => handleDecide(request.user_id, 'reject')}>Reject</Button>
                           </HStack>
                         </Box>
                       ))}
@@ -622,15 +659,15 @@ const OrganizationProfile: React.FC = () => {
 
                   {/* Members List */}
                   <Box>
-                    <Text fontSize="md" fontWeight="700" mb={4} color="gray.900">Members ({members.length})</Text>
+                    <Text fontSize="sm" fontWeight="800" mb={4} color="gray.500" textTransform="uppercase" letterSpacing="wider">Members ({members.length})</Text>
                     <VStack align="stretch" spacing={3}>
                       {members.map((member) => (
-                        <HStack key={member.user_id} justify="space-between" spacing={2} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3} transition="all 0.2s" _hover={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)', borderColor: 'gray.300' }} wrap="wrap">
-                          <HStack spacing={2} minW={0} flex={1}>
-                            <Avatar size="md" src={member.profile_picture ? getImageUrl(member.profile_picture) : undefined} name={member.name} />
-                            <Text fontSize="sm" fontWeight="600" noOfLines={1}>{member.name}</Text>
+                        <HStack key={member.user_id} justify="space-between" spacing={3} shadow="sm" borderRadius="2xl" p={3} bg="white" border="1px solid" borderColor="gray.50" transition="all 0.2s" _hover={{ shadow: 'md' }} wrap="wrap">
+                          <HStack spacing={3} minW={0} flex={1}>
+                            <Avatar size="sm" src={member.profile_picture ? getImageUrl(member.profile_picture) : undefined} name={member.name} />
+                            <Text fontSize="sm" fontWeight="800" color="gray.800" noOfLines={1}>{member.name}</Text>
                           </HStack>
-                          {member.user_id !== user?.id ? <Button size="sm" colorScheme="red" variant="outline" onClick={() => handleRemoveMember(member.user_id)}>Remove</Button> : <Badge colorScheme="purple" fontSize="xs">You</Badge>}
+                          {member.user_id !== user?.id ? <Button size="sm" h="32px" borderRadius="xl" fontWeight="700" bg="white" color="red.500" borderWidth="1px" borderColor="gray.200" _hover={{ bg: 'red.50', borderColor: 'red.200' }} onClick={() => handleRemoveMember(member.user_id)}>Remove</Button> : <Badge bg="purple.50" color="purple.600" px={2} py={1} borderRadius="md" fontWeight="800">YOU</Badge>}
                         </HStack>
                       ))}
                     </VStack>
@@ -638,43 +675,43 @@ const OrganizationProfile: React.FC = () => {
                 </Box>
 
                 {/* Mobile Stack Layout */}
-                <VStack align="stretch" spacing={{ base: 3, md: 5 }} display={{ base: 'flex', md: 'none' }}>
+                <VStack align="stretch" spacing={{ base: 5, md: 5 }} display={{ base: 'flex', md: 'none' }}>
                 <Box>
-                  <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="600" mb={3}>Pending join requests ({joinRequests.length})</Text>
-                  {joinRequests.length === 0 ? <Text fontSize={{ base: 'xs', md: 'sm' }} color="gray.500">No pending requests.</Text> : null}
-                  <VStack align="stretch" spacing={2}>
+                  <Text fontSize="xs" fontWeight="800" mb={3} color="gray.500" textTransform="uppercase" letterSpacing="wider">Pending Join Requests ({joinRequests.length})</Text>
+                  {joinRequests.length === 0 ? <Text fontSize="xs" color="gray.400" fontWeight="500">No pending requests.</Text> : null}
+                  <VStack align="stretch" spacing={3}>
                     {joinRequests.map((request) => (
-                      <Box key={request.user_id} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={2}>
-                        <HStack justify="space-between" spacing={2} mb={2} wrap="wrap">
-                          <HStack spacing={2} minW={0} flex={1}>
-                            <Avatar size={{ base: 'sm', md: 'md' }} src={request.profile_picture ? getImageUrl(request.profile_picture) : undefined} name={request.name} />
+                      <Box key={request.user_id} borderWidth="0" shadow="sm" borderRadius="2xl" p={4} bg="gray.50">
+                        <HStack justify="space-between" spacing={2} mb={3} wrap="wrap">
+                          <HStack spacing={3} minW={0} flex={1}>
+                            <Avatar size="md" src={request.profile_picture ? getImageUrl(request.profile_picture) : undefined} name={request.name} />
                             <VStack align="start" spacing={0} minW={0} flex={1}>
-                              <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="600" noOfLines={1}>{request.name}</Text>
-                              <Text fontSize={{ base: '10px', md: 'xs' }} color="gray.500" noOfLines={1}>Requested {new Date(request.requested_at).toLocaleString()}</Text>
+                              <Text fontSize="sm" fontWeight="800" color="gray.800" noOfLines={1}>{request.name}</Text>
+                              <Text fontSize="xs" fontWeight="600" color="gray.500" noOfLines={1}>Req: {new Date(request.requested_at).toLocaleDateString()}</Text>
                             </VStack>
                           </HStack>
                         </HStack>
                         <HStack spacing={2} w="full">
-                          <Button flex={1} size={{ base: 'xs', md: 'sm' }} colorScheme="green" onClick={() => handleDecide(request.user_id, 'approve')}>Approve</Button>
-                          <Button flex={1} size={{ base: 'xs', md: 'sm' }} colorScheme="red" variant="outline" onClick={() => handleDecide(request.user_id, 'reject')}>Reject</Button>
+                          <Button flex={1} borderRadius="xl" fontWeight="800" size="sm" h="36px" bg="green.500" color="white" onClick={() => handleDecide(request.user_id, 'approve')}>Approve</Button>
+                          <Button flex={1} borderRadius="xl" fontWeight="800" size="sm" h="36px" bg="white" color="red.500" borderWidth="1px" borderColor="gray.200" onClick={() => handleDecide(request.user_id, 'reject')}>Reject</Button>
                         </HStack>
                       </Box>
                     ))}
                   </VStack>
                 </Box>
 
-                <Divider />
+                <Divider borderColor="gray.100" />
 
                 <Box>
-                  <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="600" mb={3}>Members ({members.length})</Text>
+                  <Text fontSize="xs" fontWeight="800" mb={3} color="gray.500" textTransform="uppercase" letterSpacing="wider">Members ({members.length})</Text>
                   <VStack align="stretch" spacing={2}>
                     {members.map((member) => (
-                      <HStack key={member.user_id} justify="space-between" spacing={2} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={2} wrap="wrap">
-                        <HStack spacing={2} minW={0} flex={1}>
-                          <Avatar size={{ base: 'sm', md: 'md' }} src={member.profile_picture ? getImageUrl(member.profile_picture) : undefined} name={member.name} />
-                          <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="600" noOfLines={1}>{member.name}</Text>
+                      <HStack key={member.user_id} justify="space-between" spacing={2} shadow="sm" borderRadius="xl" p={3} bg="white" border="1px solid" borderColor="gray.50" wrap="wrap">
+                        <HStack spacing={3} minW={0} flex={1}>
+                          <Avatar size="sm" src={member.profile_picture ? getImageUrl(member.profile_picture) : undefined} name={member.name} />
+                          <Text fontSize="sm" fontWeight="800" color="gray.800" noOfLines={1}>{member.name}</Text>
                         </HStack>
-                        {member.user_id !== user?.id ? <Button size={{ base: 'xs', md: 'sm' }} colorScheme="red" variant="outline" onClick={() => handleRemoveMember(member.user_id)}>Remove</Button> : <Badge colorScheme="purple" fontSize={{ base: '10px', md: 'xs' }}>You</Badge>}
+                        {member.user_id !== user?.id ? <Button size="sm" h="32px" borderRadius="lg" fontWeight="800" bg="white" color="red.500" borderWidth="1px" borderColor="gray.200" onClick={() => handleRemoveMember(member.user_id)}>Remove</Button> : <Badge bg="purple.50" color="purple.600" px={2} py={0.5} borderRadius="md" fontWeight="800">YOU</Badge>}
                       </HStack>
                     ))}
                   </VStack>
