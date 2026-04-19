@@ -335,6 +335,7 @@ type Trade struct {
 	AutoCompletedAt           *time.Time `json:"auto_completed_at,omitempty"`
 	// Trade option and delivery fields
 	TradeOption     string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
+	MeetingType     string `json:"meeting_type,omitempty" validate:"omitempty,oneof=meetup pickup"`
 	DeliveryAddress string `json:"delivery_address,omitempty"`
 	// Delivery state fields (for progress tracking and persistence)
 	DeliveryType            string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
@@ -366,6 +367,9 @@ type Trade struct {
 	SellerName            string `json:"seller_name,omitempty"`
 	ProductTitle          string `json:"product_title,omitempty"`
 	ProductImageURL       string `json:"product_image_url,omitempty"`
+	// Pickup address of the target (seller's) product, surfaced at trade level
+	// so the pickup UI can show it without relying on trade_items rows.
+	TargetProductPickupAddress string `json:"target_product_pickup_address,omitempty"`
 	BuyerMet              bool   `json:"buyer_met"`
 	SellerMet             bool   `json:"seller_met"`
 	// Enhanced review system fields
@@ -384,9 +388,10 @@ type TradeItem struct {
 	OfferedBy string    `json:"offered_by" validate:"oneof=buyer seller"`
 	CreatedAt time.Time `json:"created_at"`
 	// Denormalized product details for display
-	ProductTitle    string `json:"product_title,omitempty"`
-	ProductStatus   string `json:"product_status,omitempty"`
-	ProductImageURL string `json:"product_image_url,omitempty"`
+	ProductTitle         string `json:"product_title,omitempty"`
+	ProductStatus        string `json:"product_status,omitempty"`
+	ProductImageURL      string `json:"product_image_url,omitempty"`
+	ProductPickupAddress string `json:"product_pickup_address,omitempty"`
 }
 
 // TradeReview represents a review submitted by a user for a trade
