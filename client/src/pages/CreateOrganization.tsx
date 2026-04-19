@@ -36,6 +36,11 @@ const ORG_CATEGORIES = [
   'Research Group',
   'Community Initiative',
   'Academic Council',
+  'Thrift Shop',
+  'Barter Items',
+  'Goods',
+  'Book Swap',
+  'Other',
 ]
 
 const BIO_MAX_LENGTH = 500
@@ -57,10 +62,10 @@ const CreateOrganization: React.FC = () => {
   const toast = useToast()
 
   const [orgName, setOrgName] = useState(user?.org_name || '')
-  const [orgHandle, setOrgHandle] = useState(user?.org_handle || '')
+
   const [orgLogoUrl, setOrgLogoUrl] = useState(user?.org_logo_url || '')
   const [orgCoverUrl, setOrgCoverUrl] = useState((user as any)?.org_cover_url || '')
-  const [bio, setBio] = useState(user?.bio || '')
+  const [bio, setBio] = useState('')
   const [orgCategory, setOrgCategory] = useState((user as any)?.org_category || '')
   const [orgWebsite, setOrgWebsite] = useState((user as any)?.org_website || '')
   const [orgLocation, setOrgLocation] = useState((user as any)?.org_location || '')
@@ -72,9 +77,10 @@ const CreateOrganization: React.FC = () => {
   const [uploadingCover, setUploadingCover] = useState(false)
   const [logoFileName, setLogoFileName] = useState('')
   const [coverFileName, setCoverFileName] = useState('')
+  const [showOptionalFields, setShowOptionalFields] = useState(false)
 
   const previewName = useMemo(() => orgName || 'Your Organization Name', [orgName])
-  const previewHandle = useMemo(() => sanitizeHandle(orgHandle || orgName), [orgHandle, orgName])
+  const previewHandle = useMemo(() => sanitizeHandle(orgName), [orgName])
   const bioLength = bio.length
   const bioCounterColor = bioLength >= BIO_MAX_LENGTH ? 'red.500' : bioLength >= Math.floor(BIO_MAX_LENGTH * 0.8) ? 'orange.500' : 'gray.500'
 
@@ -149,8 +155,8 @@ const CreateOrganization: React.FC = () => {
       toast({ title: 'Organization name is required', status: 'warning', duration: 2500 })
       return
     }
-    if (!sanitizeHandle(orgHandle || orgName)) {
-      toast({ title: 'Organization handle is required', status: 'warning', duration: 2500 })
+    if (!sanitizeHandle(orgName)) {
+      toast({ title: 'A valid organization handle could not be generated from the name', status: 'warning', duration: 2500 })
       return
     }
     if (!orgCategory.trim()) {
@@ -160,7 +166,7 @@ const CreateOrganization: React.FC = () => {
 
     setSaving(true)
     try {
-      const normalizedHandle = sanitizeHandle(orgHandle || orgName)
+      const normalizedHandle = sanitizeHandle(orgName)
       const res = await api.post('/api/organizations', {
         name: orgName.trim(),
         slug: normalizedHandle,
@@ -250,19 +256,10 @@ const CreateOrganization: React.FC = () => {
                   <FormControl isRequired>
                     <FormLabel>Organization Name</FormLabel>
                     <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Eco Student Council" />
-                  </FormControl>
-
-                  <FormControl isRequired>
-                    <FormLabel>Handle</FormLabel>
-                    <Input
-                      value={orgHandle}
-                      onChange={(e) => setOrgHandle(sanitizeHandle(e.target.value))}
-                      placeholder="your-org-handle"
-                    />
                     <FormHelperText mt={1}>
                       <Text as="span" color="gray.500">Profile URL: </Text>
                       <Text as="span" fontFamily="mono" bg="gray.100" px={2} py={0.5} borderRadius="md" color="gray.700">
-                        /org/{sanitizeHandle(orgHandle || orgName || 'your-handle')}
+                        /org/{sanitizeHandle(orgName || 'your-handle')}
                       </Text>
                     </FormHelperText>
                   </FormControl>
@@ -276,8 +273,6 @@ const CreateOrganization: React.FC = () => {
                   <FormControl>
                     <FormLabel>Logo / Avatar</FormLabel>
                     <VStack align="stretch" spacing={2}>
-                      <Input value={orgLogoUrl} onChange={(e) => setOrgLogoUrl(e.target.value)} placeholder="https://..." />
-                      <Text fontSize="xs" color="gray.400" textAlign="center">or</Text>
                       <Input id="org-logo-upload" type="file" accept="image/*" display="none" onChange={onLogoFileChange} />
                       <Button as="label" htmlFor="org-logo-upload" variant="outline" isLoading={uploadingLogo} justifyContent="space-between">
                         <Text>Upload logo</Text>
@@ -289,8 +284,6 @@ const CreateOrganization: React.FC = () => {
                   <FormControl>
                     <FormLabel>Cover Photo</FormLabel>
                     <VStack align="stretch" spacing={2}>
-                      <Input value={orgCoverUrl} onChange={(e) => setOrgCoverUrl(e.target.value)} placeholder="https://..." />
-                      <Text fontSize="xs" color="gray.400" textAlign="center">or</Text>
                       <Input id="org-cover-upload" type="file" accept="image/*" display="none" onChange={onCoverFileChange} />
                       <Button as="label" htmlFor="org-cover-upload" variant="outline" isLoading={uploadingCover} justifyContent="space-between">
                         <Text>Upload cover</Text>
@@ -329,21 +322,35 @@ const CreateOrganization: React.FC = () => {
                     </Select>
                   </FormControl>
 
-                  <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={4}>
-                    <FormControl>
-                      <FormLabel>Website</FormLabel>
-                      <Input value={orgWebsite} onChange={(e) => setOrgWebsite(e.target.value)} placeholder="https://example.org" />
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>Location</FormLabel>
-                      <Input value={orgLocation} onChange={(e) => setOrgLocation(e.target.value)} placeholder="Campus / City" />
-                    </FormControl>
-                  </Grid>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    width="100%"
+                    onClick={() => setShowOptionalFields(!showOptionalFields)}
+                    color="teal.600"
+                  >
+                    {showOptionalFields ? '- Hide optional fields' : '+ Add optional fields (Website, Location, Email)'}
+                  </Button>
 
-                  <FormControl>
-                    <FormLabel>Contact Email</FormLabel>
-                    <Input value={orgContactEmail} onChange={(e) => setOrgContactEmail(e.target.value)} placeholder="contact@org.edu" />
-                  </FormControl>
+                  {showOptionalFields && (
+                    <>
+                      <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={4}>
+                        <FormControl>
+                          <FormLabel>Website</FormLabel>
+                          <Input value={orgWebsite} onChange={(e) => setOrgWebsite(e.target.value)} placeholder="https://example.org" />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>Location</FormLabel>
+                          <Input value={orgLocation} onChange={(e) => setOrgLocation(e.target.value)} placeholder="Campus / City" />
+                        </FormControl>
+                      </Grid>
+
+                      <FormControl>
+                        <FormLabel>Contact Email</FormLabel>
+                        <Input value={orgContactEmail} onChange={(e) => setOrgContactEmail(e.target.value)} placeholder="contact@org.edu" />
+                      </FormControl>
+                    </>
+                  )}
                 </VStack>
               </Stack>
             </Box>

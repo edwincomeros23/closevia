@@ -25,6 +25,9 @@ const GlobalPopup: React.FC = () => {
   const { user } = useAuth(); // Needed to re-trigger if auth state changes
 
   useEffect(() => {
+    // Only fetch and show campaigns for authenticated users
+    if (!user) return;
+
     const fetchActiveCampaignParams = async () => {
       try {
         const response = await api.get('/api/campaigns/active', { timeout: 15000 });
@@ -95,7 +98,7 @@ const GlobalPopup: React.FC = () => {
     handleClose();
   };
 
-  if (!activeCampaign) return null;
+  if (!user || !activeCampaign) return null;
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} isCentered size="md" motionPreset="scale">

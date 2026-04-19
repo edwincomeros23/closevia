@@ -260,19 +260,22 @@ func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
 	}
 
 	var payload struct {
-		FullName        string `json:"full_name"`
-		ContactNumber   string `json:"contact_number"`
-		VehicleType     string `json:"vehicle_type"`
-		VehiclePlate    string `json:"vehicle_plate"`
-		LicenseImageURL string `json:"license_image_url"`
-		SelfieImageURL  string `json:"selfie_image_url"`
+		FullName             string `json:"full_name"`
+		ContactNumber        string `json:"contact_number"`
+		VehicleType          string `json:"vehicle_type"`
+		VehiclePlate         string `json:"vehicle_plate"`
+		VehicleColor         string `json:"vehicle_color"`
+		LicenseImageURL      string `json:"license_image_url"`
+		SelfieImageURL       string `json:"selfie_image_url"`
+		OrcrImageURL         string `json:"orcr_image_url"`
+		MotorOwnerImageURL   string `json:"motor_owner_image_url"`
 	}
 	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
 	}
 
-	if payload.FullName == "" || payload.ContactNumber == "" || payload.VehicleType == "" || payload.LicenseImageURL == "" {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Full name, contact number, vehicle type, and driver's license are required"})
+	if payload.FullName == "" || payload.ContactNumber == "" || payload.VehicleType == "" || payload.LicenseImageURL == "" || payload.OrcrImageURL == "" || payload.MotorOwnerImageURL == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Full name, contact number, vehicle type, driver's license, OR/CR, and vehicle owner photo are required"})
 	}
 
 	// Validate contact number: must be exactly 11 digits
@@ -304,12 +307,12 @@ func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You are already an approved rider"})
 		case "rejected":
 			// Allow resubmission
-			_, err = h.db.ExecContext(ctx, `UPDATE riders SET full_name=?, contact_number=?, vehicle_type=?, vehicle_plate=?,
-				license_image_url=?, selfie_image_url=?, status='pending', rejection_reason=NULL,
+			_, err = h.db.ExecContext(ctx, `UPDATE riders SET full_name=?, contact_number=?, vehicle_type=?, vehicle_plate=?, vehicle_color=?,
+				license_image_url=?, selfie_image_url=?, orcr_image_url=?, motor_owner_image_url=?, status='pending', rejection_reason=NULL,
 				reviewed_at=NULL, reviewed_by=NULL, name=?, updated_at=CURRENT_TIMESTAMP
 				WHERE id=?`,
-				payload.FullName, payload.ContactNumber, payload.VehicleType, payload.VehiclePlate,
-				payload.LicenseImageURL, payload.SelfieImageURL, payload.FullName, existingID)
+				payload.FullName, payload.ContactNumber, payload.VehicleType, payload.VehiclePlate, payload.VehicleColor,
+				payload.LicenseImageURL, payload.SelfieImageURL, payload.OrcrImageURL, payload.MotorOwnerImageURL, payload.FullName, existingID)
 			if err != nil {
 				log.Printf("Failed to resubmit rider application for user %d: %v", userID, err)
 				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to resubmit application"})
@@ -323,11 +326,11 @@ func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
 	// Get user name as fallback
 	name := payload.FullName
 
-	result, err := h.db.ExecContext(ctx, `INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, is_active, status,
-		full_name, contact_number, license_image_url, selfie_image_url)
-		VALUES (?, ?, ?, ?, ?, FALSE, 'pending', ?, ?, ?, ?)`,
-		userID, name, payload.VehicleType, payload.VehiclePlate, payload.ContactNumber,
-		payload.FullName, payload.ContactNumber, payload.LicenseImageURL, payload.SelfieImageURL)
+	result, err := h.db.ExecContext(ctx, `INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, vehicle_color, phone, is_active, status,
+		full_name, contact_number, license_image_url, selfie_image_url, orcr_image_url, motor_owner_image_url)
+		VALUES (?, ?, ?, ?, ?, ?, FALSE, 'pending', ?, ?, ?, ?, ?, ?)`,
+		userID, name, payload.VehicleType, payload.VehiclePlate, payload.VehicleColor, payload.ContactNumber,
+		payload.FullName, payload.ContactNumber, payload.LicenseImageURL, payload.SelfieImageURL, payload.OrcrImageURL, payload.MotorOwnerImageURL)
 	if err != nil {
 		log.Printf("Failed to create rider application for user %d: %v", userID, err)
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to submit application"})
@@ -550,6 +553,8 @@ func (h *DeliveryHandler) AdminListRiderApplications(c *fiber.Ctx) error {
 		r.phone, r.rating, r.is_active, COALESCE(r.status,'pending'),
 		COALESCE(r.full_name,''), COALESCE(r.contact_number,''),
 		COALESCE(r.license_image_url,''), COALESCE(r.selfie_image_url,''),
+		COALESCE(r.orcr_image_url,''), COALESCE(r.motor_owner_image_url,''),
+		COALESCE(r.vehicle_color,''),
 		COALESCE(r.rejection_reason,''), COALESCE(r.reviewed_at,''),
 		r.created_at, u.email, COALESCE(u.profile_picture,'')
 		FROM riders r JOIN users u ON r.user_id = u.id WHERE 1=1`
@@ -579,35 +584,39 @@ func (h *DeliveryHandler) AdminListRiderApplications(c *fiber.Ctx) error {
 	for rows.Next() {
 		var id, userID int
 		var name, vehicleType, phone, status, createdAt, email string
-		var vehiclePlate, fullName, contactNumber, licenseImageURL, selfieImageURL, rejectionReason, reviewedAt, profilePicture sql.NullString
+		var vehiclePlate, fullName, contactNumber, licenseImageURL, selfieImageURL, orcrImageURL, motorOwnerImageURL, vehicleColor, rejectionReason, reviewedAt, profilePicture sql.NullString
 		var rating float64
 		var isActive bool
 
 		if err := rows.Scan(&id, &userID, &name, &vehicleType, &vehiclePlate, &phone, &rating, &isActive,
 			&status, &fullName, &contactNumber, &licenseImageURL, &selfieImageURL,
+			&orcrImageURL, &motorOwnerImageURL, &vehicleColor,
 			&rejectionReason, &reviewedAt, &createdAt, &email, &profilePicture); err != nil {
 			continue
 		}
 
 		applications = append(applications, fiber.Map{
-			"id":                id,
-			"user_id":           userID,
-			"name":              name,
-			"vehicle_type":      vehicleType,
-			"vehicle_plate":     vehiclePlate.String,
-			"phone":             phone,
-			"rating":            rating,
-			"is_active":         isActive,
-			"status":            status,
-			"full_name":         fullName.String,
-			"contact_number":    contactNumber.String,
-			"license_image_url": licenseImageURL.String,
-			"selfie_image_url":  selfieImageURL.String,
-			"rejection_reason":  rejectionReason.String,
-			"reviewed_at":       reviewedAt.String,
-			"created_at":        createdAt,
-			"email":             email,
-			"profile_picture":   profilePicture.String,
+			"id":                    id,
+			"user_id":               userID,
+			"name":                  name,
+			"vehicle_type":          vehicleType,
+			"vehicle_plate":         vehiclePlate.String,
+			"vehicle_color":         vehicleColor.String,
+			"phone":                 phone,
+			"rating":                rating,
+			"is_active":             isActive,
+			"status":                status,
+			"full_name":             fullName.String,
+			"contact_number":        contactNumber.String,
+			"license_image_url":     licenseImageURL.String,
+			"selfie_image_url":      selfieImageURL.String,
+			"orcr_image_url":        orcrImageURL.String,
+			"motor_owner_image_url": motorOwnerImageURL.String,
+			"rejection_reason":      rejectionReason.String,
+			"reviewed_at":           reviewedAt.String,
+			"created_at":            createdAt,
+			"email":                 email,
+			"profile_picture":       profilePicture.String,
 		})
 	}
 
@@ -627,7 +636,7 @@ func (h *DeliveryHandler) AdminGetRiderApplication(c *fiber.Ctx) error {
 
 	var id, userID int
 	var name, vehicleType, phone, status, createdAt, email string
-	var vehiclePlate, fullName, contactNumber, licenseImageURL, selfieImageURL, rejectionReason, reviewedAt, profilePicture sql.NullString
+	var vehiclePlate, fullName, contactNumber, licenseImageURL, selfieImageURL, orcrImageURL, motorOwnerImageURL, vehicleColor, rejectionReason, reviewedAt, profilePicture sql.NullString
 	var rating float64
 	var isActive bool
 
@@ -635,11 +644,14 @@ func (h *DeliveryHandler) AdminGetRiderApplication(c *fiber.Ctx) error {
 		r.phone, r.rating, r.is_active, COALESCE(r.status,'pending'),
 		COALESCE(r.full_name,''), COALESCE(r.contact_number,''),
 		COALESCE(r.license_image_url,''), COALESCE(r.selfie_image_url,''),
+		COALESCE(r.orcr_image_url,''), COALESCE(r.motor_owner_image_url,''),
+		COALESCE(r.vehicle_color,''),
 		COALESCE(r.rejection_reason,''), COALESCE(r.reviewed_at,''),
 		r.created_at, u.email, COALESCE(u.profile_picture,'')
 		FROM riders r JOIN users u ON r.user_id = u.id WHERE r.id = ?`, riderID).Scan(
 		&id, &userID, &name, &vehicleType, &vehiclePlate, &phone, &rating, &isActive,
 		&status, &fullName, &contactNumber, &licenseImageURL, &selfieImageURL,
+		&orcrImageURL, &motorOwnerImageURL, &vehicleColor,
 		&rejectionReason, &reviewedAt, &createdAt, &email, &profilePicture)
 
 	if err != nil {
@@ -647,24 +659,27 @@ func (h *DeliveryHandler) AdminGetRiderApplication(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
-		"id":                id,
-		"user_id":           userID,
-		"name":              name,
-		"vehicle_type":      vehicleType,
-		"vehicle_plate":     vehiclePlate.String,
-		"phone":             phone,
-		"rating":            rating,
-		"is_active":         isActive,
-		"status":            status,
-		"full_name":         fullName.String,
-		"contact_number":    contactNumber.String,
-		"license_image_url": licenseImageURL.String,
-		"selfie_image_url":  selfieImageURL.String,
-		"rejection_reason":  rejectionReason.String,
-		"reviewed_at":       reviewedAt.String,
-		"created_at":        createdAt,
-		"email":             email,
-		"profile_picture":   profilePicture.String,
+		"id":                    id,
+		"user_id":               userID,
+		"name":                  name,
+		"vehicle_type":          vehicleType,
+		"vehicle_plate":         vehiclePlate.String,
+		"vehicle_color":         vehicleColor.String,
+		"phone":                 phone,
+		"rating":                rating,
+		"is_active":             isActive,
+		"status":                status,
+		"full_name":             fullName.String,
+		"contact_number":        contactNumber.String,
+		"license_image_url":     licenseImageURL.String,
+		"selfie_image_url":      selfieImageURL.String,
+		"orcr_image_url":        orcrImageURL.String,
+		"motor_owner_image_url": motorOwnerImageURL.String,
+		"rejection_reason":      rejectionReason.String,
+		"reviewed_at":           reviewedAt.String,
+		"created_at":            createdAt,
+		"email":                 email,
+		"profile_picture":       profilePicture.String,
 	}})
 }
 

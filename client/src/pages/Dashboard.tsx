@@ -450,14 +450,14 @@ const Dashboard: React.FC = () => {
 
   const currentTier = (user?.premium_tier || 'free') as 'free' | 'plus' | 'pro'
   const planMeta = {
-    free: { label: 'Free', color: 'gray', listingLimit: 10, boosts: 0, deliveryDiscount: '0%', matchPriority: 'Standard' },
-    plus: { label: 'Plus', color: 'blue', listingLimit: 30, boosts: 3, deliveryDiscount: '10%', matchPriority: 'Priority' },
-    pro: { label: 'Pro', color: 'purple', listingLimit: Infinity, boosts: 10, deliveryDiscount: '20%', matchPriority: 'Top queue' },
+    free: { label: 'Free', color: 'gray', listingLimit: 10, boosts: 0, deliveryDiscount: '0%', organizations: '1' },
+    plus: { label: 'Plus', color: 'blue', listingLimit: 30, boosts: 3, deliveryDiscount: '10%', organizations: '3' },
+    pro: { label: 'Pro', color: 'purple', listingLimit: Infinity, boosts: 10, deliveryDiscount: '20%', organizations: '3' },
   }
   const planBenefits = {
-    free: ['10 active listings', 'Standard delivery', 'Standard matches'],
-    plus: ['30 active listings', '3 boosts', '10% delivery discount', 'Priority matches'],
-    pro: ['Unlimited listings', '10 boosts', '20% delivery discount', 'Top match priority'],
+    free: ['10 active listings', 'Standard delivery', '1 organization'],
+    plus: ['30 active listings', '3 boosts', '3 organizations'],
+    pro: ['Unlimited listings', '10 boosts', '3 organizations'],
   }
   const activePlan = planMeta[currentTier] || planMeta.free
   const activeBenefits = planBenefits[currentTier] || planBenefits.free

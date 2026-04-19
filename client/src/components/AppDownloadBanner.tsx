@@ -63,6 +63,7 @@ const AppDownloadBanner: React.FC<AppDownloadBannerProps> = ({
         color="white"
         boxShadow="lg"
         zIndex={40}
+        display={{ base: 'block', md: 'none' }}
       >
         <HStack justify="space-between" align="flex-start" spacing={4}>
           <VStack align="start" spacing={2} flex={1}>
@@ -124,6 +125,7 @@ const AppDownloadBanner: React.FC<AppDownloadBannerProps> = ({
       borderRadius="8px"
       mb={4}
       position="relative"
+      display={{ base: 'block', md: 'none' }}
     >
       <HStack justify="space-between" align="center" spacing={4}>
         <HStack spacing={2} flex={1}>

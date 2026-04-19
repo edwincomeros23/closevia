@@ -898,7 +898,7 @@ const RiderHome: React.FC = () => {
           <Text fontSize="sm" color="gray.600" textAlign="center">
             {riderState?.message || 'You are not authorized to view rider jobs.'}
           </Text>
-          <Button w="full" variant="outline" colorScheme="brand" onClick={() => navigate('/delivery')}>
+          <Button w="full" variant="outline" colorScheme="brand" onClick={() => navigate('/rider-application')}>
             Go to Rider Application
           </Button>
         </VStack>

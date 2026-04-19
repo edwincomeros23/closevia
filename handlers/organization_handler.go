@@ -805,7 +805,7 @@ func (h *OrganizationHandler) CreatePost(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization slug is required"})
 	}
 
-	orgID, _, orgCategory, isDeleted, err := h.resolveOrg(slug)
+	orgID, _, _, isDeleted, err := h.resolveOrg(slug)
 	if err != nil || isDeleted {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Organization not found"})
 	}
@@ -831,10 +831,7 @@ func (h *OrganizationHandler) CreatePost(c *fiber.Ctx) error {
 		}
 	}
 
-	// Category tag is optional - only validate if provided
-	if categoryTag != "" && !strings.EqualFold(categoryTag, orgCategory) {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Post category tag must match organization category"})
-	}
+	// Category tag is freeform
 
 	// Handle image uploads
 	var imageURLs []string
