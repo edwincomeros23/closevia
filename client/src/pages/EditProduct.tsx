@@ -890,16 +890,7 @@ const EditProduct: React.FC = () => {
                       </FormHelperText>
                     </FormControl>
 
-                    <FormControl>
-                      <FormLabel fontSize="xs" color="gray.600" fontWeight="600" mb={1}>Preferred Items</FormLabel>
-                      <Input
-                        value={formData.wants || ''}
-                        onChange={(e) => handleInputChange('wants', e.target.value)}
-                        placeholder="e.g. Any smartphone, mechanical keyboard, etc."
-                        size={{ base: 'sm', md: 'md' }}
-                        h={{ base: '28px', md: '32px' }}
-                      />
-                    </FormControl>
+
                   </VStack>
                 </Box>
 

@@ -2183,15 +2183,19 @@ const Dashboard: React.FC = () => {
     const offersCount = React.useMemo(() => getProductOffersCount(product.id), [product.id, getProductOffersCount])
 
 
-    const isStagnant = React.useMemo(() => {
-      const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-      return offersCount === 0 && daysOld > 3
-    }, [product.created_at, offersCount])
-
-    const isBoostable = React.useMemo(() => {
-      if (!product.boosted_at) return true
-      const hoursSinceBoost = (new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)
-      return hoursSinceBoost >= 24
+    const boostRemaining = React.useMemo(() => {
+      if (!product.boosted_at) return null;
+      const boostedAtRaw = String(product.boosted_at)
+      const normalizedBoostedAt = boostedAtRaw.includes('T') ? boostedAtRaw : boostedAtRaw.replace(' ', 'T')
+      const boostedTime = new Date(normalizedBoostedAt).getTime()
+      if (Number.isNaN(boostedTime)) return null
+      const expiresAt = boostedTime + 3 * 60 * 60 * 1000
+      const remaining = expiresAt - new Date().getTime()
+      if (remaining <= 0) return null
+      
+      const hours = Math.floor(remaining / (60 * 60 * 1000))
+      const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000))
+      return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
     }, [product.boosted_at])
 
     return (
@@ -2220,50 +2224,45 @@ const Dashboard: React.FC = () => {
               cursor="pointer"
               onClick={() => navigate(`/products/${product.id}`)}
             />
-            {/* Boost button overlay - top right */}
-            {isStagnant && isBoostable && shouldShowActions && (
-              <Tooltip label="Boost this listing" placement="left" hasArrow>
-                <Button
-                  position="absolute"
-                  top={2}
-                  right={2}
-                  size="xs"
-                  colorScheme="blue"
-                  variant="solid"
-                  fontSize="10px"
-                  px={2}
-                  py={1}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleBoostProductClick(product)
-                  }}
-                  fontWeight="bold"
-                  boxShadow="md"
-                  _hover={{ transform: 'scale(1.05)', boxShadow: 'lg' }}
-                  transition="all 0.2s"
-                  zIndex={2}
-                >
-                  Boost
-                </Button>
-              </Tooltip>
+            {/* Boost indicator overlay - top right */}
+            {boostRemaining && (
+              <Badge
+                position="absolute"
+                top={2}
+                right={2}
+                variant="solid"
+                borderRadius="full"
+                px={{ base: 1.5, md: 2.5 }}
+                py={{ base: 0.5, md: 1 }}
+                fontSize={{ base: '8px', md: '10px' }}
+                fontWeight="800"
+                bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')}
+                color={useColorModeValue('brand.600', 'brand.300')}
+                shadow="sm"
+                backdropFilter="blur(8px)"
+                display="inline-flex"
+                alignItems="center"
+                gap={1}
+                zIndex={2}
+                pointerEvents="none"
+              >
+                <StarIcon boxSize={{ base: 2, md: 2.5 }} />
+                Boosted • {boostRemaining}
+              </Badge>
             )}
           </Box>
           <CardHeader pb={2}>
             <Flex justify="space-between" align="start">
-              <Heading size="sm" noOfLines={2} flex={1} mr={2} wordBreak="break-word">
-                {product.title}
+              <Heading size="sm" noOfLines={2} flex={1} mr={2} wordBreak="break-word" display="flex" alignItems="center" gap={2}>
+                <Text as="span" isTruncated>{product.title}</Text>
+                <HStack spacing={1} fontSize="xs" color="gray.500" fontWeight="normal" flexShrink={0}>
+                  <Icon as={FaHandshake} boxSize={3} />
+                  <Text>{offersCount} offers</Text>
+                </HStack>
               </Heading>
               <HStack spacing={2} flexShrink={0}>
-                {product.boosted_at && ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) < 3 && (
-                  <Badge colorScheme="brand" variant="solid" fontSize="xs">
-                    Boosted
-                  </Badge>
-                )}
-                {product.premium && (
-                  <Badge colorScheme="yellow" variant="solid" fontSize="xs">
-                    Boosted
-                  </Badge>
-                )}
+
+
                 {shouldShowActions && (
                   <IconButton
                     as={RouterLink}
@@ -2309,16 +2308,18 @@ const Dashboard: React.FC = () => {
               </HStack>
               <HStack spacing={2} align="center" flexWrap="wrap" justify="space-between">
                 <HStack spacing={2}>
-                  <Badge
-                    colorScheme={isAvailable ? 'green' : normalizedStatus === 'sold' ? 'red' : isLocked ? 'orange' : 'blue'}
-                    variant="subtle"
-                    fontSize="2xs"
-                    px={1.5}
-                    py={0.5}
-                    borderRadius="sm"
-                  >
-                    {product.status}
-                  </Badge>
+                  {!isAvailable && (
+                    <Badge
+                      colorScheme={isAvailable ? 'green' : normalizedStatus === 'sold' ? 'red' : isLocked ? 'orange' : 'blue'}
+                      variant="subtle"
+                      fontSize="2xs"
+                      px={1.5}
+                      py={0.5}
+                      borderRadius="sm"
+                    >
+                      {product.status}
+                    </Badge>
+                  )}
                   {product.barter_only && (
                     <Badge
                       colorScheme="purple"
@@ -2331,10 +2332,6 @@ const Dashboard: React.FC = () => {
                       Barter Only
                     </Badge>
                   )}
-                </HStack>
-                <HStack spacing={1} fontSize="xs" color="gray.500">
-                  <Icon as={FaHandshake} boxSize={3} />
-                  <Text>{offersCount} offers</Text>
                 </HStack>
               </HStack>
               </VStack>
@@ -2408,6 +2405,22 @@ const Dashboard: React.FC = () => {
     const isAvailable = normalizedStatus === 'available'
     const isLocked = normalizedStatus === 'locked'
     const statusColor = isAvailable ? 'green' : isLocked ? 'orange' : normalizedStatus === 'sold' ? 'red' : 'blue'
+    
+    const boostRemaining = React.useMemo(() => {
+      if (!product.boosted_at) return null;
+      const boostedAtRaw = String(product.boosted_at)
+      const normalizedBoostedAt = boostedAtRaw.includes('T') ? boostedAtRaw : boostedAtRaw.replace(' ', 'T')
+      const boostedTime = new Date(normalizedBoostedAt).getTime()
+      if (Number.isNaN(boostedTime)) return null
+      const expiresAt = boostedTime + 3 * 60 * 60 * 1000
+      const remaining = expiresAt - new Date().getTime()
+      if (remaining <= 0) return null
+      
+      const hours = Math.floor(remaining / (60 * 60 * 1000))
+      const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000))
+      return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
+    }, [product.boosted_at])
+
     return (
       <Box
         p={3}
@@ -2429,6 +2442,7 @@ const Dashboard: React.FC = () => {
             />
           )}
           <Box
+            position="relative"
             w="60px"
             h="60px"
             flexShrink={0}
@@ -2444,47 +2458,53 @@ const Dashboard: React.FC = () => {
               objectFit="cover"
               fallbackSrc="/no-image.svg"
             />
+            {boostRemaining && (
+              <Badge
+                position="absolute"
+                top={1}
+                right={1}
+                variant="solid"
+                borderRadius="full"
+                px={1}
+                py={0.5}
+                fontSize="8px"
+                fontWeight="800"
+                bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')}
+                color={useColorModeValue('brand.600', 'brand.300')}
+                shadow="sm"
+                backdropFilter="blur(8px)"
+                display="inline-flex"
+                alignItems="center"
+                gap={0.5}
+                pointerEvents="none"
+                zIndex={2}
+              >
+                <StarIcon boxSize="7px" />
+                {boostRemaining}
+              </Badge>
+            )}
           </Box>
           <VStack align="start" spacing={0} flex={1} minW={0}>
-            <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
-              {product.title}
-            </Text>
-            <HStack spacing={2} flexWrap="wrap" mt={1}>
-              <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
-                {product.status}
-              </Badge>
-              <HStack spacing={1} fontSize="xs" color="gray.500">
+            <HStack w="full" align="center" spacing={3}>
+              <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+                {product.title}
+              </Text>
+              <HStack spacing={1} fontSize="xs" color="gray.500" flexShrink={0}>
                 <Icon as={FaHandshake} boxSize={3} />
                 <Text>{offersCount} offers</Text>
               </HStack>
             </HStack>
+            {!isAvailable && (
+              <HStack spacing={2} flexWrap="wrap" mt={1}>
+                <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
+                  {product.status}
+                </Badge>
+              </HStack>
+            )}
           </VStack>
           {/* Desktop: show actions inline */}
           <HStack spacing={1} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
-            {(() => {
-              const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-              const isStag = offersCount === 0 && daysOld > 3
-              const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
-              const shouldAct = showActions && product.status !== 'traded' && product.status !== 'sold'
 
-              if (isStag && isBoost && shouldAct) {
-                return (
-                  <Button
-                    size="sm"
-                    colorScheme="blue"
-                    variant="ghost"
-                    leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
-                    onClick={() => handleBoostProductClick(product)}
-                    fontSize="sm"
-                    px={3}
-                    mr={1}
-                  >
-                    Boost
-                  </Button>
-                )
-              }
-              return null
-            })()}
             {showActions && (
               <>
                 {isAvailable && (
@@ -2535,28 +2555,7 @@ const Dashboard: React.FC = () => {
         {/* Mobile: show actions on a separate row below */}
         {showActions && (
           <HStack spacing={1} mt={2} display={{ base: 'flex', md: 'none' }} justify="flex-end" flexWrap="wrap">
-            {(() => {
-              const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-              const isStag = offersCount === 0 && daysOld > 3
-              const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
-              const shouldAct = product.status !== 'traded' && product.status !== 'sold'
 
-              if (isStag && isBoost && shouldAct) {
-                return (
-                  <Button
-                    size="xs"
-                    colorScheme="blue"
-                    variant="ghost"
-                    leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
-                    onClick={() => handleBoostProductClick(product)}
-                    fontSize="xs"
-                  >
-                    Boost
-                  </Button>
-                )
-              }
-              return null
-            })()}
             {isAvailable && (
               <Button
                 size="xs"
@@ -3717,7 +3716,9 @@ const Dashboard: React.FC = () => {
                     <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="wider">Active Plan</Text>
                     <HStack spacing={2} align="center">
                       <Text fontWeight="800" fontSize={{ base: 'md', md: 'lg' }} color="gray.800" letterSpacing="tight">{activePlan.label}</Text>
-                      <Badge colorScheme={activePlan.color} borderRadius="full" px={2} py={0.5} fontSize="10px" variant="solid" shadow="sm">PRO</Badge>
+                      {activePlan.label !== 'Free' && (
+                        <Badge colorScheme={activePlan.color} borderRadius="full" px={2} py={0.5} fontSize="10px" variant="solid" shadow="sm">PRO</Badge>
+                      )}
                     </HStack>
                   </Box>
                 </HStack>
@@ -3922,6 +3923,19 @@ const Dashboard: React.FC = () => {
                 {/* Products Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
+                    <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
+                      <VStack align="start" spacing={1}>
+                        <Text fontSize="xs" color="blue.800">
+                          Tip: Products shown here are available products. Use "Find Trades" to connect your product to other products.
+                        </Text>
+                        {!user?.is_premium && (
+                          <Text fontSize="xs" color="blue.900" fontWeight="semibold">
+                            Upgrade to Premium to be able to boost your products.
+                          </Text>
+                        )}
+                      </VStack>
+                    </Box>
+
 
                     {/* Products Grid or List - Apply Sort */}
                     {productsLoading && !hasInitiallyLoaded.current ? (
@@ -4638,7 +4652,7 @@ const Dashboard: React.FC = () => {
                                         variant="outline"
                                         fontSize={{ base: 'xs', md: 'sm' }}
                                         px={{ base: 2, md: 3 }}
-                                        onClick={() => handleViewDetails(trade)}
+                                        onClick={() => handleViewOngoingTrade(trade)}
                                       >
                                         View
                                       </Button>

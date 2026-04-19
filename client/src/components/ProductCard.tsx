@@ -302,12 +302,12 @@ const ProductCard: React.FC<ProductCardProps> = ({
                   gap={1}
                 >
                   <StarIcon boxSize={{ base: 2, md: 2.5 }} />
-                  Boosted
+                  Boosted {boostTimeRemaining ? `• ${boostTimeRemaining}` : ''}
                 </Badge>
               </Tooltip>
             )}
             {product.premium && (
-              <Tooltip label="Boosted listing" placement="top-start" hasArrow>
+              <Tooltip label="Premium listing" placement="top-start" hasArrow>
                 <Badge
                   variant="solid"
                   borderRadius="full"
@@ -324,7 +324,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                   gap={1}
                 >
                   <StarIcon boxSize={{ base: 2, md: 2.5 }} />
-                  Boosted
+                  Premium
                 </Badge>
               </Tooltip>
             )}

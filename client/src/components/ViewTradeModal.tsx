@@ -816,7 +816,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       toast({
         id: "viewtrademodal-review-submitted",
         title: 'Review submitted',
-        description: 'Your review has been submitted successfully.',
+        description: 'Your review has been submitted ✅',
         status: 'success',
       })
 
@@ -1085,7 +1085,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
             <Box p={3} bg="green.50" borderRadius="md" borderWidth="2px" borderColor="green.300" textAlign="center">
               <Icon as={FiCheck} boxSize={6} color="green.500" mb={2} mx="auto" display="block" />
               <Text fontWeight="bold" color="green.700" mb={1} fontSize="sm">
-                Trade Completed Successfully! =���
+                Trade Completed Successfully! 🎉
               </Text>
               <Text fontSize="xs" color="green.600">
                 Both parties have submitted their reviews. Thank you for using Clovia!
@@ -1098,7 +1098,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
             <Box p={4} bg="blue.50" borderRadius="lg" borderWidth="2px" borderColor="blue.300" textAlign="center">
               <Icon as={FaCheckCircle} boxSize={6} color="blue.500" mb={2} mx="auto" display="block" />
               <Text fontWeight="semibold" color="blue.700" mb={1}>
-                Your review has been submitted G��
+                Your review has been submitted ✅
               </Text>
               <Text fontSize="sm" color="blue.600">
                 Waiting for the other party to complete their review...
@@ -1334,13 +1334,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     standard: {
       time: distance < 10 ? '2-3 business days' : distance < 25 ? '3-4 business days' : '4-6 business days',
       fee: calculateDeliveryFee(distance, 'standard'),
-      icon: '=���',
+      icon: '🚚',
       description: `${distance < 5 ? 'Local area' : distance < 15 ? 'Within city' : 'Inter-city'} delivery`
     },
     express: {
       time: distance < 10 ? 'Same day' : distance < 25 ? '1-2 business days' : '2-3 business days',
       fee: calculateDeliveryFee(distance, 'express'),
-      icon: 'G��',
+      icon: '⚡',
       description: `Fast ${distance < 5 ? 'local' : distance < 15 ? 'city-wide' : 'regional'} delivery`
     }
   }), [distance])
@@ -3772,7 +3772,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           >
                             <VStack spacing={3} align="stretch">
                               <Text fontWeight="semibold" fontSize="md" color="green.700">
-                                G�� Your Selection Locked
+                                ✅ Your Selection Locked
                               </Text>
 
                               <VStack spacing={2} align="start" fontSize="sm">
@@ -4195,7 +4195,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   textAlign="center"
                                 >
                                   <Text fontWeight="medium" color="blue.700" fontSize={["xs", "sm"]}>
-                                    GŦ Waiting for Agreement
+                                    ⏳ Waiting for Agreement
                                   </Text>
                                   <Text fontSize="xs" color="blue.600" mt={0.5}>
                                     {buyerMeetupConfirmed && !sellerMeetupConfirmed
@@ -4271,7 +4271,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                       isDisabled={!meetupAgreed}
                                       _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
                                     >
-                                      {meetupAgreed ? 'Leave Review & Complete Trade' : 'GŦ Review (after agreement)'}
+                                      {meetupAgreed ? 'Leave Review & Complete Trade' : '⭐ Review (after agreement)'}
                                     </Button>
                                   </VStack>
                                 ) : (
@@ -4290,7 +4290,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                       isDisabled={!meetupAgreed}
                                       _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
                                     >
-                                      {meetupAgreed ? 'Leave Review & Complete Trade' : 'GŦ Review (after agreement)'}
+                                      {meetupAgreed ? 'Leave Review & Complete Trade' : '⭐ Review (after agreement)'}
                                     </Button>
                                   </VStack>
                                 )}

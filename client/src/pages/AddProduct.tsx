@@ -1531,149 +1531,63 @@ const AddProduct: React.FC = () => {
       </Box>
 
       {/* ──────── LOCATION DETECTOR ──────── */}
-      <Box bg="gray.100" p={3} borderRadius="md">
-        {/* QA Mode: Mock Location Toggle */}
+      <Box p={3} borderRadius="xl" borderWidth="1px" borderColor="brand.100" bg="white" shadow="sm">
         <VStack align="stretch" spacing={3}>
-          <HStack justify="space-between" align="center">
-            <Text fontSize="xs" color="gray.600" fontWeight="medium">📍 Location</Text>
-            <HStack spacing={2}>
-              <Text fontSize="8px" color="gray.500">QA Mode:</Text>
-              <Button
-                size="xs"
-                variant={useMockLocation ? 'solid' : 'outline'}
-                colorScheme={useMockLocation ? 'orange' : 'gray'}
-                onClick={() => {
-                  setUseMockLocation(!useMockLocation)
-                  if (!useMockLocation) {
-                    // Enable mock location
-                    setLocationText(mockLocationText)
-                    setFormData(prev => ({ ...prev, location: mockLocationText }))
-                    setLocationDetected(true)
-                  } else {
-                    // Disable mock location - trigger real geolocation detection
-                    detectLocation()
-                  }
-                }}
-                fontSize="8px"
-                fontWeight="bold"
-                h="20px"
-                px={2}
-              >
-                {useMockLocation ? '✓ Mock' : 'Real'}
-              </Button>
-            </HStack>
-          </HStack>
+          <Text fontSize="xs" color="gray.600" fontWeight="bold" textTransform="uppercase" letterSpacing="wider">
+            Your Current Location
+          </Text>
 
-          {useMockLocation ? (
-            <VStack align="stretch" spacing={2}>
-              <Text fontSize="sm" fontWeight="medium" color="orange.600">⚡ Using Mock Location (QA Testing)</Text>
-              <Input
-                placeholder="Enter mock location (e.g., Makati City)"
-                value={mockLocationText}
-                onChange={e => {
-                  setMockLocationText(e.target.value)
-                  setLocationText(e.target.value)
-                  setFormData(prev => ({ ...prev, location: e.target.value }))
-                }}
-                size="sm"
-                bg="white"
-                fontSize="sm"
-                onClick={e => e.stopPropagation()}
-              />
-              <Text fontSize="8px" color="gray.500">✓ Location is set for testing. Real geolocation is disabled.</Text>
-            </VStack>
-          ) : isGettingLocation ? (
-            <HStack spacing={2}>
-              <Spinner size="sm" color="blue.600" />
-              <Text fontSize="xs" color="gray.600">Detecting location...</Text>
+          {isGettingLocation ? (
+            <HStack spacing={3} p={3} bg="gray.50" borderRadius="lg" border="1px dashed" borderColor="gray.200">
+              <Spinner size="sm" color="brand.500" />
+              <VStack align="start" spacing={0}>
+                <Text fontSize="xs" fontWeight="600" color="gray.700">Detecting your location...</Text>
+                <Text fontSize="10px" color="gray.500">Please wait while we automatically find you</Text>
+              </VStack>
             </HStack>
           ) : locationDetected && locationText ? (
-            <VStack align="stretch" spacing={2}>
-              <HStack justify="space-between" align="center" spacing={2}>
-                <Text fontSize="sm" fontWeight="medium" color="gray.800">
-                  📍 {locationText}
-                </Text>
-                <HStack spacing={1}>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    fontSize="9px"
-                    h="auto"
-                    py={1}
-                    onClick={detectLocation}
-                    isLoading={isGettingLocation}
-                    _hover={{ bg: "gray.200" }}
-                  >
-                    Retry
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    fontSize="9px"
-                    h="auto"
-                    py={1}
-                    onClick={() => {
-                      setManualLocationInput(locationText)
-                      setManualLocationOpen(true)
-                    }}
-                  >
-                    Enter manually
-                  </Button>
-                </HStack>
+            <VStack align="stretch" spacing={3}>
+              <HStack align="center" spacing={3} p={3} bg="brand.50" borderRadius="lg" border="1px dashed" borderColor="brand.200">
+                <Box p={2} bg="brand.100" borderRadius="full">
+                  <Text fontSize="md">📍</Text>
+                </Box>
+                <VStack align="start" spacing={0} flex={1}>
+                  <Text fontSize="sm" fontWeight="bold" color="brand.800" noOfLines={1} title={locationText}>
+                    {locationText}
+                  </Text>
+                  <Text fontSize="10px" color="brand.600" fontWeight="500">This is your current detected location</Text>
+                </VStack>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  colorScheme="brand"
+                  px={3}
+                  h="24px"
+                  borderRadius="full"
+                  onClick={detectLocation}
+                  isLoading={isGettingLocation}
+                  bg="white"
+                >
+                  Refresh
+                </Button>
               </HStack>
-              {manualLocationOpen && (
-                <HStack spacing={2}>
-                  <Input
-                    size="sm"
-                    placeholder="e.g., Barangay Mercedes, Zamboanga City"
-                    value={manualLocationInput}
-                    onChange={(e) => setManualLocationInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveManualLocation() } }}
-                  />
-                  <Button size="sm" colorScheme="brand" onClick={saveManualLocation} isLoading={manualLocationSaving}>
-                    Save
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setManualLocationOpen(false)}>
-                    Cancel
-                  </Button>
-                </HStack>
-              )}
             </VStack>
           ) : (
             <VStack align="stretch" spacing={2}>
-              <Button
-                size="sm"
-                colorScheme="brand"
-                variant="outline"
-                onClick={detectLocation}
-                isLoading={isGettingLocation}
-                fontSize="sm"
-                w="full"
-              >
-                Auto-Detect My Location
-              </Button>
-              <Button
-                size="xs"
-                variant="link"
-                onClick={() => setManualLocationOpen(true)}
-              >
-                Or enter manually
-              </Button>
-              {manualLocationOpen && (
-                <HStack spacing={2}>
-                  <Input
-                    size="sm"
-                    placeholder="e.g., Barangay Mercedes, Zamboanga City"
-                    value={manualLocationInput}
-                    onChange={(e) => setManualLocationInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveManualLocation() } }}
-                  />
-                  <Button size="sm" colorScheme="brand" onClick={saveManualLocation} isLoading={manualLocationSaving}>
-                    Save
-                  </Button>
-                </HStack>
-              )}
-              <Text fontSize="9px" color="gray.500">This helps match you with nearby trades</Text>
+               <Box p={3} bg="gray.50" borderRadius="lg" border="1px dashed" borderColor="gray.200" textAlign="center">
+                 <Text fontSize="xs" mb={3} color="gray.500">We need your location to match you with nearby trades.</Text>
+                 <Button
+                  size="sm"
+                  colorScheme="brand"
+                  variant="solid"
+                  onClick={detectLocation}
+                  isLoading={isGettingLocation}
+                  w="100%"
+                  borderRadius="md"
+                 >
+                   📍 Auto-Detect Location
+                 </Button>
+               </Box>
             </VStack>
           )}
         </VStack>

@@ -32,7 +32,7 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
   addProductLink = '/add-product',
   showAddButton = true,
 }) => {
-  const { notificationCount } = useRealtime()
+  const { notificationCount, offerCount } = useRealtime()
   const { onOpen: openMobileNav } = useMobileNav()
   const navigate = useNavigate()
 
@@ -114,7 +114,7 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
                 transform: 'scale(0.95)',
               }}
             />
-            {notificationCount > 0 && (
+            {offerCount > 0 && (
               <CBadge
                 position="absolute"
                 top="-4px"
@@ -125,7 +125,7 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
                 px={1}
                 zIndex={1}
               >
-                {notificationCount}
+                {offerCount}
               </CBadge>
             )}
           </Box>
