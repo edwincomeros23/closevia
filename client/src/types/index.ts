@@ -203,6 +203,7 @@ export interface TradeItem {
   product_title?: string
   product_status?: 'available' | 'sold' | 'traded'
   product_image_url?: string
+  product_pickup_address?: string
 }
 
 export interface Trade {
@@ -220,6 +221,7 @@ export interface Trade {
   seller_name?: string
   product_title?: string
   product_image_url?: string
+  target_product_pickup_address?: string
   buyer_completed?: boolean
   seller_completed?: boolean
   completed_at?: string | null

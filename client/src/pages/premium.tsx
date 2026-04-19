@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Box,
   VStack,
@@ -8,6 +8,7 @@ import {
   Heading,
   Text,
   Button,
+  IconButton,
   Card,
   CardBody,
   Badge,
@@ -39,7 +40,8 @@ import {
   FaInfinity, FaChevronDown, FaChevronUp,
   FaChartLine, FaTruck, FaHandshake, FaPercentage,
   FaEye, FaStar, FaStore, FaHeadset, FaBoxes,
-  FaRedoAlt, FaSearch, FaUserShield, FaImage
+  FaRedoAlt, FaSearch, FaUserShield, FaImage,
+  FaArrowLeft,
 } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
@@ -54,6 +56,14 @@ const Premium: React.FC = () => {
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1)
+    } else {
+      navigate('/home')
+    }
+  }
 
   const [loops, setLoops] = useState<TradeLoop[]>([])
   const [loading, setLoading] = useState(false)
@@ -964,6 +974,15 @@ const Premium: React.FC = () => {
   return (
     <Box minH="100vh" bg={pageBg}>
       <Container maxW="container.xl" py={12}>
+        <IconButton
+          aria-label="Go back"
+          icon={<Icon as={FaArrowLeft} />}
+          onClick={handleBack}
+          variant="ghost"
+          size="lg"
+          mb={2}
+          alignSelf="flex-start"
+        />
         <VStack spacing={12} align="stretch">
           {currentTier === 'free' && (
             <VStack spacing={4} textAlign="center">
