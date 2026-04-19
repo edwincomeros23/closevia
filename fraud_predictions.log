@@ -473,6 +473,46 @@
 {
   "fraud_probability": 0,
   "is_fraud": false,
+  "product_id": 367,
+  "risk_level": "",
+  "seller_id": 63,
+  "timestamp": "2026-04-19T15:42:29-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 368,
+  "risk_level": "",
+  "seller_id": 3400,
+  "timestamp": "2026-04-19T16:32:03-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 369,
+  "risk_level": "",
+  "seller_id": 3399,
+  "timestamp": "2026-04-19T16:34:20-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 371,
+  "risk_level": "",
+  "seller_id": 3399,
+  "timestamp": "2026-04-19T16:55:51-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 372,
+  "risk_level": "",
+  "seller_id": 3400,
+  "timestamp": "2026-04-19T16:57:38-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
   "product_id": 380,
   "risk_level": "",
   "seller_id": 3395,
