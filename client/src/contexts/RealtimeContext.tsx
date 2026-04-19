@@ -208,6 +208,18 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (refreshCallbacksRef.current.receivedOffers) refreshCallbacksRef.current.receivedOffers()
             if (refreshCallbacksRef.current.ongoingTrades) refreshCallbacksRef.current.ongoingTrades()
             break
+          case 'trade_review_submitted':
+          case 'trade_completed':
+            showNotification(message || (payload.type === 'trade_completed' ? 'Trade completed!' : 'New trade review submitted'), 'success')
+            // Refresh counts and all relevant tabs
+            refreshCounts()
+            if (refreshCallbacksRef.current.multiway) refreshCallbacksRef.current.multiway()
+            if (refreshCallbacksRef.current.multiwayAlert) refreshCallbacksRef.current.multiwayAlert()
+            if (refreshCallbacksRef.current.ongoingTrades) refreshCallbacksRef.current.ongoingTrades()
+            // Invalidate queries for fresh data
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+            queryClient.invalidateQueries({ queryKey: ['trades'] })
+            break
           case 'notification':
             refreshCounts()
             if (data.notification_type === 'trade_loop') {

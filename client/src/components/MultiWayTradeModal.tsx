@@ -338,6 +338,16 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const [submittingReview, setSubmittingReview] = useState(false)
   const [reviewSubmitted, setReviewSubmitted] = useState(false)
 
+  // Sync review status from props
+  useEffect(() => {
+    const me = multiWayTrade.participants.find(p => p.user_id === user?.id)
+    if (me?.is_reviewed) {
+      setReviewSubmitted(true)
+    } else {
+      setReviewSubmitted(false)
+    }
+  }, [multiWayTrade.participants, user?.id])
+
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const sectionBg = useColorModeValue('gray.50', 'gray.750')
@@ -791,19 +801,25 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     try {
       setSubmittingReview(true)
 
+      let uploadedProofUrl = ''
       if (proofFile) {
         const formData = new FormData()
         formData.append('image', proofFile)
         formData.append('type', 'trade_proof')
         const uploadRes = await api.post('/api/upload', formData)
-        const uploadedProofUrl = uploadRes.data?.data?.url
+        uploadedProofUrl = uploadRes.data?.data?.url
         if (!uploadedProofUrl) {
           throw new Error(uploadRes.data?.error || 'Upload succeeded but no image URL was returned.')
         }
       }
 
       setSelectedAction('execute')
-      await executeMultiWayTrade(multiWayTrade.loop_id)
+      await executeMultiWayTrade(multiWayTrade.loop_id, {
+        rating,
+        feedback,
+        proof_url: uploadedProofUrl || '',
+        is_camera_photo: true, // Multiway modal uses in-app logic for photo
+      })
       toast({ id: 'mwt-review-submitted', title: 'Review submitted', status: 'success' })
       onTradeCompleted?.()
       setReviewSubmitted(true)
@@ -2711,7 +2727,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
           <ModalCloseButton mt={4} mr={4} size="md" />
           <ModalBody py={6} px={6}>
             <VStack spacing={6} align="stretch">
-              <SimpleGrid columns={2} spacing={4}>
+              <SimpleGrid columns={sortedParticipants.length > 3 ? 1 : 2} spacing={4}>
                 <Box
                   p={4}
                   bg={reviewSubmitted ? 'green.50' : 'gray.50'}
@@ -2719,34 +2735,41 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                   borderWidth="0"
                   shadow="sm"
                 >
-                  <VStack spacing={2}>
+                  <VStack spacing={2} align="start">
                     <HStack justify="space-between" w="full">
                       <Text fontWeight="600" fontSize="sm" color="gray.800">Your Review</Text>
                       <Icon as={reviewSubmitted ? FaCheck : FaClock} color={reviewSubmitted ? 'green.500' : 'gray.400'} boxSize={4} />
                     </HStack>
-                    <Text fontSize="xs" fontWeight="500" color="gray.500" w="full">
+                    <Text fontSize="xs" fontWeight="500" color="gray.500">
                       {reviewSubmitted ? 'Submitted' : 'Pending'}
                     </Text>
                   </VStack>
                 </Box>
 
-                <Box
-                  p={4}
-                  bg="gray.50"
-                  borderRadius="2xl"
-                  borderWidth="0"
-                  shadow="sm"
-                >
-                  <VStack spacing={2}>
-                    <HStack justify="space-between" w="full">
-                      <Text fontWeight="600" fontSize="sm" color="gray.800">Other Party</Text>
-                      <Icon as={FaClock} color="gray.400" boxSize={4} />
-                    </HStack>
-                    <Text fontSize="xs" fontWeight="500" color="gray.500" w="full">
-                      Pending
-                    </Text>
-                  </VStack>
-                </Box>
+                {sortedParticipants
+                  .filter((p) => p.user_id !== user?.id)
+                  .map((p) => (
+                    <Box
+                      key={`review-status-${p.user_id}`}
+                      p={4}
+                      bg={p.is_reviewed ? 'green.50' : 'gray.50'}
+                      borderRadius="2xl"
+                      borderWidth="0"
+                      shadow="sm"
+                    >
+                      <VStack spacing={2} align="start">
+                        <HStack justify="space-between" w="full">
+                          <Text fontWeight="600" fontSize="sm" color="gray.800" noOfLines={1}>
+                            {p.user_name}
+                          </Text>
+                          <Icon as={p.is_reviewed ? FaCheck : FaClock} color={p.is_reviewed ? 'green.500' : 'gray.400'} boxSize={4} />
+                        </HStack>
+                        <Text fontSize="xs" fontWeight="500" color="gray.500">
+                          {p.is_reviewed ? 'Submitted' : 'Pending'}
+                        </Text>
+                      </VStack>
+                    </Box>
+                  ))}
               </SimpleGrid>
 
               {reviewSubmitted && (

@@ -288,6 +288,7 @@ export interface MultiWayTradeParticipant {
   trade_id: number
   trade_status: TradeStatus
   position_in_loop: number // 0 = first, 1 = second, etc.
+  is_reviewed?: boolean
 }
 
 export interface MultiWayTrade {
