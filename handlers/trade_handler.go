@@ -3953,6 +3953,26 @@ func (h *TradeHandler) UpdateTradeLoopMeetup(c *fiber.Ctx) error {
 		if ra == 0 {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup is not confirmed yet"})
 		}
+
+		// Finalize the loop once every participant has confirmed the meet-up is done.
+		// Only here do we mark the offered products as 'traded' and flip the loop to 'completed'.
+		if loopNumericID, parseOK := parseLikeLoopID(loopID); parseOK {
+			var totalParticipants, metCount int
+			_ = h.db.QueryRow("SELECT COUNT(*) FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID).Scan(&totalParticipants)
+			_ = h.db.QueryRow("SELECT COUNT(*) FROM trade_loop_meetup_selections WHERE loop_id = ? AND met_confirmed = TRUE", loopID).Scan(&metCount)
+			if totalParticipants > 0 && metCount == totalParticipants {
+				prodRows, _ := h.db.Query("SELECT offered_product_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+				for prodRows.Next() {
+					var pid int
+					if err := prodRows.Scan(&pid); err == nil {
+						_, _ = h.db.Exec("UPDATE products SET status = 'traded' WHERE id = ?", pid)
+					}
+				}
+				prodRows.Close()
+				_, _ = h.db.Exec("UPDATE trade_like_loops SET status = 'completed' WHERE id = ?", loopNumericID)
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'Trade loop completed! All items are now marked as traded.', FALSE FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+			}
+		}
 	default:
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid action"})
 	}
@@ -5496,14 +5516,8 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 
 	if totalCount > 0 && confirmedCount == totalCount {
 		_, _ = h.db.Exec("UPDATE trade_like_loops SET status = 'confirmed', confirmed_at = CURRENT_TIMESTAMP WHERE id = ?", loopNumericID)
-		rows, _ := h.db.Query("SELECT offered_product_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
-		for rows.Next() {
-			var pid int
-			if err := rows.Scan(&pid); err == nil {
-				_, _ = h.db.Exec("UPDATE products SET status = 'traded' WHERE id = ?", pid)
-			}
-		}
-		rows.Close()
+		// Products are not marked 'traded' here — that happens only after every participant
+		// confirms the meet-up is done (see UpdateTradeLoopMeetup → confirm_meetup_done).
 
 		participantRows, _ := h.db.Query("SELECT user_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
 		userIDs := []int{}
@@ -5531,7 +5545,7 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 			_, _ = h.db.Exec(q, args...)
 		}
 
-		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'Trade loop confirmed! Your items are now marked as traded.', FALSE FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'Trade loop confirmed! Coordinate the meet-up in the group chat.', FALSE FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
 		return c.JSON(models.APIResponse{Success: true, Message: "Trade loop confirmed"})
 	}
 

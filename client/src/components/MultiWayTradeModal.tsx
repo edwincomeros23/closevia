@@ -258,7 +258,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const { user } = useAuth()
   const viewerUserId = currentUserId ?? user?.id
   const isActiveChain =
-    multiWayTrade.status === 'confirmed'
+    multiWayTrade.status === 'confirmed' ||
+    multiWayTrade.status === 'active' ||
+    multiWayTrade.status === 'multiway_active'
+  // Chat & meet-up are only meaningful once every participant has accepted.
+  // While pending, hide those tabs so the card feels like a review-only invite.
+  const showCollaborationTabs = isActiveChain
 
   const [loading, setLoading] = useState(false)
   const [selectedAction, setSelectedAction] = useState<
@@ -1335,10 +1340,14 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
           <Tabs index={activeTab} onChange={setActiveTab} variant="soft-rounded" colorScheme="brand" display="flex" flexDirection="column" flex={1} overflow="hidden">
             <TabList px={6} pt={2} pb={4} mb={0} borderBottomWidth="1px" borderColor={borderColor}>
               <Tab fontSize="md" fontWeight="600" px={5}>Overview</Tab>
-              <Tab fontSize="md" fontWeight="600" px={5}>
-                {sortedParticipants.length >= 3 ? 'Group Chat' : 'Chat'}
-              </Tab>
-              <Tab fontSize="md" fontWeight="600" px={5}>Meet up</Tab>
+              {showCollaborationTabs && (
+                <Tab fontSize="md" fontWeight="600" px={5}>
+                  {sortedParticipants.length >= 3 ? 'Group Chat' : 'Chat'}
+                </Tab>
+              )}
+              {showCollaborationTabs && (
+                <Tab fontSize="md" fontWeight="600" px={5}>Meet up</Tab>
+              )}
             </TabList>
 
             <TabPanels flex={1} minH={0} overflow="hidden" display="flex" flexDirection="column">
@@ -1819,7 +1828,8 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 </VStack>
               </TabPanel>
 
-        {/* Chat Tab */}
+        {/* Chat Tab — hidden while the loop is still pending approvals */}
+        {showCollaborationTabs && (
         <TabPanel px={[2, 4]} py={3} overflow="hidden" minH={0} flex={1} display="flex" flexDirection="column">
           <VStack spacing={2} align="stretch" h="full" display="flex" flexDirection="column" minH={0}>
             {/* Messages Area */}
@@ -1983,8 +1993,10 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
             </Box>
           </VStack>
         </TabPanel>
+        )}
 
-              {/* Meet up Tab */}
+              {/* Meet up Tab — hidden while the loop is still pending approvals */}
+              {showCollaborationTabs && (
               <TabPanel px={[2, 4]} py={3} overflowY="auto" minH={0} flex={1} display="flex" flexDirection="column">
                 <VStack spacing={4} align="stretch">
                   <Box p={3} bg={meetupInfoBg} borderLeft="4px" borderColor="brand.500" borderRadius="md">
@@ -2642,6 +2654,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                   </Box>
                 </VStack>
               </TabPanel>
+              )}
 
         </TabPanels>
       </Tabs>
