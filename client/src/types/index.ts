@@ -223,6 +223,7 @@ export interface Trade {
   buyer_completed?: boolean
   seller_completed?: boolean
   completed_at?: string | null
+  meetup_status?: 'pending' | 'accepted' | 'declined' | 'disputed' | string
   meetup_confirmed?: boolean
   meetup_location?: string
   meetup_time?: string
