@@ -815,7 +815,8 @@ const Dashboard: React.FC = () => {
     const completed: any[] = []
 
     for (const trade of filteredMultiWayTrades) {
-      // Determine if user needs to take action
+      // Confirmed loops have moved to the Ongoing Trades tab — keep this tab focused
+      // on loops that still need a decision.
       const status = trade?.status || ''
       const canJoin = trade?.can_join === true
       const canDecline = trade?.can_decline === true
@@ -824,8 +825,6 @@ const Dashboard: React.FC = () => {
         needsAction.push(trade)
       } else if (status === 'pending' && !canJoin && !canDecline) {
         waitingOnOthers.push(trade)
-      } else if (status === 'confirmed') {
-        completed.push(trade)
       }
     }
 
@@ -839,6 +838,7 @@ const Dashboard: React.FC = () => {
     const completed: any[] = []
 
     for (const trade of tradeMatchTrades) {
+      // Confirmed matches move to Ongoing Trades; this tab only tracks pending review.
       const status = trade?.status || ''
       const canJoin = trade?.can_join === true
       const canDecline = trade?.can_decline === true
@@ -847,8 +847,6 @@ const Dashboard: React.FC = () => {
         needsAction.push(trade)
       } else if (status === 'pending' && !canJoin && !canDecline) {
         waitingOnOthers.push(trade)
-      } else if (status === 'confirmed') {
-        completed.push(trade)
       }
     }
 
@@ -1427,7 +1425,7 @@ const Dashboard: React.FC = () => {
     const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway').length
     const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
     const ongoingMultiway = (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'pending_user3' || t?.status === 'user3_accepted' || t?.status === 'multiway_active'
+      t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed'
     ).length
     
     // Deduplicate: status='multiway_active' trades are present in both ongoingTradesData and multiWayTrades
@@ -1622,12 +1620,14 @@ const Dashboard: React.FC = () => {
     return filtered
   }, [ongoingTradesData, multiWayTrades, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
-  // Accepted multiway trades that should appear in the ongoing trades section
-  // ONLY show trades when ALL participants have accepted (status='active' or 'multiway_active')
-  // Do NOT show 'user3_accepted' status - that means only User 3 has responded
+  // Accepted multiway trades that should appear in the ongoing trades section.
+  // Show trades once ALL participants have accepted:
+  //   - 'active' / 'multiway_active' — 3-way chain (multiway_trades table) fully agreed
+  //   - 'confirmed'                  — 3-5 participant like-loop (trade_like_loops table) fully agreed
+  // Do NOT show 'pending_user3' or 'user3_accepted' — those belong in the Multi-Way tab.
   const ongoingMultiWayTrades = useMemo(() => {
     return (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'pending_user3' || t?.status === 'user3_accepted' || t?.status === 'active' || t?.status === 'multiway_active'
+      t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed'
     )
   }, [multiWayTrades])
 
