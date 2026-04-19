@@ -5727,6 +5727,8 @@ const Dashboard: React.FC = () => {
             onAccepted={async () => {
               invalidateOffers()
               invalidateDashboard()
+              setActiveTab(1)
+              setOffersSubTab(3)
 
               // After accepting, show Trade Details (chat/meetup/delivery) for both parties
               if (selectedTrade) {
@@ -5773,6 +5775,8 @@ const Dashboard: React.FC = () => {
                 void fetchMultiWayTrades()
                 invalidateOffers()
                 invalidateProducts()
+                setActiveTab(1)
+                setOffersSubTab(3)
               }}
             />
           )}
