@@ -674,34 +674,19 @@ const Premium: React.FC = () => {
                       </Box>
                       
                       {/* Boost Button */}
-                      {currentTier !== 'free' && (
-                        <Button
-                          size="sm"
-                          colorScheme={product.boosted_at ? 'orange' : 'brand'}
-                          variant={product.boosted_at ? 'solid' : 'outline'}
-                          w="full"
-                          leftIcon={<FaRocket />}
-                          isLoading={boostingProduct === product.id}
-                          isDisabled={product.status !== 'available' || boostingProduct === product.id}
-                          onClick={() => handleBoostProduct(product.id)}
-                          title={product.boosted_at ? 'Product is currently boosted' : 'Boost for 3 hours to top of feed'}
-                        >
-                          {product.boosted_at ? '⭐ Boosted Now' : '🚀 Boost for 3h'}
-                        </Button>
-                      )}
-                      {currentTier === 'free' && (
-                        <Button
-                          size="sm"
-                          colorScheme="gray"
-                          variant="outline"
-                          w="full"
-                          leftIcon={<FaRocket />}
-                          isDisabled
-                          opacity={0.5}
-                        >
-                          Upgrade to Boost
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        colorScheme={product.boosted_at ? 'orange' : 'brand'}
+                        variant={product.boosted_at ? 'solid' : 'outline'}
+                        w="full"
+                        leftIcon={<FaRocket />}
+                        isLoading={boostingProduct === product.id}
+                        isDisabled={product.status !== 'available' || boostingProduct === product.id}
+                        onClick={() => handleBoostProduct(product.id)}
+                        title={product.boosted_at ? 'Product is currently boosted' : 'Boost for 3 hours to top of feed'}
+                      >
+                        {product.boosted_at ? '⭐ Boosted Now' : '🚀 Boost for 3h'}
+                      </Button>
                     </VStack>
                   </CardBody>
                 </Card>
