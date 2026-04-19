@@ -83,18 +83,44 @@ func (h *AIFeaturesHandler) GetProximity(c *fiber.Ctx) error {
 			&targetLat.Float64, &targetLon.Float64,
 		)
 	case "product":
-		// Calculate distance to a product
-		var productLat, productLon sql.NullFloat64
-		err = h.db.QueryRow("SELECT latitude, longitude FROM products WHERE id = ?", targetID).Scan(&productLat, &productLon)
+		// ==================== LOCKED: PRODUCT DISTANCE = SELLER DISTANCE ====================
+		// CRITICAL: Always use the seller's location (from users table), NEVER the product's stored location
+		//
+		// WHY THIS IS LOCKED IN:
+		// - Products are physical items at the seller's location, not separate locations
+		// - Distance badge on product card shows "X away" = distance to seller
+		// - Distance shown on product detail page shows "X away" = distance to seller
+		// - Must be consistent: ProductCard distance = ProductDetail seller distance
+		// - User's home location determines proximity calculation for all their products
+		//
+		// IF YOU CHANGE THIS: Proximities will diverge again (product vs seller showing different distances)
+		// =====================================================================================
+		var sellerID int
+		var locationType sql.NullString
+		var pickupLat, pickupLon sql.NullFloat64
+		err = h.db.QueryRow("SELECT seller_id, location_type, pickup_latitude, pickup_longitude FROM products WHERE id = ?", targetID).Scan(&sellerID, &locationType, &pickupLat, &pickupLon)
 		if err != nil {
-			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+			return c.JSON(models.APIResponse{Success: true, Data: nil, Message: "Product not found"})
+		}
+
+		// Get the seller's location (not product-specific coordinates)
+		var productLat, productLon sql.NullFloat64
+		err = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", sellerID).Scan(&productLat, &productLon)
+		if err != nil {
+			return c.JSON(models.APIResponse{Success: true, Data: nil, Message: "Seller not found"})
 		}
 
 		if !productLat.Valid || !productLon.Valid {
-			return c.Status(400).JSON(models.APIResponse{
-				Success: false,
-				Error:   "Product location not set",
-			})
+			if locationType.Valid && locationType.String == "pickup_location" && pickupLat.Valid && pickupLon.Valid {
+				productLat = pickupLat
+				productLon = pickupLon
+			} else {
+				return c.JSON(models.APIResponse{
+					Success: true,
+					Data:    nil,
+					Message: "Product location not set",
+				})
+			}
 		}
 
 		distance, err = services.CalculateDistanceToProduct(

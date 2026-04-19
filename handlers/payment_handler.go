@@ -657,7 +657,7 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("You are already a %s member", payload.Tier)})
 	}
 
-	// Pricing: Plus ₱79/mo or ₱699/yr, Pro ₱120/mo or ₱1,099/yr
+	// Pricing: Plus ₱79/mo or ₱699/yr, Pro ₱129/mo or ₱1,099/yr
 	amount := 79.0
 	description := "Clovia Plus Subscription (Monthly)"
 
@@ -666,7 +666,7 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 			amount = 1099.0
 			description = "Clovia Pro Subscription (Yearly)"
 		} else {
-			amount = 120.0
+			amount = 129.0
 			description = "Clovia Pro Subscription (Monthly)"
 		}
 	} else {
@@ -679,7 +679,7 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	xenditClient := xendit.NewClient(apiKey)
 
-	externalID := fmt.Sprintf("user_premium_%s_%d", payload.Tier, userID)
+	externalID := fmt.Sprintf("user_premium_%s_%s_%d", payload.Tier, payload.Plan, userID)
 
 	// Determine frontend URL dynamically
 	frontendURL := c.Get("Origin")
@@ -703,7 +703,7 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 			frontendURL = "http://localhost:5173"
 		}
 	}
-	successUrl := fmt.Sprintf("%s/premium", frontendURL)
+	successUrl := fmt.Sprintf("%s/premium?payment=success&xendit_external_id=%s", frontendURL, url.QueryEscape(externalID))
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
@@ -838,6 +838,98 @@ func fetchXenditInvoiceByExternalID(apiKey, externalID string) (status string, a
 	}
 
 	return status, amount, resolvedExternalID, nil
+}
+
+// SyncUserPremiumPayment is a fallback for environments where webhooks can't reach the backend (e.g., localhost).
+func (h *PaymentHandler) SyncUserPremiumPayment(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+	var payload struct {
+		ExternalID string `json:"external_id"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		payload.ExternalID = ""
+	}
+	if strings.TrimSpace(payload.ExternalID) == "" {
+		payload.ExternalID = c.Query("external_id")
+	}
+	if strings.TrimSpace(payload.ExternalID) == "" {
+		payload.ExternalID = c.Query("xendit_external_id")
+	}
+	if strings.TrimSpace(payload.ExternalID) == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Missing external_id"})
+	}
+
+	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	status, amount, resolvedExternalID, err := fetchXenditInvoiceByExternalID(apiKey, payload.ExternalID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to sync payment: " + err.Error()})
+	}
+	if resolvedExternalID == "" {
+		resolvedExternalID = payload.ExternalID
+	}
+
+	status = strings.ToUpper(status)
+	if status != "PAID" && status != "COMPLETED" && status != "SUCCEEDED" {
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"paid": false, "status": status, "external_id": resolvedExternalID}})
+	}
+
+	if !strings.HasPrefix(resolvedExternalID, "user_premium_") {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid external_id"})
+	}
+
+	var extUserID int
+	tier := "plus"
+	plan := "monthly"
+	parts := strings.Split(resolvedExternalID, "_")
+	if len(parts) >= 5 {
+		// user_premium_<tier>_<plan>_<userID>
+		tier = parts[2]
+		plan = parts[3]
+		fmt.Sscanf(parts[len(parts)-1], "%d", &extUserID)
+	} else if len(parts) >= 4 {
+		// user_premium_<tier>_<userID>
+		tier = parts[2]
+		fmt.Sscanf(parts[len(parts)-1], "%d", &extUserID)
+	} else {
+		fmt.Sscanf(resolvedExternalID, "user_premium_%d", &extUserID)
+	}
+
+	if extUserID == 0 || extUserID != userID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Unauthorized to sync this payment"})
+	}
+
+	var currentExpiry sql.NullTime
+	_ = h.db.QueryRow("SELECT premium_expires_at FROM users WHERE id = ?", userID).Scan(&currentExpiry)
+	start := time.Now()
+	if currentExpiry.Valid && currentExpiry.Time.After(start) {
+		start = currentExpiry.Time
+	}
+	monthsToAdd := 1
+	if strings.ToLower(plan) == "yearly" {
+		monthsToAdd = 12
+	}
+	newExpiry := start.AddDate(0, monthsToAdd, 0)
+
+	_, err = h.db.Exec("UPDATE users SET is_premium = true, premium_tier = ?, verified = true, premium_expires_at = ? WHERE id = ?", tier, newExpiry, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update subscription"})
+	}
+
+	_, _ = h.db.Exec(`
+		INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
+		SELECT ?, ?, 'premium_upgrade', ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1 FROM earnings WHERE source_type = 'premium_upgrade' AND external_id = ?
+		)
+	`, userID, amount, userID, resolvedExternalID, resolvedExternalID)
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"paid":        true,
+		"status":      status,
+		"external_id": resolvedExternalID,
+		"tier":        tier,
+		"end_date":    newExpiry.Format("2006-01-02 15:04:05"),
+	}})
 }
 
 // SyncTradePayment is a fallback for environments where webhooks can't reach the backend (e.g., localhost).
@@ -1114,7 +1206,14 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 	} else if strings.HasPrefix(externalID, "user_premium_") {
 		var userID int
 		var tier string
-		if strings.Count(externalID, "_") >= 3 {
+		plan := "monthly"
+		if strings.Count(externalID, "_") >= 4 {
+			// user_premium_<tier>_<plan>_<userID> e.g. user_premium_plus_monthly_123
+			parts := strings.Split(externalID, "_")
+			tier = parts[2]
+			plan = parts[3]
+			fmt.Sscanf(parts[len(parts)-1], "%d", &userID)
+		} else if strings.Count(externalID, "_") >= 3 {
 			// user_premium_<tier>_<userID> e.g. user_premium_plus_123
 			parts := strings.Split(externalID, "_")
 			tier = parts[2]
@@ -1126,9 +1225,22 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 		}
 
 		if userID > 0 {
+			// Extend subscription end date (stacking) based on plan
+			var currentExpiry sql.NullTime
+			_ = h.db.QueryRow("SELECT premium_expires_at FROM users WHERE id = ?", userID).Scan(&currentExpiry)
+			start := time.Now()
+			if currentExpiry.Valid && currentExpiry.Time.After(start) {
+				start = currentExpiry.Time
+			}
+			monthsToAdd := 1
+			if strings.ToLower(plan) == "yearly" {
+				monthsToAdd = 12
+			}
+			newExpiry := start.AddDate(0, monthsToAdd, 0)
+
 			// Update user status
 			log.Printf("💎 Webhook: Granting %s premium to user %d (Amount: %.2f)", tier, userID, amount)
-			_, err := h.db.Exec("UPDATE users SET is_premium = true, premium_tier = ?, verified = true WHERE id = ?", tier, userID)
+			_, err := h.db.Exec("UPDATE users SET is_premium = true, premium_tier = ?, verified = true, premium_expires_at = ? WHERE id = ?", tier, newExpiry, userID)
 			if err != nil {
 				log.Printf("❌ Webhook Error: User premium update failed for user %d: %v\n", userID, err)
 				fmt.Printf("Webhook Error: User premium update failed for user %d: %v\n", userID, err)
@@ -1153,4 +1265,27 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 	}
 
 	return c.SendStatus(200)
+}
+
+// GetUserSubscription returns the current subscription end date for the authenticated user.
+func (h *PaymentHandler) GetUserSubscription(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+	var endDate sql.NullTime
+	var tier string
+	var isPremium bool
+	if err := h.db.QueryRow("SELECT COALESCE(premium_tier, 'free'), COALESCE(is_premium, FALSE), premium_expires_at FROM users WHERE id = ?", userID).Scan(&tier, &isPremium, &endDate); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load subscription"})
+	}
+
+	var endDateStr *string
+	if endDate.Valid {
+		formatted := endDate.Time.Format("2006-01-02 15:04:05")
+		endDateStr = &formatted
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"tier":       tier,
+		"is_premium": isPremium,
+		"end_date":   endDateStr,
+	}})
 }

@@ -17,6 +17,10 @@ import {
   Button,
   Divider,
   Avatar,
+  Center,
+  Flex,
+  Text,
+  Icon,
 } from '@chakra-ui/react'
 import {
   AddIcon,
@@ -154,10 +158,6 @@ const Sidebar: React.FC = () => {
       const items: { icon: any; label: string; path: string }[] = []
       if (user?.role === 'admin') {
         items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
-      } else {
-        items.push(
-          { icon: FiHeart, label: 'Saved', path: '/saved-products' }
-        )
       }
       items.push(
         { icon: FiGrid, label: 'Organizations', path: '/organizations' },
@@ -184,49 +184,64 @@ const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Drawer for mobile */}
-      <Drawer isOpen={isOpen} placement="left" onClose={onClose} closeOnOverlayClick={true}>
-        <DrawerOverlay />
-        <DrawerContent display="flex" flexDirection="column" h="100%" sx={{ '& [data-testid="chakra-modal.close-button"]': { display: 'none' } }}>
+      {/* Bottom Sheet Drawer for mobile */}
+      <Drawer isOpen={isOpen} placement="bottom" onClose={onClose} closeOnOverlayClick={true}>
+        <DrawerOverlay bg="blackAlpha.600" backdropFilter="blur(2px)" />
+        <DrawerContent
+          display="flex"
+          flexDirection="column"
+          maxH="90vh"
+          borderTopRadius="3xl"
+          bg="#FAFAFA"
+          boxShadow="0 -10px 40px rgba(0,0,0,0.1)"
+          sx={{ '& [data-testid="chakra-modal.close-button"]': { display: 'none' } }}
+        >
+          {/* Swipe Indicator Handle */}
+          <Center pt={3} pb={1} w="full">
+            <Box w="40px" h="5px" bg="gray.300" borderRadius="full" />
+          </Center>
 
-          {/* Clean Header - Just Logo */}
-          <DrawerHeader borderBottom="2px solid" borderColor={borderColor} py={4}>
-            <Box display="flex" alignItems="center" gap={2}>
-              <Image
-                src={logo}
-                alt="Clovia"
-                w="40px"
-                h="40px"
-                objectFit="contain"
-                cursor="pointer"
-                loading="lazy"
-                onClick={handleLogoClick}
-                _hover={{ opacity: 0.8 }}
-              />
-              <Box fontWeight="bold" fontSize="lg">Clovia</Box>
-            </Box>
+          {/* Clean Header - Logo & Close */}
+          <DrawerHeader borderBottom="1px solid" borderColor="gray.100" py={3} px={5}>
+            <Flex justify="center" align="center" width="full">
+              <Box display="flex" alignItems="center" gap={2}>
+                <Image
+                  src={logo}
+                  alt="Clovia"
+                  w="36px"
+                  h="36px"
+                  objectFit="contain"
+                  cursor="pointer"
+                  loading="lazy"
+                  onClick={handleLogoClick}
+                  _hover={{ opacity: 0.8 }}
+                />
+                <Box fontWeight="bold" fontSize="lg" color="gray.800">Clovia</Box>
+              </Box>
+            </Flex>
           </DrawerHeader>
 
           {/* Main Content Area */}
-          <DrawerBody flex={1} overflowY="auto" pb={user ? 4 : 4} px={0}>
-            <VStack spacing={0} align="stretch">
+          <DrawerBody flex={1} overflowY="auto" pb={user ? 8 : 8} px={4} mt={2}>
+            <VStack spacing={4} align="stretch">
 
-              {/* User Profile Card - Only when logged in */}
+              {/* User Profile Card - Premium layout */}
               {user && (
                 <Box
                   as={RouterLink}
                   to="/profile"
                   onClick={onClose}
-                  bg={mobileUserCardBg}
+                  bg="white"
                   p={4}
-                  mb={4}
-                  borderRadius="lg"
-                  mx={4}
-                  mt={4}
-                  _hover={{ opacity: 0.85, textDecoration: 'none' }}
+                  borderRadius="2xl"
+                  border="1px solid"
+                  borderColor="gray.100"
+                  shadow="sm"
+                  _hover={{ shadow: 'md', transform: 'translateY(-1px)', textDecoration: 'none' }}
+                  transition="all 0.2s"
                   display="block"
                 >
-                  <Box display="flex" alignItems="center" gap={3} mb={3}>
+                  <Flex align="center" gap={4}>
                     <VerifiedAvatar
                       size="lg"
                       name={user.name || 'User'}
@@ -234,123 +249,109 @@ const Sidebar: React.FC = () => {
                       isVerified={user?.verification_status === 'verified' || user?.verified || false}
                     />
                     <Box flex={1}>
-                      <Box fontWeight="bold" fontSize="md" noOfLines={1}>{user.name}</Box>
-                      <Box fontSize="xs" color="gray.500" noOfLines={1}>{user.email}</Box>
+                      <Text fontWeight="bold" fontSize="md" color="gray.900" noOfLines={1}>{user.name}</Text>
+                      <Text fontSize="sm" color="gray.500" noOfLines={1}>{user.email}</Text>
                     </Box>
-                  </Box>
+                  </Flex>
                 </Box>
               )}
 
-              {/* ECODE Branding */}
-              <Box
-                px={4}
-                py={2}
-                mb={3}
-                display="flex"
-                alignItems="center"
-                gap={2}
-                cursor="pointer"
-                onClick={handleCompanyClick}
-                _hover={{ opacity: 0.8 }}
-                justifyContent="flex-start"
-              >
-                <Image
-                  src="/logoimage.png"
-                  alt="ECODE"
-                  h="24px"
-                  objectFit="contain"
-                  loading="lazy"
-                />
-                <Box fontSize="xs" color="gray.500">Powered by ECODE</Box>
+              {/* Menu Items mapped in a sleek card */}
+              <Box bg="white" borderRadius="2xl" overflow="hidden" shadow="sm" border="1px" borderColor="gray.100">
+                <VStack spacing={0} align="stretch">
+                  {mobileNavItems.map((item: any, index: number) => {
+                    const Icon = item.icon
+                    const isActive = location.pathname === item.path
+
+                    return (
+                      <React.Fragment key={item.path}>
+                        {index > 0 && <Divider borderColor="gray.50" />}
+                        <Button
+                          as={RouterLink}
+                          to={item.path}
+                          justifyContent="flex-start"
+                          onClick={onClose}
+                          bg={isActive ? 'brand.50' : 'white'}
+                          color={isActive ? 'brand.600' : 'gray.700'}
+                          fontWeight={isActive ? '600' : '500'}
+                          minH="56px"
+                          w="full"
+                          variant="ghost"
+                          borderRadius="none"
+                          px={5}
+                          _hover={{ bg: 'gray.50' }}
+                          _active={{ bg: 'gray.100' }}
+                        >
+                          <Flex align="center" w="full" gap={4}>
+                            <Icon size={22} color={isActive ? "var(--chakra-colors-brand-500)" : "var(--chakra-colors-gray-400)"} />
+                            <Text fontSize="md">{item.label}</Text>
+                          </Flex>
+                        </Button>
+                      </React.Fragment>
+                    )
+                  })}
+                </VStack>
               </Box>
 
-              {/* Menu Items */}
-              <Divider my={2} />
-              <VStack spacing={1} align="stretch" px={4}>
-                {mobileNavItems.map((item: any) => {
-                  const Icon = item.icon
-                  const isActive = location.pathname === item.path
-                  const profileIcon = item.isProfile && user?.profile_picture
-                    ? <VerifiedAvatar size="xs" name={user.name || 'User'} src={getImageUrl(user.profile_picture)} isVerified={user?.verification_status === 'verified' || user?.verified || false} />
-                    : <Icon size={20} />
-
-                  return (
-                    <Button
-                      key={item.path}
-                      as={RouterLink}
-                      to={item.path}
-                      leftIcon={profileIcon}
-                      variant="ghost"
-                      justifyContent="flex-start"
-                      onClick={onClose}
-                      bg={isActive ? 'brand.50' : 'transparent'}
-                      color={isActive ? 'brand.600' : 'inherit'}
-                      fontWeight={isActive ? '600' : '400'}
-                      minH="48px"
-                      w="full"
-                      transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                      _hover={{
-                        bg: 'gray.100',
-                        transform: 'translateX(4px)',
-                      }}
-                      _active={{
-                        transform: 'scale(0.98)',
-                        bg: 'gray.200',
-                      }}
-                      _focus={{
-                        boxShadow: '0 0 0 3px rgba(66, 153, 225, 0.1)',
-                      }}
-                    >
-                      {item.label}
-                    </Button>
-                  )
-                })}
-
+              {/* Extras Card (ECODE + Install) */}
+              <Box bg="white" p={2} borderRadius="2xl" overflow="hidden" shadow="sm" border="1px" borderColor="gray.100">
                 <Button
                   as="a"
                   href="/clovia.apk"
                   download="clovia.apk"
-                  width="full"
+                  w="full"
                   variant="ghost"
-                  size="sm"
-                  leftIcon={<FiDownload />}
+                  minH="52px"
                   justifyContent="flex-start"
-                  _hover={{
-                    bg: 'gray.100',
-                  }}
+                  px={4}
+                  color="gray.600"
+                  _hover={{ bg: 'gray.50' }}
                 >
-                  Install Clovia (Android)
+                  <Flex align="center" gap={3}>
+                    <Icon as={FiDownload} size={18} />
+                    <Text fontSize="md" fontWeight="500">Install Clovia (Android)</Text>
+                  </Flex>
                 </Button>
-
                 <InstallAppPrompt variant="mobile-menu" onInstalled={onClose} />
-              </VStack>
+                
+                <Flex
+                  px={4}
+                  py={3}
+                  align="center"
+                  justify="center"
+                  gap={2}
+                  cursor="pointer"
+                  onClick={handleCompanyClick}
+                  _hover={{ bg: 'gray.50', borderRadius: 'xl' }}
+                  mt={1}
+                >
+                  <Image src="/logoimage.png" alt="ECODE" h="20px" objectFit="contain" loading="lazy" />
+                  <Text fontSize="xs" fontWeight="bold" color="gray.400" letterSpacing="wider">POWERED BY ECODE</Text>
+                </Flex>
+              </Box>
+
+              {/* Logout Button */}
+              {user && (
+                <Button
+                  w="full"
+                  colorScheme="red"
+                  variant="subtle"
+                  bg="red.50"
+                  color="red.600"
+                  leftIcon={<FiLogOut size={20} />}
+                  onClick={handleLogout}
+                  size="lg"
+                  minH="56px"
+                  borderRadius="2xl"
+                  fontWeight="bold"
+                  _hover={{ bg: 'red.100' }}
+                  _active={{ bg: 'red.200' }}
+                >
+                  Log out safely
+                </Button>
+              )}
             </VStack>
           </DrawerBody>
-
-          {/* Fixed Logout Button at Bottom - only when logged in */}
-          {user && (
-            <Box p={4} borderTop="2px solid" borderColor={borderColor}>
-              <Button
-                w="full"
-                colorScheme="red"
-                variant="solid"
-                leftIcon={<FiLogOut />}
-                onClick={handleLogout}
-                size="md"
-                minH="48px"
-                transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                _hover={{
-                  transform: 'translateY(-2px)',
-                  boxShadow: 'md',
-                }}
-                _active={{
-                  transform: 'scale(0.98)',
-                }}
-              >
-                Logout
-              </Button>
-            </Box>
-          )}
         </DrawerContent>
       </Drawer>
 

@@ -478,7 +478,9 @@ func main() {
 	organizations.Get("/quota", middleware.AuthMiddleware(), organizationHandler.GetQuota)
 	organizations.Get("/my-approved", middleware.AuthMiddleware(), organizationHandler.GetUserApprovedOrganizations)
 	organizations.Post("", middleware.AuthMiddleware(), organizationHandler.CreateOrganization)
-	organizations.Get("/:slug", middleware.OptionalAuthMiddleware(), organizationHandler.GetOrganization)
+
+	// IMPORTANT: Specific routes MUST come before :slug generic route
+	// Otherwise, :slug will match everything and these routes will never execute
 	organizations.Post("/:slug/join-request", middleware.AuthMiddleware(), organizationHandler.RequestJoin)
 	organizations.Get("/:slug/join-requests", middleware.AuthMiddleware(), organizationHandler.ListJoinRequests)
 	organizations.Get("/:slug/members", middleware.AuthMiddleware(), organizationHandler.ListMembers)
@@ -486,11 +488,13 @@ func main() {
 	organizations.Post("/:slug/members/:userId/remove", middleware.AuthMiddleware(), organizationHandler.RemoveMember)
 	organizations.Get("/:slug/feed", middleware.AuthMiddleware(), organizationHandler.GetFeed)
 	organizations.Post("/:slug/posts", middleware.AuthMiddleware(), organizationHandler.CreatePost)
-	organizations.Delete("/:slug", middleware.AuthMiddleware(), organizationHandler.DeleteOrganization)
-
-	// Organization trade posts
 	organizations.Post("/:slug/trade-posts", middleware.AuthMiddleware(), organizationHandler.PostProductForTrade)
 	organizations.Get("/:slug/trade-feed", middleware.AuthMiddleware(), organizationHandler.GetTradeFeed)
+	organizations.Get("/:slug/debug-trade-feed", organizationHandler.DebugGetTradeFeed) // Debug endpoint - no auth
+	organizations.Delete("/:slug", middleware.AuthMiddleware(), organizationHandler.DeleteOrganization)
+
+	// Generic :slug route LAST
+	organizations.Get("/:slug", middleware.OptionalAuthMiddleware(), organizationHandler.GetOrganization)
 
 	// Order routes (authentication required)
 	orders := api.Group("/orders")
@@ -515,6 +519,7 @@ func main() {
 	trades.Post("", middleware.AuthMiddleware(), tradeHandler.CreateTrade) // Support no trailing slash
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
 	trades.Get("", middleware.AuthMiddleware(), tradeHandler.GetTrades) // Support no trailing slash
+	trades.Post("/likes", middleware.AuthMiddleware(), tradeHandler.AddTradeLike)
 	// Loops endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
 	trades.Get("/loops/debug/match", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.DebugMultiwayMatch)
@@ -526,8 +531,13 @@ func main() {
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
+	trades.Post("/loops/:id/review-trade", middleware.AuthMiddleware(), tradeHandler.GetOrCreateLoopReviewTrade)
 	trades.Post("/loops/:id/cancel", middleware.AuthMiddleware(), tradeHandler.CancelTradeLoop)
 	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
+	trades.Get("/loops/:id/messages", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopMessages)
+	trades.Post("/loops/:id/messages", middleware.AuthMiddleware(), tradeHandler.SendTradeLoopMessage)
+	trades.Get("/loops/:id/meetup", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopMeetup)
+	trades.Put("/loops/:id/meetup", middleware.AuthMiddleware(), tradeHandler.UpdateTradeLoopMeetup)
 
 	// Multi-way chain specific routes
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
@@ -630,6 +640,8 @@ func main() {
 	payments.All("/remittance/sync", middleware.AuthMiddleware(), paymentHandler.SyncRemittancePayment)
 	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
 	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
+	payments.Get("/subscription", middleware.AuthMiddleware(), paymentHandler.GetUserSubscription)
+	payments.All("/subscription/sync", middleware.AuthMiddleware(), paymentHandler.SyncUserPremiumPayment)
 	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
 	payments.Post("/webhook/xendit", paymentHandler.XenditWebhook) // Public webhook endpoint
 

@@ -156,10 +156,10 @@ const DeliveryUI: React.FC = () => {
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
       )
       const data = await response.json()
-      return data.address?.road || data.address?.street || data.display_name || `${latitude}, ${longitude}`
+      return data.address?.road || data.address?.street || data.display_name || 'Current location detected'
     } catch (error) {
       console.error('Reverse geocoding error:', error)
-      return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+      return 'Current location detected'
     }
   }
 
@@ -318,6 +318,13 @@ const DeliveryUI: React.FC = () => {
               </Card>
             ))}
           </SimpleGrid>
+            <Alert status="info" borderRadius="md" mt={4}>
+              <AlertIcon />
+              <AlertTitle fontSize="sm">Buyout-only delivery</AlertTitle>
+              <AlertDescription fontSize="sm">
+                Riders collect payment from the buyer first, pay the seller, then deliver the item.
+              </AlertDescription>
+            </Alert>
 
           {/* Selected Details */}
           {selectedOption && (

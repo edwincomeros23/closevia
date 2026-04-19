@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   Box,
   VStack,
@@ -24,6 +24,7 @@ import {
   SimpleGrid,
   Wrap,
   WrapItem,
+  Spinner,
 } from '@chakra-ui/react'
 import { ArrowBackIcon, ArrowForwardIcon } from '@chakra-ui/icons'
 import { FILTER_CATEGORIES } from '../utils/categories'
@@ -85,6 +86,7 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
       wanted_categories: [],
     }
   )
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false)
   const toast = useToast()
 
   const conditions = ['New', 'Like New', 'Good', 'Used', 'For Parts']
@@ -95,6 +97,68 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
       [field]: value,
     }))
   }
+
+  // Location Detection
+  const detectLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      toast({
+        id: 'location-not-supported',
+        title: 'Geolocation not available',
+        description: 'Your browser does not support location detection',
+        status: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+    setIsDetectingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${latitude}&lon=${longitude}`
+          )
+          const data = await res.json()
+          const addr = data.address || {}
+          // Build address: barangay + city (like "Santo Niño, Zamboanga City")
+          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
+          const city = addr.city || addr.town || addr.municipality || ''
+          const parts = [barangay, city].filter(Boolean)
+          const address = parts.join(', ') || 'Current location detected'
+          setDetails((prev) => ({ ...prev, location: address }))
+          toast({
+            id: 'location-detected',
+            title: 'Location detected',
+            description: address,
+            status: 'success',
+            duration: 2000,
+          })
+        } catch {
+          const fallback = 'Current location detected'
+          setDetails((prev) => ({ ...prev, location: fallback }))
+          toast({
+            id: 'location-fallback',
+            title: 'Location detected',
+            description: fallback,
+            status: 'success',
+            duration: 2000,
+          })
+        }
+        setIsDetectingLocation(false)
+      },
+      () => {
+        setIsDetectingLocation(false)
+        toast({
+          id: 'location-denied',
+          title: 'Permission denied',
+          description: 'Please enable location access to auto-detect your location',
+          status: 'warning',
+          duration: 3000,
+        })
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+    )
+  }, [toast])
 
   const handleNext = () => {
     // Validation
@@ -250,13 +314,30 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
         {/* Location */}
         <FormControl>
           <FormLabel fontWeight="600">Location</FormLabel>
-          <Input
-            placeholder="e.g., Cebu City, Philippines"
-            value={details.location}
-            onChange={(e) => handleChange('location', e.target.value)}
-            size="lg"
-          />
-          <FormHelperText>Used to calculate distance for nearby buyers</FormHelperText>
+          <HStack spacing={2} align="flex-end">
+            <VStack spacing={0} flex={1} align="stretch">
+              <Input
+                placeholder="e.g., Santo Niño, Zamboanga City"
+                value={details.location}
+                onChange={(e) => handleChange('location', e.target.value)}
+                size="lg"
+              />
+              <FormHelperText>Used to calculate distance for nearby buyers</FormHelperText>
+            </VStack>
+            <Button
+              size="lg"
+              variant="outline"
+              colorScheme="blue"
+              onClick={detectLocation}
+              isLoading={isDetectingLocation}
+              loadingText="Detecting..."
+              isDisabled={isDetectingLocation}
+              whiteSpace="nowrap"
+              h="44px"
+            >
+              📍 Detect
+            </Button>
+          </HStack>
         </FormControl>
 
         {/* Pricing Section */}

@@ -17,6 +17,8 @@ interface ProductContextType {
   updateProduct: (id: number, product: ProductUpdate) => Promise<void>
   deleteProduct: (id: number) => Promise<void>
   getUserProducts: (userId: number, page?: number) => Promise<PaginatedResponse<Product>>
+  markProductBoosted: (productId: number, boostedAt?: string) => void
+  recordProductView: (productId: number) => void
   clearError: () => void
 }
 
@@ -34,6 +36,8 @@ const defaultContext: ProductContextType = {
   updateProduct: async () => {},
   deleteProduct: async () => {},
   getUserProducts: async () => ({ data: [], total: 0, page: 1, limit: 20, total_pages: 0 }),
+  markProductBoosted: () => {},
+  recordProductView: () => {},
   clearError: () => {},
 }
 
@@ -73,13 +77,59 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
   const [currentPage, setCurrentPage] = useState<number>(1)
   const [currentFilters, setCurrentFilters] = useState<SearchFilters | null>(null)
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
-  const locationRequested = useRef(false)
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; isHome?: boolean } | null>(() => {
+    // Priority 1: User's saved home address directly from profile
+    try {
+      const userCached = localStorage.getItem('clovia_user')
+      if (userCached) {
+        const user = JSON.parse(userCached)
+        if (user?.home_latitude != null && user?.home_longitude != null) {
+          console.log('[ProductContext] Initializing with User Home Profile Coords:', user.home_latitude, user.home_longitude)
+          return { lat: user.home_latitude, lng: user.home_longitude, isHome: true }
+        }
+      }
+    } catch { /* ignore */ }
+    return null
+  })
+  const locationWatchId = useRef<number | null>(null)
 
   // Cache management refs
   const cacheRef = useRef<{ filters: string; products: Product[]; timestamp: number } | null>(null)
+  const loadDistanceCacheFromStorage = () => {
+    try {
+      const raw = localStorage.getItem('clovia_product_distance_cache')
+      if (!raw) return new Map<string, { distanceKm: number; distance: string }>()
+      const parsed = JSON.parse(raw) as Record<string, { distanceKm: number; distance: string }>
+      const map = new Map<string, { distanceKm: number; distance: string }>()
+      Object.entries(parsed).forEach(([key, value]) => {
+        if (value && typeof value.distanceKm === 'number') {
+          map.set(key, value)
+        }
+      })
+      return map
+    } catch (e) {
+      console.warn('Failed to read distance cache:', e)
+      return new Map<string, { distanceKm: number; distance: string }>()
+    }
+  }
+  const persistDistanceCache = () => {
+    try {
+      const serialized: Record<string, { distanceKm: number; distance: string }> = {}
+      distanceCacheRef.current.forEach((value, key) => {
+        serialized[key] = value
+      })
+      localStorage.setItem('clovia_product_distance_cache', JSON.stringify(serialized))
+    } catch (e) {
+      console.warn('Failed to persist distance cache:', e)
+    }
+  }
+  const distanceCacheRef = useRef<Map<string, { distanceKm: number; distance: string }>>(loadDistanceCacheFromStorage())
   const pendingRequestRef = useRef<Promise<void> | null>(null)
   const hasInitialized = useRef(false)
+  // Always reflects the latest userLocation synchronously (avoids stale closure in event handlers)
+  const latestUserLocationRef = useRef<{ lat: number; lng: number; isHome?: boolean } | null>(null)
+  // Tracks the last set of filters used — needed for re-fetching after home address change
+  const currentFiltersRef = useRef<SearchFilters>({})
 
   // Persist products to localStorage
   useEffect(() => {
@@ -92,39 +142,67 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }, [products])
 
-  // Get user's current location
+  // Get the viewer's location — STRICTLY use saved home address from clovia_user
   useEffect(() => {
-    if (locationRequested.current) return
-    locationRequested.current = true
-
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const lat = position.coords.latitude
-          const lng = position.coords.longitude
-          setUserLocation({ lat, lng })
-          // Persist to backend so product distance calculations server-side
-          // (and other users checking this user's location) stay fresh.
-          if (token) {
-            api.put('/api/users/location', { latitude: lat, longitude: lng }).catch(() => {})
-          }
-        },
-        (error) => {
-          console.warn('Geolocation error:', error.message)
-          // Don't set error state, just silently fail - distance will show fallback
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 300000, // Cache for 5 minutes
+    // Priority 1: User's saved home address directly from profile
+    try {
+      const userCached = localStorage.getItem('clovia_user')
+      if (userCached) {
+        const user = JSON.parse(userCached)
+        if (user?.home_latitude != null && user?.home_longitude != null) {
+          return // already loaded in state initializer
         }
-      )
-    }
-  }, [token])
+      }
+    } catch { /* ignore */ }
 
-  // Recalculate distances when user location becomes available
+    // Priority 2/3: The user specifically requested NOT to use navigator.geolocation
+    // because it is inaccurate on laptops. Since we are in a React Web App (not Expo),
+    // we cannot use expo-location. So if the home address is missing, we simply 
+    // leave userLocation as null and gracefully hide distance badges (Priority 3).
+  }, [])
+
+  // Keep latestUserLocationRef in sync (synchronous — no re-render delay)
   useEffect(() => {
-    if (userLocation && products.length > 0) {
+    latestUserLocationRef.current = userLocation
+  }, [userLocation])
+
+  // Listen for home address updates from Settings page
+  useEffect(() => {
+    const handleHomeAddressChanged = (e: Event) => {
+      const evt = e as CustomEvent<{ lat: number; lng: number }>
+      if (evt.detail?.lat && evt.detail?.lng) {
+        const newLoc = { lat: evt.detail.lat, lng: evt.detail.lng, isHome: true }
+
+        // 1. Bust all caches so the new fetch goes to the API with fresh viewer coords
+        distanceCacheRef.current = new Map()
+        try { localStorage.removeItem('clovia_product_distance_cache') } catch { /* ignore */ }
+        try { localStorage.removeItem('clovia_home_products') } catch { /* ignore */ }
+        cacheRef.current = null          // <-- bust API response cache
+        pendingRequestRef.current = null // <-- allow a new in-flight request
+
+        // 2. Update the synchronous ref first so searchProducts uses the new coords immediately
+        latestUserLocationRef.current = newLoc
+
+        // 3. Update React state (triggers re-renders elsewhere)
+        setUserLocation(newLoc)
+
+        // 4. Re-fetch products with the new home as viewer coords
+        //    Use a short delay so React state settles before the next page call
+        setTimeout(() => {
+          const filters = currentFiltersRef.current || {}
+          searchProductsWithLocation(filters, newLoc)
+        }, 50)
+      }
+    }
+    window.addEventListener('homeAddressChanged', handleHomeAddressChanged)
+    return () => window.removeEventListener('homeAddressChanged', handleHomeAddressChanged)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Recalculate distances when user location becomes available for the first time (GPS fallback)
+  useEffect(() => {
+    if (userLocation && !userLocation.isHome && products.length > 0) {
+      // Only apply client-side recalc for GPS fallback (not for home address — backend handles that)
       const productsWithDistance = addDistanceToProducts(products)
       setProducts(productsWithDistance)
     }
@@ -153,7 +231,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
 
   // Format distance for display - refined for accuracy as per user request
   const formatDistance = (distanceKm: number): string => {
-    if (distanceKm === 0) return '0 M away'
+    if (distanceKm === 0) return '0 m away'
     
     // Convert to meters
     const meters = distanceKm * 1000
@@ -161,22 +239,95 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     if (meters < 2000) {
       // Show nearby distances in meters for better granularity (up to ~2km)
       if (meters < 10) {
-        return `${meters.toFixed(1)} M away`
+        return `${meters.toFixed(1)} m away`
       }
-      return `${Math.round(meters)} M away`
+      return `${Math.round(meters)} m away`
     } else {
       // If more than 1km, show in KM with 1 decimal place
-      return `${distanceKm.toFixed(1)} KM away`
+      return `${distanceKm.toFixed(1)} km away`
     }
   }
 
+  // Pre-compute boost expiration times to avoid redundant Date operations in sort
+  const getBoostStatus = (product: Product): { isBoosted: boolean; timeRemaining: number } => {
+    if (!product.boosted_at) return { isBoosted: false, timeRemaining: 0 }
+    const boostedAtRaw = String(product.boosted_at)
+    const normalizedBoostedAt = boostedAtRaw.includes('T') ? boostedAtRaw : boostedAtRaw.replace(' ', 'T')
+    const boostTimestamp = new Date(normalizedBoostedAt).getTime()
+    if (Number.isNaN(boostTimestamp)) return { isBoosted: false, timeRemaining: 0 }
+    const boostExpiry = boostTimestamp + 3 * 60 * 60 * 1000
+    const timeRemaining = boostExpiry - Date.now()
+    return { isBoosted: timeRemaining > 0, timeRemaining }
+  }
+
+  // Helper to parse distance string quickly (avoids regex in hot path)
+  const parseDistanceString = (distStr: string): number => {
+    const lowerStr = distStr.toLowerCase().trim()
+    const match = lowerStr.match(/([\d.]+)\s*(km|m)\b/)
+    if (!match) return Infinity
+
+    const value = parseFloat(match[1])
+    if (!Number.isFinite(value)) return Infinity
+
+    return match[2] === 'km' ? value : value / 1000
+  }
+
+  const getDistanceCacheKey = (product: Product): string => {
+    const productLat = product.latitude != null ? product.latitude.toFixed(5) : 'no-lat'
+    const productLng = product.longitude != null ? product.longitude.toFixed(5) : 'no-lng'
+    return [product.id, product.updated_at, productLat, productLng].join('|')
+  }
+
+  const compareByDistance = (a: Product, b: Product): number => {
+    const distA = a.distanceKm ?? Infinity
+    const distB = b.distanceKm ?? Infinity
+
+    if (distA === distB) return 0
+    if (distA === Infinity) return 1
+    if (distB === Infinity) return -1
+    return distA - distB
+  }
+
   // Add distance to products and sort by nearest first
-  const addDistanceToProducts = (productsList: Product[]): Product[] => {
-    if (!userLocation) return productsList
+  // skipProcessed=true skips products that already have distanceKm set (optimization for pagination)
+  const addDistanceToProducts = (productsList: Product[], skipProcessed = false): Product[] => {
+    // IMPORTANT: Parse distances and sort even if userLocation isn't available yet
+    // This ensures products with backend distance strings still sort correctly on initial load
 
     const withDistance = productsList.map((product) => {
+      // Skip if already processed (optimization: don't recalculate old products on pagination)
+      if (skipProcessed && product.distanceKm !== undefined && product.distanceKm !== Infinity) {
+        return {
+          ...product,
+          // Ensure boosted items keep priority when re-sorting after pagination.
+          // @ts-ignore - extending product with cache for sorting
+          _boostStatus: (product as any)._boostStatus || getBoostStatus(product),
+        }
+      }
+
       let dist = Infinity
-      if (product.latitude && product.longitude) {
+      const cacheKey = getDistanceCacheKey(product)
+      const cachedDistance = distanceCacheRef.current.get(cacheKey)
+
+      if (cachedDistance) {
+        return {
+          ...product,
+          distance: cachedDistance.distance,
+          distanceKm: cachedDistance.distanceKm,
+          // @ts-ignore - extending product with cache for sorting
+          _boostStatus: getBoostStatus(product),
+        }
+      }
+      
+      // Priority 1: Use backend-computed distance string (SQL Haversine — always accurate)
+      // The backend receives viewer_lat/viewer_lng from the home address and computes distance in MySQL.
+      // We never recalculate on the frontend to avoid inaccurate browser GPS.
+      if (product.distance) {
+        dist = parseDistanceString(product.distance)
+      }
+      // Priority 2: If backend sent no distance string but we have coords + home location,
+      // compute client-side as a fallback (e.g. for products loaded before home address was set)
+      else if (userLocation?.isHome && product.latitude && product.longitude) {
         dist = calculateDistance(
           userLocation.lat,
           userLocation.lng,
@@ -185,44 +336,58 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         )
       }
 
-      // If we couldn't compute a per-product distance on the client, keep
-      // whatever the backend already returned (may be empty) instead of
-      // stamping every card with 'Nearby' — that was making every card in
-      // the feed look identical.
+      // Preserve backend distance label exactly (it uses the correct "58M AWAY" / "2.2KM AWAY" format)
       const nextDistance =
-        dist === Infinity ? (product.distance || '') : formatDistance(dist)
+        dist === Infinity ? (product.distance || '') : (product.distance || formatDistance(dist))
 
+      // Cache boost status on product to avoid recomputing during sort
+      const boostStatus = getBoostStatus(product)
+      
       return {
         ...product,
         distance: nextDistance,
         distanceKm: dist,
+        // @ts-ignore - extending product with cache for sorting
+        _boostStatus: boostStatus,
       }
     })
 
-    // Sort by:
-    // 1. Premium status (tie-breaker)
-    // 2. Distance (nearest first)
-    // 3. Newest first (for identical distance)
-    withDistance.sort((a, b) => {
-      const distA = a.distanceKm
-      const distB = b.distanceKm
-      
-      const isAInf = distA === undefined || distA === Infinity
-      const isBInf = distB === undefined || distB === Infinity
+    withDistance.forEach((product) => {
+      distanceCacheRef.current.set(getDistanceCacheKey(product), {
+        distanceKm: product.distanceKm ?? Infinity,
+        distance: product.distance || '',
+      })
+    })
+    persistDistanceCache()
 
-      if (isAInf && isBInf) {
-        // Continue to other tie-breakers
-      } else if (isAInf) {
-        return 1
-      } else if (isBInf) {
-        return -1
-      } else if (Math.abs(distA! - distB!) > 0.0001) {
-        return distA! - distB!
+    // Sort by:
+    // 1. Boosted status (boosted products first for 3 hours, then by remaining time)
+    // 2. Premium pin status
+    // 3. Distance (nearest first)
+    // 4. Newest first (for identical everything else)
+    withDistance.sort((a, b) => {
+      // Use pre-cached boost status (computed once per product during mapping, not during sort)
+      const boostA = (a as any)._boostStatus || { isBoosted: false, timeRemaining: 0 }
+      const boostB = (b as any)._boostStatus || { isBoosted: false, timeRemaining: 0 }
+
+      // Prioritize boosted products first
+      if (boostA.isBoosted !== boostB.isBoosted) {
+        return boostA.isBoosted ? -1 : 1
       }
-      
-      // Otherwise, prioritize premium
+
+      // If both are boosted, sort by remaining boost time (more time remaining first)
+      if (boostA.isBoosted) {
+        return boostB.timeRemaining - boostA.timeRemaining
+      }
+
+      // Otherwise, prioritize premium pins
       if (a.premium !== b.premium) {
         return a.premium ? -1 : 1
+      }
+
+      const distanceComparison = compareByDistance(a, b)
+      if (distanceComparison !== 0) {
+        return distanceComparison
       }
       
       // Finally, newest first
@@ -242,6 +407,25 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }
 
+  const markProductBoosted = (productId: number, boostedAt?: string) => {
+    const boostedAtValue = boostedAt || new Date().toISOString()
+    setProducts((current) => {
+      const nextProducts = (current || []).map((product) =>
+        product.id === productId ? { ...product, boosted_at: boostedAtValue } : product
+      )
+      const nextWithDistance = addDistanceToProducts(nextProducts)
+      if (cacheRef.current) {
+        cacheRef.current = { ...cacheRef.current, products: nextWithDistance, timestamp: Date.now() }
+      }
+      try {
+        localStorage.setItem('clovia_home_products', JSON.stringify(nextWithDistance))
+      } catch (e) {
+        console.warn('Failed to persist products:', e)
+      }
+      return nextWithDistance
+    })
+  }
+
   // Helper function to get headers with auth token
   const getAuthHeaders = () => {
     const headers: any = {}
@@ -251,12 +435,24 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     return headers
   }
 
-  const searchProducts = async (filters: SearchFilters) => {
-    try {
-      console.log('Searching products with filters:', filters)
-      const filterKey = JSON.stringify(filters)
+  const searchProducts = async (filters: SearchFilters) =>
+    searchProductsWithLocation(filters, latestUserLocationRef.current)
 
-      // Return cached data if available and identical filters
+  // Core fetch — accepts an explicit location override so we can call it from
+  // event handlers without stale React closures
+  const searchProductsWithLocation = async (
+    filters: SearchFilters,
+    location: { lat: number; lng: number; isHome?: boolean } | null = null
+  ) => {
+    const activeLoc = location ?? latestUserLocationRef.current
+    try {
+      console.log('Searching products with filters:', filters, 'viewer:', activeLoc)
+      const filterKey = JSON.stringify(filters) + (activeLoc ? `@${activeLoc.lat},${activeLoc.lng}` : '')
+
+      // Keep currentFiltersRef in sync for re-fetch on home change
+      currentFiltersRef.current = filters
+
+      // Return cached data if available and identical filters + location
       if (cacheRef.current && cacheRef.current.filters === filterKey) {
         console.log('Using cached products for filters:', filters)
         safeSetProducts(cacheRef.current.products)
@@ -288,9 +484,29 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
         if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
         // Pass viewer coordinates for server-side distance calculation
-        if (userLocation) {
-          params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', userLocation.lat.toString())
-          params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', userLocation.lng.toString())
+        // First priority — User's saved home address directly from profile
+        let viewerLat: number | null = null
+        let viewerLng: number | null = null
+
+        try {
+          const userCached = localStorage.getItem('clovia_user')
+          if (userCached) {
+            const userProfile = JSON.parse(userCached)
+            if (userProfile?.home_latitude != null && userProfile?.home_longitude != null) {
+              viewerLat = userProfile.home_latitude
+              viewerLng = userProfile.home_longitude
+            }
+          }
+        } catch (e) {
+          console.warn('[API_REQUEST] Error parsing clovia_user for location:', e)
+        }
+
+        if (viewerLat !== null && viewerLng !== null) {
+          console.log(`[API_REQUEST] Attaching viewer coords to /listings API: lat=${viewerLat}, lng=${viewerLng}`)
+          params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', viewerLat.toString())
+          params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', viewerLng.toString())
+        } else {
+          console.log(`[API_REQUEST] No viewer coords available. Distance badge will hide/be NULL properly.`)
         }
         params.append('page', (filters.page || 1).toString())
         params.append('limit', (filters.limit || 10).toString())
@@ -385,9 +601,23 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
       if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
       // Pass viewer coordinates for server-side distance calculation
-      if (userLocation) {
-        params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', userLocation.lat.toString())
-        params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', userLocation.lng.toString())
+      let viewerLat: number | null = null
+      let viewerLng: number | null = null
+
+      try {
+        const userCached = localStorage.getItem('clovia_user')
+        if (userCached) {
+          const userProfile = JSON.parse(userCached)
+          if (userProfile?.home_latitude != null && userProfile?.home_longitude != null) {
+            viewerLat = userProfile.home_latitude
+            viewerLng = userProfile.home_longitude
+          }
+        }
+      } catch { /* ignore */ }
+
+      if (viewerLat !== null && viewerLng !== null) {
+        params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', viewerLat.toString())
+        params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', viewerLng.toString())
       }
       params.append('page', nextPage.toString())
       params.append('limit', (filters.limit || 10).toString())
@@ -402,8 +632,12 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       if (response.data && response.data.data) {
         const data = response.data.data as PaginatedResponse<Product>
         const newItems = Array.isArray(data?.data) ? data.data : []
-        const newItemsWithDistance = addDistanceToProducts(newItems)
-        setProducts(prev => (Array.isArray(prev) ? [...prev, ...newItemsWithDistance] : newItemsWithDistance))
+        // OPTIMIZATION: Only compute distance for new items, skip reprocessing old items
+        const newItemsWithDistance = addDistanceToProducts(newItems, false)
+        // Merge new items with existing, then sort entire list once (not twice)
+        const allProducts = Array.isArray(products) ? [...products, ...newItemsWithDistance] : newItemsWithDistance
+        const sortedProducts = addDistanceToProducts(allProducts, true) // skipProcessed=true avoids recalculating
+        setProducts(sortedProducts)
         setCurrentPage(data.page || nextPage)
         const totalPages = data.total_pages || 0
         if (totalPages > 0) {
@@ -414,7 +648,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         }
       } else if (response.data && Array.isArray(response.data)) {
         const newItems = response.data as Product[]
-        setProducts(prev => (Array.isArray(prev) ? [...prev, ...newItems] : newItems))
+        const allProducts = Array.isArray(products) ? [...products, ...newItems] : newItems
+        const sortedProducts = addDistanceToProducts(allProducts)
+        setProducts(sortedProducts)
         setHasMore(newItems.length > 0)
         setCurrentPage(nextPage)
       } else {
@@ -583,6 +819,24 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }
 
+  const recordProductView = (productId: number) => {
+    setProducts((currentProducts) => {
+      const nextProducts = (currentProducts || []).map((product) => {
+        if (product.id !== productId) return product
+        const currentViewCount = typeof product.view_count === 'number' ? product.view_count : 0
+        return { ...product, view_count: currentViewCount + 1 }
+      })
+
+      try {
+        localStorage.setItem('clovia_home_products', JSON.stringify(nextProducts))
+      } catch (e) {
+        console.warn('Failed to persist updated view count:', e)
+      }
+
+      return nextProducts
+    })
+  }
+
   const getUserProducts = async (userId: number, page: number = 1): Promise<PaginatedResponse<Product>> => {
     try {
       setError(null)
@@ -611,6 +865,8 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     updateProduct,
     deleteProduct,
     getUserProducts,
+    markProductBoosted,
+    recordProductView,
     clearError,
   }
 

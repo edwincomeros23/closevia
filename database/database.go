@@ -191,6 +191,12 @@ func CreateTables() error {
 		DB.Exec("ALTER TABLE users ADD COLUMN premium_tier VARCHAR(20) NULL DEFAULT 'free'")
 	}
 
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'premium_expires_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing premium_expires_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN premium_expires_at TIMESTAMP NULL")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'strikes'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding strikes column to users table...")
@@ -483,6 +489,17 @@ func CreateTables() error {
 			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
 			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_messages (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id INT NOT NULL,
+			sender_id INT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (loop_id) REFERENCES trade_like_loops(id) ON DELETE CASCADE,
+			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_loop_messages_loop_id (loop_id),
+			INDEX idx_loop_messages_created_at (created_at)
+		)`,
 		`CREATE TABLE IF NOT EXISTS trade_events (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			trade_id INT NOT NULL,
@@ -597,6 +614,48 @@ func CreateTables() error {
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
 			UNIQUE KEY uniq_wishlist_item (user_id, product_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS trade_likes (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			liker_id INT NOT NULL,
+			liked_product_id INT NOT NULL,
+			offered_product_id INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (liker_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (liked_product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (offered_product_id) REFERENCES products(id) ON DELETE CASCADE,
+			UNIQUE KEY uniq_trade_like (liker_id, liked_product_id, offered_product_id),
+			INDEX idx_trade_likes_liker (liker_id),
+			INDEX idx_trade_likes_liked_product (liked_product_id),
+			INDEX idx_trade_likes_offered_product (offered_product_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_like_loops (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_key VARCHAR(255) NOT NULL,
+			status ENUM('pending', 'confirmed', 'cancelled') DEFAULT 'pending',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			confirmed_at TIMESTAMP NULL,
+			UNIQUE KEY uniq_trade_like_loop_key (loop_key),
+			INDEX idx_trade_like_loops_status (status)
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_like_loop_participants (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id INT NOT NULL,
+			user_id INT NOT NULL,
+			offered_product_id INT NOT NULL,
+			wanted_product_id INT NOT NULL,
+			position_in_loop INT NOT NULL,
+			status ENUM('pending', 'confirmed', 'declined') DEFAULT 'pending',
+			confirmed_at TIMESTAMP NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (loop_id) REFERENCES trade_like_loops(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (offered_product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (wanted_product_id) REFERENCES products(id) ON DELETE CASCADE,
+			UNIQUE KEY uniq_trade_like_loop_user (loop_id, user_id),
+			INDEX idx_trade_like_loop_user (user_id),
+			INDEX idx_trade_like_loop_loop (loop_id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS saved_products (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			user_id INT NOT NULL,
@@ -678,6 +737,22 @@ func CreateTables() error {
 			status ENUM('accepted', 'declined') NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE KEY uniq_loop_user (loop_id, user_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_meetup_selections (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id VARCHAR(255) NOT NULL,
+			user_id INT NOT NULL,
+			meetup_location VARCHAR(500) NULL,
+			meetup_date VARCHAR(20) NULL,
+			meetup_time VARCHAR(20) NULL,
+			meetup_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+			met_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_loop_meetup_user (loop_id, user_id),
+			INDEX idx_loop_meetup_loop (loop_id),
+			INDEX idx_loop_meetup_user (user_id),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS trade_rejection_signals (

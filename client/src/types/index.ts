@@ -29,6 +29,9 @@ export interface User {
   response_rating?: 'excellent' | 'good' | 'average' | 'poor'
   latitude?: number
   longitude?: number
+  home_latitude?: number   // Saved home address latitude
+  home_longitude?: number  // Saved home address longitude
+  home_address?: string    // Human-readable home address label
   is_premium?: boolean
   premium_tier?: 'free' | 'plus' | 'pro'
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
@@ -55,6 +58,7 @@ export interface Product {
   allow_buying: boolean
   barter_only: boolean
   location?: string
+  location_type?: 'current_location' | 'pickup_location' | 'no_location'
   condition?: string
   suggested_value?: number
   category?: string
@@ -133,6 +137,9 @@ export interface ProductUpdate {
   max_items_per_offer?: number
   wants?: string
   wanted_categories?: string[]
+  latitude?: number
+  longitude?: number
+  location_type?: 'current_location' | 'pickup_location' | 'no_location'
 }
 
 export interface OrderCreate {
@@ -216,14 +223,21 @@ export interface Trade {
   buyer_completed?: boolean
   seller_completed?: boolean
   completed_at?: string | null
+  meetup_status?: 'pending' | 'accepted' | 'declined' | 'disputed' | string
   meetup_confirmed?: boolean
   meetup_location?: string
+  meetup_time?: string
   buyer_meetup_confirmed?: boolean
   seller_meetup_confirmed?: boolean
+  buyer_meetup_location?: string
+  buyer_meetup_time?: string
+  seller_meetup_location?: string
+  seller_meetup_time?: string
   buyer_met?: boolean
   seller_met?: boolean
   transaction_proof_url?: string
   trade_option?: TradeOption // 'meetup' or 'delivery'
+  meeting_type?: 'meetup' | 'pickup' // Type of meeting flow: 'meetup' (mutual agreement) or 'pickup' (seller-set location)
   option_change_requested?: TradeOption // Requested option change (pending approval)
   option_change_requested_by?: number // User ID who requested the change
   delivery_address?: string // Delivery address if option is 'delivery'
@@ -281,7 +295,7 @@ export interface MultiWayTrade {
   participants: MultiWayTradeParticipant[]
   edges: TradeEdge[]
   total_value?: number
-  status: 'active' | 'completed' | 'cancelled' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
+  status: 'pending' | 'confirmed' | 'cancelled' | 'active' | 'completed' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
   created_at?: string
   expires_at?: string
 }
@@ -299,15 +313,19 @@ export interface TradeCreate {
   message?: string
   offered_cash_amount?: number
   trade_option: TradeOption // Required: 'meetup' or 'delivery'
+  meeting_type?: 'meetup' | 'pickup' // Type of meeting flow for trades
   delivery_address?: string // Required if trade_option is 'delivery'
   payment_method?: 'cod' | 'upfront' // Payment method preference for buyout offers
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
+  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'confirm_meetup' | 'confirm_meetup_done' | 'reset_meetup_selection' | 'update_delivery_state' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
   message?: string
   counter_offered_product_ids?: number[]
   counter_offered_cash_amount?: number
+  meetup_location?: string
+  meetup_time?: string
+  meetup_date?: string
   requested_option?: TradeOption // For option change requests
   delivery_address?: string // For delivery option
 }
@@ -389,6 +407,28 @@ export interface DeliveryItem {
   created_at: string
 }
 
+export interface DeliveryStop {
+  id: number
+  delivery_id: number
+  stop_number: number
+  stop_type: string
+  contact_name: string
+  contact_phone: string
+  address: string
+  latitude?: number
+  longitude?: number
+  item_qr_code?: string
+  fee_amount: number
+  status: 'pending' | 'arrived' | 'qr_scanned' | 'fee_collected' | 'completed'
+  arrived_at?: string
+  qr_scanned_at?: string
+  fee_collected_at?: string
+  completed_at?: string
+  photo_url?: string
+  created_at: string
+  updated_at: string
+}
+
 export interface Delivery {
   id: number
   user_id: number
@@ -415,6 +455,7 @@ export interface Delivery {
   updated_at: string
   // Denormalized fields
   user_name?: string
+  receiver_name?: string
   rider_name?: string
   rider_phone?: string
   rider_vehicle?: string
@@ -422,6 +463,7 @@ export interface Delivery {
   rider_latitude?: number
   rider_longitude?: number
   items?: DeliveryItem[]
+  stops?: DeliveryStop[]
   // Batch window fields
   batch_id?: string
   batch_countdown?: number

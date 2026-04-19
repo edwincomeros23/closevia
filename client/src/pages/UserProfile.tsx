@@ -346,6 +346,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       navigate('/login')
       return
     }
+    const targetProduct = products.find(p => p.id === productId)
+    if (targetProduct?.seller_id === currentUser.id) {
+      toast({ id: 'cannot-save-own-item', title: 'You cannot save your own item', status: 'info', duration: 2000 })
+      return
+    }
     const isSaved = savedProductIds.has(productId)
     try {
       if (isSaved) {
@@ -1345,18 +1350,20 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                                 w="100%"
                                 objectFit="cover"
                               />
-                              <Box position="absolute" top="2" right="2">
-                                <IconButton
-                                  aria-label="Save item"
-                                  icon={savedProductIds.has(product.id) ? <FaHeart /> : <FiHeart />}
-                                  size="sm"
-                                  borderRadius="full"
-                                  bg="white"
-                                  color={savedProductIds.has(product.id) ? 'red.500' : 'gray.600'}
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleSave(product.id) }}
-                                  _hover={{ color: savedProductIds.has(product.id) ? 'red.600' : 'red.500', bg: 'white' }}
-                                />
-                              </Box>
+                              {currentUser?.id !== product.seller_id && (
+                                <Box position="absolute" top="2" right="2">
+                                  <IconButton
+                                    aria-label="Save item"
+                                    icon={savedProductIds.has(product.id) ? <FaHeart /> : <FiHeart />}
+                                    size="sm"
+                                    borderRadius="full"
+                                    bg="white"
+                                    color={savedProductIds.has(product.id) ? 'red.500' : 'gray.600'}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleSave(product.id) }}
+                                    _hover={{ color: savedProductIds.has(product.id) ? 'red.600' : 'red.500', bg: 'white' }}
+                                  />
+                                </Box>
+                              )}
                               <Box position="absolute" top="2" left="2">
                                 <Badge colorScheme={product.status === 'available' ? 'green' : 'red'}>
                                   {product.status}

@@ -366,7 +366,7 @@ const UsageCalendar: React.FC<CalendarProps> = ({
 // â"€â"€â"€ Main Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const AdminDashboard: React.FC = () => {
   type SectionId = 'overview' | 'moderation' | 'management' | 'system';
-  
+
   const navigate = useNavigate();
 
   const formatYMD = (date: Date) => {
@@ -1441,7 +1441,7 @@ const AdminDashboard: React.FC = () => {
   // Bulk product handlers
   const handleBulkDeleteProducts = useCallback(async () => {
     if (selectedProductIds.size === 0) return;
-    
+
     const confirmed = window.confirm(`Delete ${selectedProductIds.size} item(s)? This cannot be undone.`);
     if (!confirmed) return;
 
@@ -1468,7 +1468,7 @@ const AdminDashboard: React.FC = () => {
         setSelectedProductIds(new Set());
         fetchAdminProducts(productsPage);
       }
-      
+
       if (failCount > 0) {
         toast({
           title: `Failed to delete ${failCount} item${failCount !== 1 ? 's' : ''}`,
@@ -2183,7 +2183,7 @@ const AdminDashboard: React.FC = () => {
                   <HStack mb={2} justify="space-between">
                     <Text fontWeight="700" fontSize="sm" color={textColor}>Products</Text>
                     <Text fontSize="xs" color={mutedTextColor}>
-                      {overviewProductsTotal ? `${overviewProductsTotal.toLocaleString()} total` : `${overviewProductsData.length} rows`} 
+                      {overviewProductsTotal ? `${overviewProductsTotal.toLocaleString()} total` : `${overviewProductsData.length} rows`}
                       {overviewProductsTotalPages > 1 ? ` • Page ${overviewProductsPage}/${overviewProductsTotalPages}` : ''}
                     </Text>
                   </HStack>
@@ -2875,7 +2875,7 @@ const AdminDashboard: React.FC = () => {
                       <SimpleGrid columns={[2, 3, 4]} spacing={2}>
                         {selectedDispute.evidence_urls.map((url: string, idx: number) => (
                           <Box key={idx} borderRadius="md" overflow="hidden" border="1px" borderColor="gray.200" cursor="pointer" onClick={() => window.open(url, '_blank')}>
-                            <Image src={url} alt={`Evidence ${idx+1}`} fallbackSrc="/no-image.svg" objectFit="cover" w="full" h="100px" />
+                            <Image src={url} alt={`Evidence ${idx + 1}`} fallbackSrc="/no-image.svg" objectFit="cover" w="full" h="100px" />
                           </Box>
                         ))}
                       </SimpleGrid>

@@ -316,26 +316,26 @@ func (h *TradeHandler) storeMultiwaySuggestion(user1ID, user1ProductID, user2ID,
 
 	log.Printf("[ProactiveMultiway] ✅ Stored suggestion %s (User3=%d, Score=%d)", chainID, user3ID, score)
 
-	// Notify User 3 about the opportunity
-	notifMsg := fmt.Sprintf("Great match! %s wants your %s, and you can get their %s in a 3-way trade.",
-		"Someone", user3ProdTitle, user1ProdTitle)
-	_, _ = h.db.Exec(`
-		INSERT INTO notifications (user_id, type, message, is_read) 
-		VALUES (?, 'trade_loop', ?, FALSE)
-	`, user3ID, notifMsg)
+	// DISABLED: Proactive trade_loop notifications were excessive
+	// notifMsg := fmt.Sprintf("Great match! %s wants your %s, and you can get their %s in a 3-way trade.",
+	// 	"Someone", user3ProdTitle, user1ProdTitle)
+	// _, _ = h.db.Exec(`
+	// 	INSERT INTO notifications (user_id, type, message, is_read)
+	// 	VALUES (?, 'trade_loop', ?, FALSE)
+	// `, user3ID, notifMsg)
 
-	// Broadcast via SSE if available
-	publishNotification(user3ID, notifMsg)
-	publishToUser(user3ID, sseEvent{
-		Type: "multiway_suggestion_found",
-		Data: fiber.Map{
-			"chain_id":        chainID,
-			"match_score":     score,
-			"your_product":    user3ProdTitle,
-			"you_get_from_u1": user1ProdTitle,
-			"u1_gets_from_u2": user2ProdTitle,
-		},
-	})
+	// Broadcast via SSE if available (also disabled with proactive notifications)
+	// publishNotification(user3ID, notifMsg)
+	// publishToUser(user3ID, sseEvent{
+	// 	Type: "multiway_suggestion_found",
+	// 	Data: fiber.Map{
+	// 		"chain_id":        chainID,
+	// 		"match_score":     score,
+	// 		"your_product":    user3ProdTitle,
+	// 		"you_get_from_u1": user1ProdTitle,
+	// 		"u1_gets_from_u2": user2ProdTitle,
+	// 	},
+	// })
 }
 
 // GetProactiveMultiwaySuggestions returns all proactive multiway suggestions for a user

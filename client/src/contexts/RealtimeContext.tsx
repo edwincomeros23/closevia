@@ -83,14 +83,26 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const count = offersRes.data?.data?.count ?? 0
       setOfferCount(count)
       const notifs = Array.isArray(notifRes.data?.data) ? notifRes.data.data : []
-      setNotificationCount(notifs.filter((n: any) => !n.read).length)
+
+      // Apply the same filter used in the Notifications page to avoid counting
+      // auto-detected trade_loop spam notifications that are never shown to the user
+      const visibleNotifs = notifs.filter((n: any) => {
+        if (n.type === 'trade_loop' && n.message && (
+          n.message.includes('A 3-way trade opportunity was found') ||
+          n.message.includes('Great match!') ||
+          n.message.includes('in a 3-way trade')
+        )) return false
+        return true
+      })
+
+      setNotificationCount(visibleNotifs.filter((n: any) => !n.read).length)
 
       // Polling fallback: show global toast for new unread notifications we haven't seen
       if (!hasInitializedSeenRef.current) {
-        notifs.forEach((n: any) => seenNotifIdsRef.current.add(n.id))
+        visibleNotifs.forEach((n: any) => seenNotifIdsRef.current.add(n.id))
         hasInitializedSeenRef.current = true
       } else {
-        const unread = notifs.filter((n: any) => !n.read)
+        const unread = visibleNotifs.filter((n: any) => !n.read)
         const newest = unread.sort((a: any, b: any) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         )[0]

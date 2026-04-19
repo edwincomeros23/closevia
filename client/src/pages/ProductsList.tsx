@@ -104,7 +104,7 @@ const ProductsList: React.FC = () => {
         />
         {p.premium && (
           <Badge position="absolute" top={2} right={2} colorScheme="yellow" variant="solid" borderRadius="full" px={2}>
-            Premium
+            Boosted
           </Badge>
         )}
       </Box>

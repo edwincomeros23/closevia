@@ -31,9 +31,16 @@ type UserHandler struct {
 
 // NewUserHandler creates a new user handler
 func NewUserHandler() *UserHandler {
-	return &UserHandler{
+	h := &UserHandler{
 		db: database.DB,
 	}
+	// Auto-migrate home address columns
+	// Using plain ALTER TABLE (no IF NOT EXISTS) for MySQL 5.7 compatibility.
+	// Duplicate-column errors on subsequent startups are harmlessly discarded.
+	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN home_latitude DOUBLE NULL")
+	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN home_longitude DOUBLE NULL")
+	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN home_address VARCHAR(500) NULL")
+	return h
 }
 
 func nullableString(p *string) interface{} {
@@ -72,6 +79,61 @@ func normalizeOrgHandle(handle string) string {
 	h := strings.TrimSpace(strings.ToLower(handle))
 	h = strings.TrimPrefix(h, "@")
 	return h
+}
+
+func isWmsuEmail(email string) bool {
+	clean := strings.TrimSpace(strings.ToLower(email))
+	return strings.HasSuffix(clean, "@wmsu.edu.ph")
+}
+
+func (h *UserHandler) ensureWmsuPlus(user *models.User) {
+	if user == nil || user.ID == 0 {
+		return
+	}
+	if !isWmsuEmail(user.Email) {
+		return
+	}
+	if user.IsPremium && user.PremiumTier != "" && user.PremiumTier != "free" {
+		return
+	}
+	_, _ = h.db.Exec("UPDATE users SET is_premium = TRUE, premium_tier = 'plus' WHERE id = ?", user.ID)
+	user.IsPremium = true
+	user.PremiumTier = "plus"
+}
+
+func (h *UserHandler) applyPremiumExpiry(user *models.User) {
+	if user == nil || user.ID == 0 {
+		return
+	}
+	if user.PremiumExpiresAt == nil {
+		// If there's no expiry but tier is paid, ensure is_premium is consistent.
+		if user.PremiumTier != "" && user.PremiumTier != "free" && !user.IsPremium {
+			_, _ = h.db.Exec("UPDATE users SET is_premium = TRUE WHERE id = ?", user.ID)
+			user.IsPremium = true
+		}
+		return
+	}
+
+	if time.Now().Before(*user.PremiumExpiresAt) {
+		if user.PremiumTier != "" && user.PremiumTier != "free" && !user.IsPremium {
+			_, _ = h.db.Exec("UPDATE users SET is_premium = TRUE WHERE id = ?", user.ID)
+			user.IsPremium = true
+		}
+		return
+	}
+
+	if isWmsuEmail(user.Email) {
+		_, _ = h.db.Exec("UPDATE users SET is_premium = TRUE, premium_tier = 'plus', premium_expires_at = NULL WHERE id = ?", user.ID)
+		user.IsPremium = true
+		user.PremiumTier = "plus"
+		user.PremiumExpiresAt = nil
+		return
+	}
+
+	_, _ = h.db.Exec("UPDATE users SET is_premium = FALSE, premium_tier = 'free', premium_expires_at = NULL WHERE id = ?", user.ID)
+	user.IsPremium = false
+	user.PremiumTier = "free"
+	user.PremiumExpiresAt = nil
 }
 
 // generateUserSlug creates a URL-friendly slug from name and appends a short UUID
@@ -609,17 +671,18 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 
 	// Find user by email - optimized single query with graceful nullable handling
 	var user models.User
+	var premiumExpiresAt sql.NullTime
 
 	// Use context with timeout to prevent hanging queries (requires index on email)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	err := h.db.QueryRowContext(ctx, `
+		err := h.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(slug, ''), name, email, password_hash, role, verified, 
-		       COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), 
+		       COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), premium_expires_at,
 		       COALESCE(strikes, 0), COALESCE(is_suspended, FALSE)
 		FROM users WHERE email = ?`,
 		login.Email,
 	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified,
-		&user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
+		&user.IsPremium, &user.PremiumTier, &premiumExpiresAt, &user.Strikes, &user.IsSuspended)
 	cancel()
 
 	if err != nil {
@@ -651,10 +714,17 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		})
 	}
 
+	if premiumExpiresAt.Valid {
+		user.PremiumExpiresAt = &premiumExpiresAt.Time
+	}
+
 	// Update last_login timestamp ASYNCHRONOUSLY (non-blocking)
 	go func() {
 		_, _ = h.db.Exec("UPDATE users SET last_login = NOW() WHERE id = ?", user.ID)
 	}()
+
+	h.applyPremiumExpiry(&user)
+	h.ensureWmsuPlus(&user)
 
 	now := time.Now()
 	user.LastLogin = &now
@@ -705,10 +775,11 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 
 	// Check if user exists
 	var user models.User
+	var premiumExpiresAt sql.NullTime
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), strikes, is_suspended FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), premium_expires_at, strikes, is_suspended FROM users WHERE email = ?",
 		req.Email,
-	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier, &premiumExpiresAt, &user.Strikes, &user.IsSuspended)
 
 	if err == sql.ErrNoRows {
 		// Generate slug for the new user
@@ -775,6 +846,13 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 		})
 	}
 
+	if premiumExpiresAt.Valid {
+		user.PremiumExpiresAt = &premiumExpiresAt.Time
+	}
+
+	h.applyPremiumExpiry(&user)
+	h.ensureWmsuPlus(&user)
+
 	// Check if user is suspended or has 3+ strikes
 	if user.IsSuspended || user.Strikes >= 3 {
 		return c.Status(403).JSON(models.APIResponse{
@@ -824,6 +902,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var nameChangedAt sql.NullTime
 	var phoneChangedAt sql.NullTime
 	var lastLogin sql.NullTime
+	var premiumExpiresAt sql.NullTime
 
 	var slugNull sql.NullString
 	err := h.db.QueryRow(
@@ -854,9 +933,11 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
 		        COALESCE(language_preference, 'en') AS language_preference,
 		        COALESCE(premium_tier, 'free') AS premium_tier,
+		        premium_expires_at,
 		        COALESCE(strikes, 0) AS strikes,
 		        COALESCE(is_suspended, FALSE) AS is_suspended,
-		        created_at, updated_at, password_changed_at, name_changed_at, phone_changed_at, last_login
+		        created_at, updated_at, password_changed_at, name_changed_at, phone_changed_at, last_login,
+		        home_latitude, home_longitude, COALESCE(home_address, '') AS home_address
 		 FROM users WHERE id = ?`,
 		userID,
 	).Scan(
@@ -869,8 +950,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
-		&user.LanguagePreference, &user.PremiumTier, &user.Strikes, &user.IsSuspended,
+		&user.LanguagePreference, &user.PremiumTier, &premiumExpiresAt, &user.Strikes, &user.IsSuspended,
 		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &nameChangedAt, &phoneChangedAt, &lastLogin,
+		&user.HomeLatitude, &user.HomeLongitude, &user.HomeAddress,
 	)
 
 	if schoolEmailVerifiedAt.Valid {
@@ -888,6 +970,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
 	}
+	if premiumExpiresAt.Valid {
+		user.PremiumExpiresAt = &premiumExpiresAt.Time
+	}
 	user.ActivityStatus = computeActivityStatus(user.LastLogin)
 	if slugNull.Valid {
 		user.Slug = slugNull.String
@@ -897,6 +982,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		user.PremiumTier = "plus"
 		_, _ = h.db.Exec("UPDATE users SET premium_tier = 'plus' WHERE id = ? AND is_premium = true AND (premium_tier IS NULL OR premium_tier = '' OR premium_tier = 'free')", userID)
 	}
+
+	h.applyPremiumExpiry(&user)
+	h.ensureWmsuPlus(&user)
 
 	if err != nil {
 		fmt.Printf("❌ ERROR in GetProfile (ID: %v): %v\n", userID, err)
@@ -981,16 +1069,19 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	}
 
 	var updateData struct {
-		Name                      *string `json:"name"`
-		Email                     *string `json:"email"`
-		Phone                     *string `json:"phone"`
-		ProfilePicture            *string `json:"profile_picture"`
-		Bio                       *string `json:"bio"`
-		BackgroundImage           *string `json:"background_image"`
-		BackgroundPosition        *string `json:"background_position"`
-		LanguagePreference        *string `json:"language_preference"`
-		EmailNotificationsEnabled *bool   `json:"email_notifications_enabled"`
-		PushNotificationsEnabled  *bool   `json:"push_notifications_enabled"`
+		Name                      *string  `json:"name"`
+		Email                     *string  `json:"email"`
+		Phone                     *string  `json:"phone"`
+		ProfilePicture            *string  `json:"profile_picture"`
+		Bio                       *string  `json:"bio"`
+		BackgroundImage           *string  `json:"background_image"`
+		BackgroundPosition        *string  `json:"background_position"`
+		LanguagePreference        *string  `json:"language_preference"`
+		EmailNotificationsEnabled *bool    `json:"email_notifications_enabled"`
+		PushNotificationsEnabled  *bool    `json:"push_notifications_enabled"`
+		HomeLatitude              *float64 `json:"home_latitude"`
+		HomeLongitude             *float64 `json:"home_longitude"`
+		HomeAddress               *string  `json:"home_address"`
 	}
 
 	if err := c.BodyParser(&updateData); err != nil {
@@ -1115,8 +1206,13 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		args = append(args, newEmail)
 		if emailChanged {
 			query += ", verified = false"
-			// Revoke is_premium if it was from WMSU, they will get it back after verifying new WMSU email
-			query += ", is_premium = false"
+			var currentEmail string
+			_ = h.db.QueryRow("SELECT email FROM users WHERE id = ?", userID).Scan(&currentEmail)
+			if isWmsuEmail(currentEmail) && !isWmsuEmail(newEmail) {
+				// Drop WMSU perk when leaving the domain, but keep paid tiers (e.g., pro).
+				query += ", is_premium = CASE WHEN premium_tier = 'plus' THEN false ELSE is_premium END"
+				query += ", premium_tier = CASE WHEN premium_tier = 'plus' THEN 'free' ELSE premium_tier END"
+			}
 		}
 	}
 
@@ -1163,6 +1259,21 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if updateData.PushNotificationsEnabled != nil {
 		query += ", push_notifications_enabled = ?"
 		args = append(args, *updateData.PushNotificationsEnabled)
+	}
+
+	if updateData.HomeLatitude != nil {
+		query += ", home_latitude = ?"
+		args = append(args, *updateData.HomeLatitude)
+	}
+
+	if updateData.HomeLongitude != nil {
+		query += ", home_longitude = ?"
+		args = append(args, *updateData.HomeLongitude)
+	}
+
+	if updateData.HomeAddress != nil {
+		query += ", home_address = ?"
+		args = append(args, *updateData.HomeAddress)
 	}
 
 	query += " WHERE id = ?"
@@ -2175,20 +2286,20 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 		MemberSinceYear: userCreatedAt.Year(),
 	}
 
-	// Calculate total trades (completed trades for this user as seller)
+	// Calculate total trades (all completed trades involving this user)
 	err = h.db.QueryRow(`
 		SELECT COUNT(*) FROM trades 
-		WHERE seller_id = ? AND status IN ('completed', 'auto_completed')
-	`, userID).Scan(&stats.TotalTrades)
+		WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('completed', 'auto_completed')
+	`, userID, userID).Scan(&stats.TotalTrades)
 	if err != nil {
 		stats.TotalTrades = 0
 	}
 
-	// Calculate completed trades
+	// Calculate completed trades (synonymous with TotalTrades in this context, but explicitly checks completion criteria)
 	err = h.db.QueryRow(`
 		SELECT COUNT(*) FROM trades 
-		WHERE seller_id = ? AND status = 'completed' AND seller_completed = true
-	`, userID).Scan(&stats.CompletedTrades)
+		WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('completed', 'auto_completed')
+	`, userID, userID).Scan(&stats.CompletedTrades)
 	if err != nil {
 		stats.CompletedTrades = 0
 	}
@@ -2196,8 +2307,8 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	// Calculate cancelled trades
 	err = h.db.QueryRow(`
 		SELECT COUNT(*) FROM trades 
-		WHERE seller_id = ? AND status = 'cancelled'
-	`, userID).Scan(&stats.CancelledTrades)
+		WHERE (seller_id = ? OR buyer_id = ?) AND status = 'cancelled'
+	`, userID, userID).Scan(&stats.CancelledTrades)
 	if err != nil {
 		stats.CancelledTrades = 0
 	}
@@ -2205,8 +2316,8 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	// Calculate pending trades
 	err = h.db.QueryRow(`
 		SELECT COUNT(*) FROM trades 
-		WHERE seller_id = ? AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
-	`, userID).Scan(&stats.PendingTrades)
+		WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
+	`, userID, userID).Scan(&stats.PendingTrades)
 	if err != nil {
 		stats.PendingTrades = 0
 	}
@@ -2370,14 +2481,14 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 
 	// 6. Trade Success Rate: 10 points
 	var totalAttempted int
-	_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed', 'cancelled')", userID).Scan(&totalAttempted)
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('completed', 'auto_completed', 'cancelled')", userID, userID).Scan(&totalAttempted)
 
 	successPoints := 0 // New users start at 0 — earned only after trade attempts
 	successStatus := "warn"
 	if totalAttempted > 0 {
 		successStatus = "pass"
 		var successCount int
-		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed')", userID).Scan(&successCount)
+		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('completed', 'auto_completed')", userID, userID).Scan(&successCount)
 		successRate := (float64(successCount) / float64(totalAttempted)) * 100
 		if successRate >= 90 {
 			successPoints = 10
