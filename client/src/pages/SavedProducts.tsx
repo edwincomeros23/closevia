@@ -278,7 +278,6 @@ const SavedProducts: React.FC = () => {
           {/* Header */}
           <Box
             bg="white"
-            _dark={{ bg: 'gray.800' }}
             borderRadius="2xl"
             p={{ base: 4, md: 5 }}
             border="1px"
