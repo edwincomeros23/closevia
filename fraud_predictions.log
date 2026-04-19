@@ -446,3 +446,11 @@
   "seller_id": 52,
   "timestamp": "2026-04-18T15:45:40-04:00"
 }
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 320,
+  "risk_level": "",
+  "seller_id": 41,
+  "timestamp": "2026-04-19T15:42:19+08:00"
+}

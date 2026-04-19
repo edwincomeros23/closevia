@@ -977,6 +977,11 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	if slugNull.Valid {
 		user.Slug = slugNull.String
 	}
+	// Normalize legacy rows: if is_premium=true but tier is empty/free, treat as plus.
+	if user.IsPremium && (user.PremiumTier == "" || user.PremiumTier == "free") {
+		user.PremiumTier = "plus"
+		_, _ = h.db.Exec("UPDATE users SET premium_tier = 'plus' WHERE id = ? AND is_premium = true AND (premium_tier IS NULL OR premium_tier = '' OR premium_tier = 'free')", userID)
+	}
 
 	h.applyPremiumExpiry(&user)
 	h.ensureWmsuPlus(&user)
