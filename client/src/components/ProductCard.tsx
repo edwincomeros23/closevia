@@ -289,9 +289,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 <Badge
                   variant="solid"
                   borderRadius="full"
-                  px={{ base: 1.5, md: 2.5 }}
-                  py={{ base: 0.5, md: 1 }}
-                  fontSize={{ base: '8px', md: '10px' }}
+                  px={{ base: 1, md: 1.5 }}
+                  py={{ base: 0.5, md: 0.5 }}
+                  fontSize={{ base: '7px', md: '9px' }}
                   fontWeight="800"
                   bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')}
                   color={useColorModeValue('brand.600', 'brand.300')}
@@ -299,32 +299,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
                   backdropFilter="blur(8px)"
                   display="inline-flex"
                   alignItems="center"
-                  gap={1}
+                  gap={0.5}
                 >
-                  <StarIcon boxSize={{ base: 2, md: 2.5 }} />
+                  <StarIcon boxSize={{ base: 1.5, md: 2 }} />
                   Boosted {boostTimeRemaining ? `• ${boostTimeRemaining}` : ''}
-                </Badge>
-              </Tooltip>
-            )}
-            {product.premium && (
-              <Tooltip label="Premium listing" placement="top-start" hasArrow>
-                <Badge
-                  variant="solid"
-                  borderRadius="full"
-                  px={{ base: 1.5, md: 2.5 }}
-                  py={{ base: 0.5, md: 1 }}
-                  fontSize={{ base: '8px', md: '10px' }}
-                  fontWeight="800"
-                  bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')}
-                  color={useColorModeValue('brand.600', 'brand.300')}
-                  shadow="sm"
-                  backdropFilter="blur(8px)"
-                  display="inline-flex"
-                  alignItems="center"
-                  gap={1}
-                >
-                  <StarIcon boxSize={{ base: 2, md: 2.5 }} />
-                  Premium
                 </Badge>
               </Tooltip>
             )}

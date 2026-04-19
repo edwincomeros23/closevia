@@ -245,13 +245,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		})
 	}
 
-	// Department required ONLY for WMSU emails
-	isWmsuEmail := strings.HasSuffix(strings.ToLower(user.Email), "@wmsu.edu.ph")
-	if !user.IsOrganization && isWmsuEmail {
-		if user.Department == nil || *user.Department == "" {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Please select your department/college for WMSU registration"})
-		}
-	}
+	// Department validation removed
 
 	// Strict password validation
 	if len(user.Password) < 8 {

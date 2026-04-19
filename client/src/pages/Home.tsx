@@ -111,10 +111,16 @@ const Home: React.FC = () => {
       api.get('/api/deliveries/rider-status').then(res => {
         if (res.data?.success) setRiderStatus(res.data.data)
       }).catch(() => {})
+      
+      // Location reminder
+      if (!(user as any).home_address) {
+        setShowLocationReminder(true)
+      }
     }
   }, [user])
 
   // Search state management
+  const [showLocationReminder, setShowLocationReminder] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<SearchFilters>({
@@ -1122,7 +1128,7 @@ const Home: React.FC = () => {
                       {/* Menu Items */}
                       <Button
                         as={RouterLink}
-                        to="/rider-home"
+                        to={riderStatus?.is_rider && riderStatus?.status === 'approved' ? '/rider-home' : '/rider-application'}
                         size="sm"
                         w="full"
                         variant="ghost"
@@ -1166,11 +1172,14 @@ const Home: React.FC = () => {
                         variant="ghost"
                         justifyContent="flex-start"
                         leftIcon={<Icon as={FiDownload} />}
+                        display={{ base: 'flex', md: 'none' }}
                       >
                         Install Clovia (Android)
                       </Button>
 
-                      <InstallAppPrompt variant="profile-menu" />
+                      <Box display={{ base: 'block', md: 'none' }} w="full">
+                        <InstallAppPrompt variant="profile-menu" />
+                      </Box>
 
                       <Divider />
                       <Button
@@ -1744,6 +1753,30 @@ const Home: React.FC = () => {
       <Box mb={{ base: 5, md: 0 }}>
         <FloatingTab />
       </Box>
+
+      {/* Location Reminder Modal */}
+      <Modal isOpen={showLocationReminder} onClose={() => setShowLocationReminder(false)} isCentered>
+        <ModalOverlay backdropFilter="blur(3px)" />
+        <ModalContent mx={4} borderRadius="2xl" p={2}>
+          <ModalHeader>Set Your Location 📍</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <Text color="gray.600" mb={4}>
+              You haven't set your home location yet! Setting your location helps you discover items and connect with potential barter mates near you.
+            </Text>
+            <Button
+              colorScheme="brand"
+              w="full"
+              onClick={() => {
+                setShowLocationReminder(false)
+                navigate('/settings')
+              }}
+            >
+              Go to Settings
+            </Button>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Box>
   )
 }

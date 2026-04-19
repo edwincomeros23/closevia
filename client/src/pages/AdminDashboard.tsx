@@ -497,10 +497,13 @@ const AdminDashboard: React.FC = () => {
     email: string;
     vehicle_type: string;
     vehicle_plate: string;
+    vehicle_color: string;
     contact_number: string;
     status: string;
     license_image_url: string;
     selfie_image_url: string;
+    orcr_image_url: string;
+    motor_owner_image_url: string;
     rejection_reason: string;
     reviewed_at: string;
     created_at: string;
@@ -3131,7 +3134,7 @@ const AdminDashboard: React.FC = () => {
                       <Td>
                         <VStack align="start" spacing={0}>
                           <Text fontSize="sm" textTransform="capitalize">{app.vehicle_type}</Text>
-                          <Text fontSize="xs" color={mutedTextColor}>{app.vehicle_plate || 'No plate'}</Text>
+                          <Text fontSize="xs" color={mutedTextColor}>{app.vehicle_plate || 'No plate'}{app.vehicle_color ? ` • ${app.vehicle_color}` : ''}</Text>
                         </VStack>
                       </Td>
                       <Td fontSize="sm">{app.contact_number || '-'}</Td>
@@ -3203,6 +3206,12 @@ const AdminDashboard: React.FC = () => {
                       <Text fontSize="xs" color="gray.500">Vehicle</Text>
                       <Text fontWeight="bold" textTransform="capitalize">{selectedRiderApp.vehicle_type} {selectedRiderApp.vehicle_plate ? `(${selectedRiderApp.vehicle_plate})` : ''}</Text>
                     </Box>
+                    {selectedRiderApp.vehicle_color && (
+                      <Box>
+                        <Text fontSize="xs" color="gray.500">Vehicle Color</Text>
+                        <Text fontWeight="bold">{selectedRiderApp.vehicle_color}</Text>
+                      </Box>
+                    )}
                     <Box>
                       <Text fontSize="xs" color="gray.500">Status</Text>
                       <Badge colorScheme={selectedRiderApp.status === 'approved' ? 'green' : selectedRiderApp.status === 'rejected' ? 'red' : selectedRiderApp.status === 'under_review' ? 'blue' : 'orange'}>
@@ -3230,13 +3239,29 @@ const AdminDashboard: React.FC = () => {
 
                   {selectedRiderApp.license_image_url && (
                     <Box>
+                      <Text fontSize="xs" color="gray.500" mb={1} fontWeight="600">Driver's License</Text>
                       <Image src={selectedRiderApp.license_image_url} alt="License" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                     </Box>
                   )}
 
                   {selectedRiderApp.selfie_image_url && (
                     <Box>
+                      <Text fontSize="xs" color="gray.500" mb={1} fontWeight="600">Selfie with ID</Text>
                       <Image src={selectedRiderApp.selfie_image_url} alt="Selfie" maxH="200px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
+                    </Box>
+                  )}
+
+                  {selectedRiderApp.orcr_image_url && (
+                    <Box>
+                      <Text fontSize="xs" color="gray.500" mb={1} fontWeight="600">OR/CR Document</Text>
+                      <Image src={selectedRiderApp.orcr_image_url} alt="OR/CR" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
+                    </Box>
+                  )}
+
+                  {selectedRiderApp.motor_owner_image_url && (
+                    <Box>
+                      <Text fontSize="xs" color="gray.500" mb={1} fontWeight="600">Owner with Vehicle</Text>
+                      <Image src={selectedRiderApp.motor_owner_image_url} alt="Owner with Motor" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                     </Box>
                   )}
                 </VStack>

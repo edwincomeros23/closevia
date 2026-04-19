@@ -455,7 +455,7 @@ const Dashboard: React.FC = () => {
     pro: { label: 'Pro', color: 'purple', listingLimit: Infinity, boosts: 10, deliveryDiscount: '20%', matchPriority: 'Top queue' },
   }
   const planBenefits = {
-    free: ['10 active listings', 'Standard delivery', 'Standard matches'],
+    free: ['10 active listings', 'Standard delivery'],
     plus: ['30 active listings', '3 boosts', '10% delivery discount', 'Priority matches'],
     pro: ['Unlimited listings', '10 boosts', '20% delivery discount', 'Top match priority'],
   }
