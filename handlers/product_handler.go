@@ -339,26 +339,42 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	}
 
 	// Get product location coordinates
-	// ==================== LOCKED: CONSISTENT WITH PROXIMITY CALCULATION ====================
-	// Products use seller's location for distance calculations (see: ai_features_handler.go GetProximity)
-	// Priority 1: Use user's saved home location (most accurate for items created from home)
-	// Priority 2: Geocode location text if provided (fallback)
-	// NOTE: Even if products have latitude/longitude stored, the proximity API uses seller's location
-	// =====================================================================================
+	// Priority 1: Use lat/lng submitted directly from the map picker in the form (most accurate)
+	// Priority 2: Use user's saved home address (home_latitude/home_longitude)
+	// Priority 3: Geocode the location text string
 	var lat, lon *float64
-	var userLat, userLon sql.NullFloat64
-	h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", userID).Scan(&userLat, &userLon)
 
-	if userLat.Valid && userLon.Valid {
-		// User has a saved home location - use it for the product
-		lat = &userLat.Float64
-		lon = &userLon.Float64
-	} else if location != "" {
-		// Fallback: Geocode location text only if user has no saved home location
-		coords, err := services.GetCoordinates(location)
-		if err == nil {
-			lat = &coords.Latitude
-			lon = &coords.Longitude
+	latStr := c.FormValue("latitude")
+	lonStr := c.FormValue("longitude")
+	if latStr != "" && lonStr != "" {
+		if parsedLat, err := strconv.ParseFloat(latStr, 64); err == nil {
+			if parsedLon, err := strconv.ParseFloat(lonStr, 64); err == nil {
+				lat = &parsedLat
+				lon = &parsedLon
+				log.Printf("📍 [CreateProduct] Using map-picked coords: %.6f, %.6f", parsedLat, parsedLon)
+			}
+		}
+	}
+
+	if lat == nil || lon == nil {
+		// Try user's saved home address coordinates
+		var homeLatNull, homeLonNull sql.NullFloat64
+		h.db.QueryRow("SELECT home_latitude, home_longitude FROM users WHERE id = ?", userID).Scan(&homeLatNull, &homeLonNull)
+		if homeLatNull.Valid && homeLonNull.Valid {
+			lat = &homeLatNull.Float64
+			lon = &homeLonNull.Float64
+			log.Printf("🏠 [CreateProduct] Using home address coords: %.6f, %.6f", homeLatNull.Float64, homeLonNull.Float64)
+		}
+	}
+
+	if lat == nil || lon == nil {
+		if location != "" {
+			coords, err := services.GetCoordinates(location)
+			if err == nil {
+				lat = &coords.Latitude
+				lon = &coords.Longitude
+				log.Printf("🌍 [CreateProduct] Using geocoded coords for '%s': %.6f, %.6f", location, coords.Latitude, coords.Longitude)
+			}
 		}
 	}
 
@@ -432,18 +448,14 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		args = append(args, videoURL)
 	}
 
-	// Only include latitude/longitude if geocoding produced values
+	// Only include latitude/longitude if coordinates are available
 	if lat != nil && lon != nil {
-		// insert latitude and longitude after 'location' (which is index 9)
-		insertIdx := 10 // index in cols/placeholders/args where 'status' currently resides
-		cols = append(cols[:insertIdx], append([]string{"latitude"}, cols[insertIdx:]...)...)
-		placeholders = append(placeholders[:insertIdx], append([]string{"?"}, placeholders[insertIdx:]...)...)
-		args = append(args[:insertIdx], append([]interface{}{*lat}, args[insertIdx:]...)...)
-
-		insertIdx2 := insertIdx + 1
-		cols = append(cols[:insertIdx2], append([]string{"longitude"}, cols[insertIdx2:]...)...)
-		placeholders = append(placeholders[:insertIdx2], append([]string{"?"}, placeholders[insertIdx2:]...)...)
-		args = append(args[:insertIdx2], append([]interface{}{*lon}, args[insertIdx2:]...)...)
+		cols = append(cols, "latitude", "longitude")
+		placeholders = append(placeholders, "?", "?")
+		args = append(args, *lat, *lon)
+		log.Printf("📥 [CreateProduct] Final coordinates to be saved: lat=%f, lon=%f", *lat, *lon)
+	} else {
+		log.Printf("⚠️ [CreateProduct] Final result: NO COORDINATES to be saved")
 	}
 
 	sqlStr := fmt.Sprintf("INSERT INTO products (%s) VALUES (%s)", strings.Join(cols, ", "), strings.Join(placeholders, ", "))
@@ -768,15 +780,44 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		})
 	}
 
+	// Parse optional viewer coordinates early so we can use them in ORDER BY
+	viewerLatStr := c.Query("viewer_lat", "")
+	viewerLonStr := c.Query("viewer_lng", "")
+	var viewerLat, viewerLon *float64
+	if viewerLatStr != "" && viewerLonStr != "" {
+		if lat, err2 := strconv.ParseFloat(viewerLatStr, 64); err2 == nil {
+			if lon, err2 := strconv.ParseFloat(viewerLonStr, 64); err2 == nil {
+				viewerLat = &lat
+				viewerLon = &lon
+				log.Printf("📥 [GetProducts] Received Viewer Coords: lat=%f, lng=%f", lat, lon)
+			}
+		}
+	} else {
+		log.Printf("⚠️ [GetProducts] No Viewer Coords received (viewer_lat='%s', viewer_lng='%s')", viewerLatStr, viewerLonStr)
+	}
+
+	// Haversine distance expression (result in km). Returns NULL when product has no coords.
+	// Formula: 6371 * acos( cos(r(vlat))*cos(r(plat))*cos(r(plng)-r(vlng)) + sin(r(vlat))*sin(r(plat)) )
+	var haversineExpr string
+	if viewerLat != nil && viewerLon != nil {
+		haversineExpr = fmt.Sprintf(
+			`(6371 * ACOS(COS(RADIANS(%f)) * COS(RADIANS(p.latitude)) * COS(RADIANS(p.longitude) - RADIANS(%f)) + SIN(RADIANS(%f)) * SIN(RADIANS(p.latitude))))`,
+			*viewerLat, *viewerLon, *viewerLat,
+		)
+	} else {
+		haversineExpr = "NULL"
+	}
+
 	// Use the full query with proper WHERE clause handling
 	query := `
-		SELECT p.id, COALESCE(p.slug, '') as slug, p.title, COALESCE(p.description, '') as description, p.price, COALESCE(p.image_urls, '[]') as image_urls, p.seller_id, 
-		       p.premium, p.status, p.allow_buying, p.barter_only, COALESCE(p.location, '') as location, COALESCE(p.` + "`condition`" + `, '') as ` + "`condition`" + `, 
+		SELECT p.id, COALESCE(p.slug, '') as slug, p.title, COALESCE(p.description, '') as description, p.price, COALESCE(p.image_urls, '[]') as image_urls, p.seller_id,
+		       p.premium, p.status, p.allow_buying, p.barter_only, COALESCE(p.location, '') as location, COALESCE(p.` + "`condition`" + `, '') as ` + "`condition`" + `,
 		       p.suggested_value, COALESCE(p.category, 'General') as category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.location_type, p.pickup_latitude, p.pickup_longitude, p.pickup_address, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
 		       COALESCE(u.name, 'User') as seller_name, COALESCE(u.profile_picture, '') as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
 		   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
-		   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
+		   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count,
+		   ` + haversineExpr + ` AS distance_km
 	FROM products p
 	LEFT JOIN users u ON p.seller_id = u.id
 	` + whereClause
@@ -788,14 +829,21 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	boostTimestamp := "(CASE WHEN p.boosted_at IS NOT NULL AND p.boosted_at > DATE_SUB(NOW(), INTERVAL 3 HOUR) THEN p.boosted_at ELSE p.created_at END)"
 
 	switch sortBy {
+	case "nearest":
+		// Sort nearest first; products without coords go to the end
+		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, ISNULL(distance_km) ASC, distance_km ASC`, isActiveBoosted)
 	case "newest":
 		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
 	case "most_offers":
 		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status NOT IN ('declined', 'cancelled', 'completed')) DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
 	case "trending":
 		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
-	default: // most_relevant
-		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
+	default: // most_relevant — when viewer coords available, sort by distance by default
+		if viewerLat != nil {
+			query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, ISNULL(distance_km) ASC, distance_km ASC, %s DESC`, isActiveBoosted, boostTimestamp)
+		} else {
+			query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
+		}
 	}
 
 	query += ` LIMIT ? OFFSET ?`
@@ -816,19 +864,6 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	fmt.Println("✅ [DEBUG] Main products query succeeded, iterating rows")
 	defer rows.Close()
 
-	// Parse optional viewer coordinates for distance calculation (must be before row loop)
-	viewerLatStr := c.Query("viewer_lat", "")
-	viewerLonStr := c.Query("viewer_lng", "")
-	var viewerLat, viewerLon *float64
-	if viewerLatStr != "" && viewerLonStr != "" {
-		if lat, err := strconv.ParseFloat(viewerLatStr, 64); err == nil {
-			if lon, err := strconv.ParseFloat(viewerLonStr, 64); err == nil {
-				viewerLat = &lat
-				viewerLon = &lon
-			}
-		}
-	}
-
 	var products []models.Product
 	for rows.Next() {
 		var product models.Product
@@ -844,6 +879,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var pickupAddressNull sql.NullString
 		var wantsNull sql.NullString
 		var wantedCategoriesRaw sql.NullString
+		var distKmNull sql.NullFloat64
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
@@ -852,7 +888,8 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			&wantsNull, &wantedCategoriesRaw,
 			&locationTypeNull, &pickupLatNull, &pickupLonNull, &pickupAddressNull,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
-			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
+			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount,
+			&distKmNull)
 
 		if wantsNull.Valid {
 			product.Wants = wantsNull.String
@@ -897,21 +934,13 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			product.SellerProfilePicture = sellerProfile.String
 		}
 
-		// Use product coords only. Seller coords are NOT used as a fallback
-		// for distance — that previously caused every product to show the
-		// seller's home distance even when the item was listed elsewhere.
-		// If product coords are missing we'll geocode from `location` text
-		// in the background loop below.
-		var finalLat, finalLon *float64
 		if latNull.Valid {
 			l := latNull.Float64
 			product.Latitude = &l
-			finalLat = &l
 		}
 		if lonNull.Valid {
 			l := lonNull.Float64
 			product.Longitude = &l
-			finalLon = &l
 		}
 		_ = sLatNull
 		_ = sLonNull
@@ -924,16 +953,27 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			}
 		}
 
-		// Compute distance if we have both viewer and product (or seller) coordinates
-		if viewerLat != nil && viewerLon != nil && finalLat != nil && finalLon != nil {
-			result := services.CalculateDistance(*viewerLat, *viewerLon, *finalLat, *finalLon)
-			if result.DistanceKm < 1 {
-				product.Distance = fmt.Sprintf("%d M", int(result.DistanceM))
-			} else if result.DistanceKm < 10 {
-				product.Distance = fmt.Sprintf("%.1f KM", result.DistanceKm)
-			} else {
-				product.Distance = fmt.Sprintf("%d KM", int(result.DistanceKm))
+		// Use the SQL-computed Haversine distance (most accurate — all math in MySQL)
+		if distKmNull.Valid {
+			distKm := distKmNull.Float64
+			var pLat, pLon float64
+			if product.Latitude != nil {
+				pLat = *product.Latitude
 			}
+			if product.Longitude != nil {
+				pLon = *product.Longitude
+			}
+			log.Printf("📏 [GetProducts] Product ID %d (%s) - Lat=%.6f, Lng=%.6f - Raw SQL dist: %.6f km", 
+				product.ID, product.Title, pLat, pLon, distKm)
+			if distKm < 1 {
+				product.Distance = fmt.Sprintf("%dM AWAY", int(distKm*1000))
+			} else if distKm < 10 {
+				product.Distance = fmt.Sprintf("%.1fKM AWAY", distKm)
+			} else {
+				product.Distance = fmt.Sprintf("%dKM AWAY", int(distKm))
+			}
+		} else {
+			log.Printf("📏 [GetProducts] Product ID %d (%s) - NO DISTANCE COMPUTED (NULL coordinates)", product.ID, product.Title)
 		}
 
 		products = append(products, product)

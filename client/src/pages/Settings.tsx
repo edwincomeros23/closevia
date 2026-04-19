@@ -48,7 +48,14 @@ import {
   TabPanels,
   TabPanel,
   Tab,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
 } from '@chakra-ui/react'
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -71,8 +78,35 @@ import {
   FaAccessibleIcon,
   FaEnvelope,
   FaMobile,
+  FaHome,
 } from 'react-icons/fa'
 import { FiSettings, FiSave, FiMapPin } from 'react-icons/fi'
+
+// Fix leaflet icon issues (same as AddProduct)
+// @ts-ignore
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+})
+
+// Map click handler for home address picker
+const HomeMapClickHandler = ({ onSelect }: { onSelect: (lat: number, lng: number) => void }) => {
+  const map = useMap()
+  useEffect(() => {
+    const handler = (e: any) => onSelect(e.latlng.lat, e.latlng.lng)
+    map.on('click', handler)
+    return () => { map.off('click', handler) }
+  }, [map, onSelect])
+  return null
+}
+
+const HomeMapCenterUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
+  const map = useMap()
+  useEffect(() => { map.setView([lat, lng], 15, { animate: true }) }, [lat, lng, map])
+  return null
+}
 
 const SettingsPage: React.FC = () => {
   const toast = useToast()
@@ -154,6 +188,26 @@ const SettingsPage: React.FC = () => {
   const { isOpen: isPhoneModalOpen, onOpen: onPhoneModalOpen, onClose: onPhoneModalClose } = useDisclosure()
   const { isOpen: isLogoutModalOpen, onOpen: onLogoutModalOpen, onClose: onLogoutModalClose } = useDisclosure()
   const { isOpen: isDeleteAccountOpen, onOpen: onDeleteAccountOpen, onClose: onDeleteAccountClose } = useDisclosure()
+  // Home Address state
+  const [homeLocation, setHomeLocation] = useState<{ lat: number; lng: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('clovia_home_location')
+      if (saved) { const p = JSON.parse(saved); if (p?.lat && p?.lng) return p }
+    } catch { /* ignore */ }
+    if ((user as any)?.home_latitude && (user as any)?.home_longitude) {
+      return { lat: (user as any).home_latitude, lng: (user as any).home_longitude }
+    }
+    return null
+  })
+  const [homeAddressLabel, setHomeAddressLabel] = useState<string>((user as any)?.home_address || '')
+  const [homeSaving, setHomeSaving] = useState(false)
+  const [pendingHomeLocation, setPendingHomeLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const { isOpen: isHomeMapOpen, onOpen: onHomeMapOpen, onClose: onHomeMapClose } = useDisclosure()
+  const [addressSearch, setAddressSearch] = useState('')
+  const [searchResults, setSearchResults] = useState<{ display_name: string; lat: string; lon: string }[]>([])
+  const [searching, setSearching] = useState(false)
+  const [gpsLoading, setGpsLoading] = useState(false)
+
   const cancelRef = useRef<HTMLButtonElement>(null)
   const logoutCancelRef = useRef<HTMLButtonElement>(null)
   const deleteAccountCancelRef = useRef<HTMLButtonElement>(null)
@@ -171,29 +225,30 @@ const SettingsPage: React.FC = () => {
     refreshUser()
   }, [refreshUser])
 
-  // Load initial values from user
+  // Load initial values from user (including home address)
   useEffect(() => {
     if (user) {
       setUsername(user.name || '')
       setEmail(user.email || '')
       setPhoneNumber((user as any)?.phone || '')
       setPhoneVerified((user as any)?.phone_verified || false)
-      // Strip any cache busters that might have been saved
       const cleanPicture = stripCacheBuster((user as any)?.profile_picture)
       setProfileImage(cleanPicture)
-      // Load notification settings from user object
       setEmailNotifications((user as any)?.email_notifications_enabled ?? true)
       setPushNotifications((user as any)?.push_notifications_enabled ?? true)
       if ((user as any)?.profile_picture) {
         console.log('📸 Profile picture loaded - Raw:', (user as any)?.profile_picture, 'Cleaned:', cleanPicture)
       }
-      // Initialize verification state from user when available
       const vs = (user as any)?.verification_status as ('not_verified' | 'pending' | 'verified' | 'rejected') | undefined
       if (vs) setVerificationStatus(vs)
       if ((user as any)?.school_name) setSchoolName((user as any).school_name)
       if ((user as any)?.school_email) setSchoolEmail((user as any).school_email)
-      // Show OTP step if they have school email set but not yet verified
       if ((user as any)?.school_email && !(user as any)?.school_email_verified_at) setShowSchoolOtpStep(true)
+      // Sync home address from user profile
+      if ((user as any)?.home_latitude && (user as any)?.home_longitude) {
+        setHomeLocation({ lat: (user as any).home_latitude, lng: (user as any).home_longitude })
+      }
+      if ((user as any)?.home_address) setHomeAddressLabel((user as any).home_address)
     }
   }, [user])
 
@@ -790,8 +845,71 @@ const SettingsPage: React.FC = () => {
 
 
 
+  // Save home address
+  const handleSaveHomeAddress = async (loc: { lat: number; lng: number }) => {
+    setHomeSaving(true)
+    try {
+      // Reverse geocode using Nominatim (free, no API key)
+      let addressLabel = `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`
+      try {
+        const geoRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json`,
+          { headers: { 'Accept-Language': 'en' } }
+        )
+        const geoData = await geoRes.json()
+        if (geoData?.display_name) {
+          // Show only the first 2 parts (e.g. "Street, City")
+          const parts = geoData.display_name.split(',')
+          addressLabel = parts.slice(0, 3).join(',').trim()
+        }
+      } catch { /* use coordinate fallback */ }
+
+      // Save to backend
+      await api.put('/api/users/profile', {
+        home_latitude: loc.lat,
+        home_longitude: loc.lng,
+        home_address: addressLabel,
+      })
+
+      // Persist to localStorage so ProductContext can read it immediately
+      localStorage.setItem('clovia_home_location', JSON.stringify({ lat: loc.lat, lng: loc.lng }))
+
+      // Update local state
+      setHomeLocation(loc)
+      setHomeAddressLabel(addressLabel)
+      setPendingHomeLocation(null)
+      onHomeMapClose()
+
+      // Notify ProductContext to recalculate distances from new home
+      window.dispatchEvent(new CustomEvent('homeAddressChanged', { detail: { lat: loc.lat, lng: loc.lng } }))
+
+      await refreshUser()
+
+      toast({
+        id: 'home-address-saved',
+        title: 'Home address saved',
+        description: `Distance calculations will now use: ${addressLabel}`,
+        status: 'success',
+        duration: 4000,
+        isClosable: true,
+      })
+    } catch (err: any) {
+      toast({
+        id: 'home-address-error',
+        title: 'Failed to save home address',
+        description: err?.response?.data?.error || err?.message || 'Please try again',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+    } finally {
+      setHomeSaving(false)
+    }
+  }
+
   // Handle logout — clear tokens/cookies and notify backend if possible
   const handleLogout = async () => {
+
     // Clear common client-side storage keys
     try {
       const keys = ['token', 'auth_token', 'access_token', 'refresh_token', 'session']
@@ -1300,10 +1418,275 @@ const SettingsPage: React.FC = () => {
                           Sign out from this device.
                         </Text>
                       </FormControl>
+
+                      <Divider />
+
+                      {/* Home Address — for stable distance calculations */}
+                      <Box>
+                        <HStack justify="space-between" mb={2} flexWrap="wrap" gap={2}>
+                          <HStack spacing={2}>
+                            <Icon as={FaHome} color="brand.500" boxSize={4} />
+                            <Text fontWeight="600" fontSize="sm">Home Address</Text>
+                          </HStack>
+                          {homeLocation && (
+                            <Badge colorScheme="green" borderRadius="full" px={2} py={0.5} fontSize="2xs">
+                              <HStack spacing={1}>
+                                <Icon as={FaCheckCircle} boxSize={3} />
+                                <Text>Set</Text>
+                              </HStack>
+                            </Badge>
+                          )}
+                        </HStack>
+
+                        {!homeLocation && (
+                          <Alert status="info" borderRadius="xl" mb={3} fontSize="sm" py={2}>
+                            <AlertIcon boxSize={4} />
+                            <Box>
+                              <AlertTitle fontSize="xs" fontWeight="700">Set your home address</AlertTitle>
+                              <AlertDescription fontSize="xs" color="gray.600">
+                                Distance badges on listings will use your home as the reference point instead of your live GPS — giving you more stable and meaningful distances.
+                              </AlertDescription>
+                            </Box>
+                          </Alert>
+                        )}
+
+                        {homeLocation && homeAddressLabel && (
+                          <HStack
+                            bg={useColorModeValue('green.50', 'green.900')}
+                            borderRadius="xl"
+                            px={3} py={2} mb={3}
+                            border="1px solid"
+                            borderColor={useColorModeValue('green.200', 'green.700')}
+                            spacing={2}
+                          >
+                            <Icon as={FiMapPin} color="green.500" boxSize={4} flexShrink={0} />
+                            <Text fontSize="sm" color={useColorModeValue('green.700', 'green.200')} noOfLines={2}>
+                              {homeAddressLabel}
+                            </Text>
+                          </HStack>
+                        )}
+
+                        <HStack spacing={2}>
+                          <Button
+                            id="settings-set-home-address-btn"
+                            leftIcon={<FiMapPin />}
+                            size="sm"
+                            colorScheme="brand"
+                            variant={homeLocation ? 'outline' : 'solid'}
+                            onClick={() => {
+                              setAddressSearch('')
+                              setSearchResults([])
+                              // Start with existing, then try GPS
+                              const initial = homeLocation || { lat: 14.5995, lng: 120.9842 } // Manila fallback
+                              setPendingHomeLocation(initial)
+                              onHomeMapOpen()
+                              // Auto-request GPS to center map
+                              if ('geolocation' in navigator) {
+                                setGpsLoading(true)
+                                navigator.geolocation.getCurrentPosition(
+                                  (pos) => {
+                                    setPendingHomeLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+                                    setGpsLoading(false)
+                                  },
+                                  () => setGpsLoading(false),
+                                  { timeout: 8000 }
+                                )
+                              }
+                            }}
+                          >
+                            {homeLocation ? 'Update Home Address' : 'Set Home Address'}
+                          </Button>
+                          {homeLocation && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              colorScheme="red"
+                              onClick={async () => {
+                                try {
+                                  await api.put('/api/users/profile', {
+                                    home_latitude: null,
+                                    home_longitude: null,
+                                    home_address: '',
+                                  })
+                                  localStorage.removeItem('clovia_home_location')
+                                  setHomeLocation(null)
+                                  setHomeAddressLabel('')
+                                  window.dispatchEvent(new CustomEvent('homeAddressChanged', { detail: { lat: null, lng: null } }))
+                                  toast({ id: 'home-address-cleared', title: 'Home address removed', status: 'info', duration: 3000, isClosable: true })
+                                } catch { /* ignore */ }
+                              }}
+                            >
+                              Clear
+                            </Button>
+                          )}
+                        </HStack>
+                        <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
+                          Tap the map to pin your home. This is used only for calculating listing distances — it's never shown publicly.
+                        </Text>
+                      </Box>
                     </VStack>
                   </CardBody>
                 </Card>
               </TabPanel>
+
+              {/* ── Home Address Map Modal ── */}
+              <Modal isOpen={isHomeMapOpen} onClose={() => { onHomeMapClose(); setSearchResults([]); setAddressSearch('') }} size="xl" isCentered scrollBehavior="inside">
+                <ModalOverlay backdropFilter="blur(4px)" />
+                <ModalContent borderRadius="2xl" overflow="hidden" mx={2} maxH="90vh">
+                  <ModalHeader pb={2}>
+                    <HStack spacing={2}>
+                      <Icon as={FaHome} color="brand.500" />
+                      <Text>Set Home Address</Text>
+                    </HStack>
+                  </ModalHeader>
+                  <ModalCloseButton />
+                  <ModalBody p={0}>
+                    <VStack spacing={0} align="stretch">
+
+                      {/* Search bar + GPS button */}
+                      <Box px={4} py={3} borderBottomWidth="1px" borderColor={borderColor}>
+                        <HStack spacing={2}>
+                          <InputGroup size="sm" flex={1}>
+                            <Input
+                              placeholder="Search address or place name..."
+                              value={addressSearch}
+                              onChange={(e) => setAddressSearch(e.target.value)}
+                              borderRadius="lg"
+                              onKeyDown={async (e) => {
+                                if (e.key === 'Enter' && addressSearch.trim().length > 2) {
+                                  setSearching(true)
+                                  try {
+                                    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressSearch)}&format=json&limit=5&countrycodes=ph`, { headers: { 'Accept-Language': 'en' } })
+                                    setSearchResults(await res.json())
+                                  } catch { /* ignore */ } finally { setSearching(false) }
+                                }
+                              }}
+                            />
+                            <InputRightElement>
+                              {searching ? <Spinner size="xs" /> : null}
+                            </InputRightElement>
+                          </InputGroup>
+                          <Button
+                            size="sm"
+                            leftIcon={gpsLoading ? <Spinner size="xs" /> : <Icon as={FiMapPin} />}
+                            colorScheme="green"
+                            variant="outline"
+                            borderRadius="lg"
+                            isLoading={gpsLoading}
+                            onClick={() => {
+                              if (!('geolocation' in navigator)) return
+                              setGpsLoading(true)
+                              navigator.geolocation.getCurrentPosition(
+                                (pos) => {
+                                  setPendingHomeLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+                                  setGpsLoading(false)
+                                  setSearchResults([])
+                                },
+                                () => {
+                                  setGpsLoading(false)
+                                  toast({ id: 'gps-error', title: 'Could not get GPS location', status: 'warning', duration: 3000, isClosable: true })
+                                },
+                                { timeout: 8000, enableHighAccuracy: true }
+                              )
+                            }}
+                          >
+                            My Location
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            colorScheme="brand"
+                            borderRadius="lg"
+                            isLoading={searching}
+                            onClick={async () => {
+                              if (addressSearch.trim().length < 2) return
+                              setSearching(true)
+                              try {
+                                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressSearch)}&format=json&limit=5&countrycodes=ph`, { headers: { 'Accept-Language': 'en' } })
+                                setSearchResults(await res.json())
+                              } catch { /* ignore */ } finally { setSearching(false) }
+                            }}
+                          >
+                            Search
+                          </Button>
+                        </HStack>
+
+                        {/* Search results dropdown */}
+                        {searchResults.length > 0 && (
+                          <VStack align="stretch" mt={2} spacing={0} borderRadius="lg" border="1px solid" borderColor={borderColor} overflow="hidden" maxH="180px" overflowY="auto">
+                            {searchResults.map((r, i) => (
+                              <Box
+                                key={i}
+                                px={3} py={2}
+                                cursor="pointer"
+                                bg={useColorModeValue('white', 'gray.800')}
+                                _hover={{ bg: useColorModeValue('brand.50', 'gray.700') }}
+                                borderBottomWidth={i < searchResults.length - 1 ? '1px' : '0'}
+                                borderColor={borderColor}
+                                onClick={() => {
+                                  setPendingHomeLocation({ lat: parseFloat(r.lat), lng: parseFloat(r.lon) })
+                                  setSearchResults([])
+                                  setAddressSearch(r.display_name.split(',').slice(0, 3).join(','))
+                                }}
+                              >
+                                <HStack spacing={2}>
+                                  <Icon as={FiMapPin} color="brand.500" boxSize={3} flexShrink={0} />
+                                  <Text fontSize="xs" noOfLines={2}>{r.display_name}</Text>
+                                </HStack>
+                              </Box>
+                            ))}
+                          </VStack>
+                        )}
+                      </Box>
+
+                      {/* Map */}
+                      {pendingHomeLocation && (
+                        <Box h="340px" position="relative">
+                          <MapContainer
+                            center={[pendingHomeLocation.lat, pendingHomeLocation.lng]}
+                            zoom={15}
+                            style={{ height: '100%', width: '100%' }}
+                          >
+                            <TileLayer
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                            />
+                            <HomeMapClickHandler onSelect={(lat, lng) => { setPendingHomeLocation({ lat, lng }); setSearchResults([]) }} />
+                            <HomeMapCenterUpdater lat={pendingHomeLocation.lat} lng={pendingHomeLocation.lng} />
+                            <Marker position={[pendingHomeLocation.lat, pendingHomeLocation.lng]} />
+                          </MapContainer>
+                        </Box>
+                      )}
+
+                      {/* Selected coords */}
+                      {pendingHomeLocation && (
+                        <Box px={4} py={2} bg={useColorModeValue('gray.50', 'gray.800')}>
+                          <HStack spacing={2}>
+                            <Icon as={FiMapPin} color="brand.500" boxSize={3} />
+                            <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')}>
+                              Pinned: {pendingHomeLocation.lat.toFixed(5)}, {pendingHomeLocation.lng.toFixed(5)} · Tap map to adjust
+                            </Text>
+                          </HStack>
+                        </Box>
+                      )}
+                    </VStack>
+                  </ModalBody>
+                  <ModalFooter gap={2} pt={3}>
+                    <Button variant="ghost" size="sm" onClick={() => { onHomeMapClose(); setSearchResults([]); setAddressSearch('') }} isDisabled={homeSaving}>Cancel</Button>
+                    <Button
+                      id="settings-confirm-home-address-btn"
+                      colorScheme="brand"
+                      size="sm"
+                      leftIcon={<FaHome />}
+                      isLoading={homeSaving}
+                      isDisabled={!pendingHomeLocation}
+                      onClick={() => pendingHomeLocation && handleSaveHomeAddress(pendingHomeLocation)}
+                    >
+                      Confirm Home Address
+                    </Button>
+                  </ModalFooter>
+                </ModalContent>
+              </Modal>
 
               {/* School ID Verification Section - hidden for admins */}
               {user?.role !== 'admin' && (

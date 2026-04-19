@@ -29,6 +29,9 @@ export interface User {
   response_rating?: 'excellent' | 'good' | 'average' | 'poor'
   latitude?: number
   longitude?: number
+  home_latitude?: number   // Saved home address latitude
+  home_longitude?: number  // Saved home address longitude
+  home_address?: string    // Human-readable home address label
   is_premium?: boolean
   premium_tier?: 'free' | 'plus' | 'pro'
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'

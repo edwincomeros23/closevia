@@ -22,7 +22,6 @@ import {
   Skeleton,
   SkeletonText,
   ScaleFade,
-  Tooltip,
   Divider,
   Icon,
 } from '@chakra-ui/react'
@@ -407,17 +406,22 @@ const Notifications: React.FC = () => {
                   />
                 </InputGroup>
                 {unreadCount > 0 && (
-                  <Tooltip label="Mark all as read" hasArrow placement="bottom">
-                    <IconButton
-                      aria-label="Mark all as read"
-                      icon={<Icon as={FaCheckDouble} />}
-                      size="sm"
-                      variant="ghost"
-                      colorScheme="brand"
-                      borderRadius="full"
-                      onClick={markAllAsRead}
-                    />
-                  </Tooltip>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    colorScheme="brand"
+                    borderRadius="full"
+                    leftIcon={<Icon as={FaCheckDouble} boxSize={3} />}
+                    onClick={markAllAsRead}
+                    fontWeight="semibold"
+                    fontSize="xs"
+                    px={3}
+                    flexShrink={0}
+                    _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
+                    transition="all 0.15s"
+                  >
+                    Mark all as read
+                  </Button>
                 )}
               </HStack>
             </Flex>

@@ -2027,7 +2027,7 @@ const AddProduct: React.FC = () => {
                 }
                 handleField('price', val)
               }}
-              onKeyPress={(e) => {
+              onKeyDown={(e) => {
                 // Block minus and plus signs
                 if (e.key === '-' || e.key === '+') {
                   e.preventDefault()

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Box,
@@ -65,6 +65,7 @@ const Premium: React.FC = () => {
   const [productsLoading, setProductsLoading] = useState(false)
   const [boostingProduct, setBoostingProduct] = useState<number | null>(null)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true)
 
   const pageBg = useColorModeValue('#FFFDF1', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -73,20 +74,33 @@ const Premium: React.FC = () => {
   const subtleBg = useColorModeValue('gray.50', 'gray.900')
   const mutedText = useColorModeValue('gray.500', 'gray.400')
 
-  // Use actual premium status from user context
-  const isPremiumUser = user?.is_premium ?? false
-  const currentTier = (user?.premium_tier || 'free') as 'free' | 'plus' | 'pro'
   const isWmsuUser = (user?.email || '').toLowerCase().endsWith('@wmsu.edu.ph')
 
+  // Derive current tier: prefer live subscriptionData over potentially stale user cache
+  const currentTier = useMemo(() => {
+    const subTier = subscriptionData?.tier as 'free' | 'plus' | 'pro' | undefined
+    const userTier = user?.premium_tier as 'free' | 'plus' | 'pro' | undefined
+    // If subscription says paid but user cache says free, trust the subscription
+    if (subTier && subTier !== 'free') return subTier
+    return userTier || 'free'
+  }, [subscriptionData, user?.premium_tier])
+
+  const isPremiumUser = currentTier !== 'free'
+
   useEffect(() => {
+    // Always refresh user on page mount to bust stale localStorage cache
+    refreshUser()
     fetchLoops()
     fetchSubscriptionData()
-    if (isPremiumUser) {
-      fetchUserProducts()
-    }
     const interval = setInterval(fetchLoops, 30000)
     return () => clearInterval(interval)
-  }, [refreshUser, isPremiumUser])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Fetch products once we know the user is premium
+  useEffect(() => {
+    if (isPremiumUser) fetchUserProducts()
+  }, [isPremiumUser])
 
   useEffect(() => {
     const xenditExternalID = searchParams.get('xendit_external_id')
@@ -178,12 +192,15 @@ const Premium: React.FC = () => {
 
   const fetchSubscriptionData = async () => {
     try {
+      setSubscriptionLoading(true)
       const response = await api.get('/api/payments/subscription')
       if (response.data?.data) {
         setSubscriptionData(response.data.data)
       }
     } catch (error: any) {
       // Silently fail - subscription data is optional
+    } finally {
+      setSubscriptionLoading(false)
     }
   }
 
@@ -987,8 +1004,14 @@ const Premium: React.FC = () => {
             </VStack>
           )}
 
-          {isPremiumUser ? renderPremiumActive() : renderLockedContent()}
-          {isPremiumUser && renderLockedContent()}
+          {subscriptionLoading ? (
+            <Center py={20}>
+              <VStack spacing={4}>
+                <Spinner size="xl" color="purple.500" thickness="3px" />
+                <Text color={mutedText} fontSize="sm">Loading your plan...</Text>
+              </VStack>
+            </Center>
+          ) : isPremiumUser ? renderPremiumActive() : renderLockedContent()}
         </VStack>
       </Container>
 

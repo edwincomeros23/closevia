@@ -123,6 +123,9 @@ type User struct {
 	BackgroundPosition          string     `json:"background_position,omitempty"`
 	Latitude                    *float64   `json:"latitude,omitempty"`
 	Longitude                   *float64   `json:"longitude,omitempty"`
+	HomeLatitude                *float64   `json:"home_latitude,omitempty"`  // Saved home address lat
+	HomeLongitude               *float64   `json:"home_longitude,omitempty"` // Saved home address lng
+	HomeAddress                 string     `json:"home_address,omitempty"`   // Human-readable home address
 	IsPremium                   bool       `json:"is_premium"`
 	PremiumTier                 string     `json:"premium_tier"` // "free", "plus", "pro"
 	PremiumExpiresAt            *time.Time `json:"premium_expires_at,omitempty"`

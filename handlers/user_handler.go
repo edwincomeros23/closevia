@@ -31,9 +31,16 @@ type UserHandler struct {
 
 // NewUserHandler creates a new user handler
 func NewUserHandler() *UserHandler {
-	return &UserHandler{
+	h := &UserHandler{
 		db: database.DB,
 	}
+	// Auto-migrate home address columns
+	// Using plain ALTER TABLE (no IF NOT EXISTS) for MySQL 5.7 compatibility.
+	// Duplicate-column errors on subsequent startups are harmlessly discarded.
+	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN home_latitude DOUBLE NULL")
+	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN home_longitude DOUBLE NULL")
+	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN home_address VARCHAR(500) NULL")
+	return h
 }
 
 func nullableString(p *string) interface{} {
@@ -929,7 +936,8 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        premium_expires_at,
 		        COALESCE(strikes, 0) AS strikes,
 		        COALESCE(is_suspended, FALSE) AS is_suspended,
-		        created_at, updated_at, password_changed_at, name_changed_at, phone_changed_at, last_login
+		        created_at, updated_at, password_changed_at, name_changed_at, phone_changed_at, last_login,
+		        home_latitude, home_longitude, COALESCE(home_address, '') AS home_address
 		 FROM users WHERE id = ?`,
 		userID,
 	).Scan(
@@ -944,6 +952,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
 		&user.LanguagePreference, &user.PremiumTier, &premiumExpiresAt, &user.Strikes, &user.IsSuspended,
 		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &nameChangedAt, &phoneChangedAt, &lastLogin,
+		&user.HomeLatitude, &user.HomeLongitude, &user.HomeAddress,
 	)
 
 	if schoolEmailVerifiedAt.Valid {
@@ -1055,16 +1064,19 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	}
 
 	var updateData struct {
-		Name                      *string `json:"name"`
-		Email                     *string `json:"email"`
-		Phone                     *string `json:"phone"`
-		ProfilePicture            *string `json:"profile_picture"`
-		Bio                       *string `json:"bio"`
-		BackgroundImage           *string `json:"background_image"`
-		BackgroundPosition        *string `json:"background_position"`
-		LanguagePreference        *string `json:"language_preference"`
-		EmailNotificationsEnabled *bool   `json:"email_notifications_enabled"`
-		PushNotificationsEnabled  *bool   `json:"push_notifications_enabled"`
+		Name                      *string  `json:"name"`
+		Email                     *string  `json:"email"`
+		Phone                     *string  `json:"phone"`
+		ProfilePicture            *string  `json:"profile_picture"`
+		Bio                       *string  `json:"bio"`
+		BackgroundImage           *string  `json:"background_image"`
+		BackgroundPosition        *string  `json:"background_position"`
+		LanguagePreference        *string  `json:"language_preference"`
+		EmailNotificationsEnabled *bool    `json:"email_notifications_enabled"`
+		PushNotificationsEnabled  *bool    `json:"push_notifications_enabled"`
+		HomeLatitude              *float64 `json:"home_latitude"`
+		HomeLongitude             *float64 `json:"home_longitude"`
+		HomeAddress               *string  `json:"home_address"`
 	}
 
 	if err := c.BodyParser(&updateData); err != nil {
@@ -1242,6 +1254,21 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if updateData.PushNotificationsEnabled != nil {
 		query += ", push_notifications_enabled = ?"
 		args = append(args, *updateData.PushNotificationsEnabled)
+	}
+
+	if updateData.HomeLatitude != nil {
+		query += ", home_latitude = ?"
+		args = append(args, *updateData.HomeLatitude)
+	}
+
+	if updateData.HomeLongitude != nil {
+		query += ", home_longitude = ?"
+		args = append(args, *updateData.HomeLongitude)
+	}
+
+	if updateData.HomeAddress != nil {
+		query += ", home_address = ?"
+		args = append(args, *updateData.HomeAddress)
 	}
 
 	query += " WHERE id = ?"
@@ -2254,20 +2281,20 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 		MemberSinceYear: userCreatedAt.Year(),
 	}
 
-	// Calculate total trades (completed trades for this user as seller)
+	// Calculate total trades (all completed trades involving this user)
 	err = h.db.QueryRow(`
 		SELECT COUNT(*) FROM trades 
-		WHERE seller_id = ? AND status IN ('completed', 'auto_completed')
-	`, userID).Scan(&stats.TotalTrades)
+		WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('completed', 'auto_completed')
+	`, userID, userID).Scan(&stats.TotalTrades)
 	if err != nil {
 		stats.TotalTrades = 0
 	}
 
-	// Calculate completed trades
+	// Calculate completed trades (synonymous with TotalTrades in this context, but explicitly checks completion criteria)
 	err = h.db.QueryRow(`
 		SELECT COUNT(*) FROM trades 
-		WHERE seller_id = ? AND status = 'completed' AND seller_completed = true
-	`, userID).Scan(&stats.CompletedTrades)
+		WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('completed', 'auto_completed')
+	`, userID, userID).Scan(&stats.CompletedTrades)
 	if err != nil {
 		stats.CompletedTrades = 0
 	}
@@ -2275,8 +2302,8 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	// Calculate cancelled trades
 	err = h.db.QueryRow(`
 		SELECT COUNT(*) FROM trades 
-		WHERE seller_id = ? AND status = 'cancelled'
-	`, userID).Scan(&stats.CancelledTrades)
+		WHERE (seller_id = ? OR buyer_id = ?) AND status = 'cancelled'
+	`, userID, userID).Scan(&stats.CancelledTrades)
 	if err != nil {
 		stats.CancelledTrades = 0
 	}
@@ -2284,8 +2311,8 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	// Calculate pending trades
 	err = h.db.QueryRow(`
 		SELECT COUNT(*) FROM trades 
-		WHERE seller_id = ? AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
-	`, userID).Scan(&stats.PendingTrades)
+		WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
+	`, userID, userID).Scan(&stats.PendingTrades)
 	if err != nil {
 		stats.PendingTrades = 0
 	}
@@ -2449,14 +2476,14 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 
 	// 6. Trade Success Rate: 10 points
 	var totalAttempted int
-	_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed', 'cancelled')", userID).Scan(&totalAttempted)
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('completed', 'auto_completed', 'cancelled')", userID, userID).Scan(&totalAttempted)
 
 	successPoints := 0 // New users start at 0 — earned only after trade attempts
 	successStatus := "warn"
 	if totalAttempted > 0 {
 		successStatus = "pass"
 		var successCount int
-		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed')", userID).Scan(&successCount)
+		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE (seller_id = ? OR buyer_id = ?) AND status IN ('completed', 'auto_completed')", userID, userID).Scan(&successCount)
 		successRate := (float64(successCount) / float64(totalAttempted)) * 100
 		if successRate >= 90 {
 			successPoints = 10
