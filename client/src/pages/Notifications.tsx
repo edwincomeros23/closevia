@@ -220,12 +220,9 @@ const Notifications: React.FC = () => {
   /* --- Filtering & Pagination --- */
   const filtered = useMemo(() => {
     return notifications.filter(n => {
-      // Filter out proactive auto-detected trade_loop notifications (spam from category matching)
-      if (n.type === 'trade_loop' && n.message && (
-        n.message.includes('A 3-way trade opportunity was found') ||
-        n.message.includes('Great match!') ||
-        n.message.includes('in a 3-way trade')
-      )) return false
+      // Hide all multiway/loop "Trade Loop Found" notifications — users found
+      // these noisy (loop-confirmed, participant-confirmed, mutual-like pending).
+      if (n.type === 'trade_loop') return false
 
       if (!query) return true
       const q = query.toLowerCase()

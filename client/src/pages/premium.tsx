@@ -227,7 +227,7 @@ const Premium: React.FC = () => {
       const product = userProducts.find(p => p.id === productId)
       const productName = product?.title || 'Product'
       
-      const response = await api.post(`/api/products/${productId}/boost`)
+      const response = await api.post(`/api/products/boost/${productId}`)
       
       if (response.data?.success) {
         toast({
