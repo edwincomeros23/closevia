@@ -351,6 +351,9 @@ const Premium: React.FC = () => {
     insights: [
       { text: 'See total profile views only', icon: FaEye },
     ],
+    profile: [
+      { text: 'Create 1 organization', icon: FaStore },
+    ],
   }
 
   const plusFeatures = {
@@ -359,8 +362,7 @@ const Premium: React.FC = () => {
       { text: '3 boosted listings — pinned higher in the feed', icon: FaRocket, bold: true },
     ],
     trading: [
-      { text: '10% off all delivery fees', icon: FaPercentage, bold: true },
-      { text: 'Priority matches — good trades reach you first', icon: FaBolt, bold: true },
+      { text: '10% delivery discount', icon: FaPercentage, bold: true },
       { text: 'Trade dispute reviewed first', icon: FaShieldAlt, bold: true },
     ],
     insights: [
@@ -368,6 +370,7 @@ const Premium: React.FC = () => {
       { text: 'AI price confidence — see what data backs the estimate', icon: FaStar, bold: true },
     ],
     profile: [
+      { text: 'Create up to 3 organizations', icon: FaStore, bold: true },
       { text: 'Plus badge on profile and listings', icon: FaUserShield, bold: true },
     ],
   }
@@ -379,7 +382,7 @@ const Premium: React.FC = () => {
     ],
     trading: [
       { text: 'Express delivery access', icon: FaTruck, bold: true },
-      { text: '20% off all delivery fees', icon: FaPercentage, bold: true },
+      { text: '20% delivery discount', icon: FaPercentage, bold: true },
       { text: 'Trade dispute reviewed first', icon: FaShieldAlt, bold: true },
     ],
     insights: [
@@ -387,6 +390,7 @@ const Premium: React.FC = () => {
       { text: 'AI price confidence + market data', icon: FaStar, bold: true },
     ],
     profile: [
+      { text: 'Create up to 3 organizations', icon: FaStore, bold: true },
       { text: 'Verified Pro badge on all listings', icon: FaUserShield, bold: true },
       { text: 'Priority support', icon: FaHeadset, bold: true },
     ],
@@ -397,7 +401,7 @@ const Premium: React.FC = () => {
     { feature: 'Boosted Listings', free: '—', plus: '3', pro: '10 always pinned' },
     { feature: 'Express Delivery', free: '—', plus: '✓', pro: '✓' },
     { feature: 'Delivery Fee Discount', free: '—', plus: '10%', pro: '20%' },
-    { feature: 'Priority Matches', free: '—', plus: '✓', pro: 'Top of queue' },
+    { feature: 'Organizations', free: '1', plus: 'Up to 3', pro: 'Up to 3' },
     { feature: 'Trade Dispute Priority', free: '—', plus: '✓', pro: '✓' },
     { feature: 'AI Price Confidence', free: 'Range only', plus: 'Data-backed', pro: '+ market data' },
     { feature: 'Badge', free: '—', plus: 'Plus badge', pro: 'Verified Pro' },
