@@ -394,6 +394,16 @@ Remember: Check for prohibited items FIRST. If found, respond ONLY with {"prohib
 			log.Printf("Stripped markdown: %q -> %q", truncate(old, 50), truncate(raw, 50))
 		}
 
+		// Extract the JSON object even when the model wraps it in chatter like
+		// "Here's the analysis:" or trailing notes. This is the single biggest
+		// source of instability — parse fails because of a prefix/suffix that
+		// has nothing to do with the payload.
+		if start := strings.Index(raw, "{"); start >= 0 {
+			if end := strings.LastIndex(raw, "}"); end > start {
+				raw = raw[start : end+1]
+			}
+		}
+
 		var result GeminiResponse
 		if err := json.Unmarshal([]byte(raw), &result); err != nil {
 			log.Printf("Error unmarshaling JSON from Gemini (%s): %v", model, err)

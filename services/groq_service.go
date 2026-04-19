@@ -336,6 +336,13 @@ Remember: SAFETY IS THE HIGHEST PRIORITY. Check for prohibited items first. If f
 			responseText = strings.TrimSuffix(responseText, "\n```")
 			responseText = strings.TrimSuffix(responseText, "```")
 
+			// Strip any prose prefix/suffix by locking to the outermost braces.
+			if start := strings.Index(responseText, "{"); start >= 0 {
+				if end := strings.LastIndex(responseText, "}"); end > start {
+					responseText = responseText[start : end+1]
+				}
+			}
+
 			var result GeminiResponse
 			if err := json.Unmarshal([]byte(responseText), &result); err != nil {
 				log.Printf("Error parsing Groq JSON response: %v", err)
