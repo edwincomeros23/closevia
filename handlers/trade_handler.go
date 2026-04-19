@@ -1516,10 +1516,10 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	var testTradeOption sql.NullString
 	if err := testRow.Scan(&testTradeOption); err == nil {
 		// Column exists, include it in query
-		query += `, COALESCE(t.trade_option, '') as trade_option, COALESCE(t.delivery_address, '') as delivery_address`
+		query += `, COALESCE(t.trade_option, '') as trade_option, COALESCE(t.meeting_type, '') as meeting_type, COALESCE(t.delivery_address, '') as delivery_address`
 	} else {
 		// Column doesn't exist, use empty defaults
-		query += `, '' as trade_option, '' as delivery_address`
+		query += `, '' as trade_option, '' as meeting_type, '' as delivery_address`
 	}
 
 	// Check if delivery state columns exist
@@ -1566,7 +1566,8 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
           COALESCE(t.seller_meetup_location, '') as seller_meetup_location, COALESCE(t.seller_meetup_time, '') as seller_meetup_time,
 		  COALESCE(t.buyer_met, FALSE) as buyer_met, COALESCE(t.seller_met, FALSE) as seller_met,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title,
-          p.image_url AS product_image_url, p.image_urls AS product_image_urls
+          p.image_url AS product_image_url, p.image_urls AS product_image_urls,
+          COALESCE(NULLIF(p.pickup_address, ''), NULLIF(us.home_address, ''), '') AS target_product_pickup_address
         FROM trades t
         JOIN users ub ON ub.id = t.buyer_id
         JOIN users us ON us.id = t.seller_id
@@ -1589,9 +1590,13 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		var paymentConfirmed, buyerConfirmedReceipt, sellerConfirmedDelivery bool
 		var proofOfDelivery sql.NullString
 		var pimg, pimgs sql.NullString
+		var targetPickupAddr sql.NullString
 		var offeredCashNull sql.NullFloat64
 
-		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs); err == nil {
+		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.MeetingType, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs, &targetPickupAddr); err == nil {
+			if targetPickupAddr.Valid {
+				tr.TargetProductPickupAddress = targetPickupAddr.String
+			}
 			// Set offered cash if valid
 			if offeredCashNull.Valid {
 				val := offeredCashNull.Float64
@@ -1638,7 +1643,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 
 		itemQuery := fmt.Sprintf(`
             SELECT ti.id, ti.trade_id, ti.product_id, ti.offered_by, ti.created_at,
-                   p.title, p.status, p.image_url, p.image_urls
+                   p.title, p.status, p.image_url, p.image_urls, COALESCE(p.pickup_address, '')
             FROM trade_items ti
             LEFT JOIN products p ON p.id = ti.product_id
             WHERE ti.trade_id IN (%s)
@@ -1655,10 +1660,14 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 				var offeredBy sql.NullString
 				var title, pstatus, pimg sql.NullString
 				var pimgs sql.NullString
+				var pickupAddr sql.NullString
 
-				if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg, &pimgs); err != nil {
+				if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg, &pimgs, &pickupAddr); err != nil {
 					log.Printf("batch trade item scan error: %v", err)
 					continue
+				}
+				if pickupAddr.Valid {
+					it.ProductPickupAddress = pickupAddr.String
 				}
 
 				if offeredBy.Valid {
@@ -1930,12 +1939,21 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to decline trade"})
 		}
 
+		// Check if this trade had a pending multi-way chain before we cancel it,
+		// so we can notify the OTHER chain participants afterwards.
+		var hadPendingChain bool
+		_ = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM multiway_trades WHERE original_trade_id = ? AND status = 'pending_user3')", tradeID).Scan(&hadPendingChain)
+
 		// Also cancel any pending multi-way invitations for this trade
 		_, _ = tx.Exec("UPDATE multiway_trades SET status = 'cancelled', updated_at = NOW(), cancelled_at = NOW(), cancelled_by = ? WHERE original_trade_id = ? AND status = 'pending_user3'", userID, tradeID)
 
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit trade decline"})
+		}
+
+		if hadPendingChain {
+			h.notifyMultiwayLoopBroken(tradeID, "", userID)
 		}
 
 		var pid int
@@ -1994,11 +2012,13 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade items"})
 		}
+		// Counter-offered items come from the buyer's (original offerer's) inventory —
+		// the seller counters by proposing a different item (or cash) from what the buyer has.
 		for _, pid := range payload.CounterOfferedProductIDs {
 			var ownerID int
-			if err := tx.QueryRow("SELECT seller_id FROM products WHERE id = ?", pid).Scan(&ownerID); err != nil || ownerID != userID {
+			if err := tx.QueryRow("SELECT seller_id FROM products WHERE id = ?", pid).Scan(&ownerID); err != nil || ownerID != buyerID {
 				_ = tx.Rollback()
-				return c.Status(400).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("You do not own product %d or it does not exist.", pid)})
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Product %d is not available for this counter offer.", pid)})
 			}
 			if _, err := tx.Exec("INSERT INTO trade_items (trade_id, product_id, offered_by) VALUES (?, ?, ?)", tradeID, pid, offeredBy); err != nil {
 				_ = tx.Rollback()
@@ -2147,6 +2167,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			}
 		}
 
+		// Check if this trade had a pending multi-way chain before we cancel it,
+		// so we can notify the OTHER chain participants afterwards.
+		var hadPendingChain bool
+		_ = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM multiway_trades WHERE original_trade_id = ? AND status = 'pending_user3')", tradeID).Scan(&hadPendingChain)
+
 		// Also cancel any pending multi-way invitations for this trade
 		_, _ = tx.Exec("UPDATE multiway_trades SET status = 'cancelled', updated_at = NOW(), cancelled_at = NOW(), cancelled_by = ? WHERE original_trade_id = ? AND status = 'pending_user3'", userID, tradeID)
 
@@ -2154,6 +2179,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			_ = tx.Rollback()
 			log.Printf("[Cancel Trade] Failed to commit transaction: %v", err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit trade cancellation"})
+		}
+
+		if hadPendingChain {
+			h.notifyMultiwayLoopBroken(tradeID, "", userID)
 		}
 
 		log.Printf("[Cancel Trade] Success - Trade %d cancelled by user %d", tradeID, userID)
@@ -3082,10 +3111,10 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	var testTradeOption sql.NullString
 	if err := testRow.Scan(&testTradeOption); err == nil {
 		// Column exists, include it in query
-		query += `, COALESCE(t.trade_option, '') as trade_option, COALESCE(t.delivery_address, '') as delivery_address`
+		query += `, COALESCE(t.trade_option, '') as trade_option, COALESCE(t.meeting_type, '') as meeting_type, COALESCE(t.delivery_address, '') as delivery_address`
 	} else {
 		// Column doesn't exist, use empty defaults
-		query += `, '' as trade_option, '' as delivery_address`
+		query += `, '' as trade_option, '' as meeting_type, '' as delivery_address`
 	}
 
 	// Check if delivery state columns exist (delivery progress + instructions)
@@ -3133,7 +3162,8 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
           COALESCE(t.seller_meetup_time, '') as seller_meetup_time,
 					COALESCE(t.buyer_met, FALSE) as buyer_met,
 					COALESCE(t.seller_met, FALSE) as seller_met,
-          ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
+          ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title,
+          COALESCE(NULLIF(p.pickup_address, ''), NULLIF(us.home_address, ''), '') AS target_product_pickup_address
         FROM trades t
         JOIN users ub ON ub.id = t.buyer_id
         JOIN users us ON us.id = t.seller_id
@@ -3144,7 +3174,11 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	var paymentConfirmed, buyerConfirmedReceipt, sellerConfirmedDelivery bool
 	var proofOfDelivery sql.NullString
 	var offeredCashNull sql.NullFloat64
-	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.MeetupTime, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
+	var targetPickupAddr sql.NullString
+	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.MeetingType, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.MeetupTime, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &targetPickupAddr)
+	if targetPickupAddr.Valid {
+		tr.TargetProductPickupAddress = targetPickupAddr.String
+	}
 	if offeredCashNull.Valid {
 		val := offeredCashNull.Float64
 		tr.OfferedCash = &val
@@ -3166,7 +3200,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	}
 	itemRows, qerr := h.db.Query(`
                 SELECT ti.id, ti.trade_id, ti.product_id, ti.offered_by, ti.created_at,
-                       p.title, p.status, p.image_url, p.image_urls
+                       p.title, p.status, p.image_url, p.image_urls, COALESCE(p.pickup_address, '')
                 FROM trade_items ti
                 LEFT JOIN products p ON p.id = ti.product_id
                 WHERE ti.trade_id = ?
@@ -3180,7 +3214,8 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 			var offeredBy sql.NullString
 			var title, pstatus, pimg sql.NullString
 			var pimgs sql.NullString
-			if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg, &pimgs); err == nil {
+			var pickupAddr sql.NullString
+			if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg, &pimgs, &pickupAddr); err == nil {
 				if offeredBy.Valid {
 					it.OfferedBy = offeredBy.String
 				} else {
@@ -3191,6 +3226,9 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 				}
 				if pstatus.Valid {
 					it.ProductStatus = pstatus.String
+				}
+				if pickupAddr.Valid {
+					it.ProductPickupAddress = pickupAddr.String
 				}
 				// Prefer image_url; fall back to first of image_urls JSON/text array
 				if pimg.Valid && pimg.String != "" {
@@ -6546,6 +6584,45 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "You have accepted the multi-way trade opportunity!"})
 }
 
+// notifyMultiwayLoopBroken sends a "loop broken" notification to every other
+// participant in the pending multiway chain (pre-acceptance). Safe to call
+// after the chain row has already been marked cancelled — the participant IDs
+// are still present. Pass the specific chainID when known; otherwise pass ""
+// and the most recent chain for the trade will be used.
+func (h *TradeHandler) notifyMultiwayLoopBroken(tradeID int, chainID string, cancellerID int) {
+	var u1, u2, u3 int
+	if chainID != "" {
+		_ = h.db.QueryRow(
+			"SELECT user1_id, user2_id, COALESCE(user3_id, 0) FROM multiway_trades WHERE chain_id = ? LIMIT 1",
+			chainID,
+		).Scan(&u1, &u2, &u3)
+	} else {
+		_ = h.db.QueryRow(
+			"SELECT user1_id, user2_id, COALESCE(user3_id, 0) FROM multiway_trades WHERE original_trade_id = ? ORDER BY id DESC LIMIT 1",
+			tradeID,
+		).Scan(&u1, &u2, &u3)
+	}
+	if u1 == 0 && u2 == 0 && u3 == 0 {
+		return
+	}
+	var cancellerName string
+	_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", cancellerID).Scan(&cancellerName)
+	if cancellerName == "" {
+		cancellerName = fmt.Sprintf("User #%d", cancellerID)
+	}
+	msg := fmt.Sprintf("Loop broken — %s canceled the multi-way trade.", cancellerName)
+	seen := map[int]bool{cancellerID: true, 0: true}
+	for _, uid := range []int{u1, u2, u3} {
+		if seen[uid] {
+			continue
+		}
+		seen[uid] = true
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", uid, msg)
+		publishNotification(uid, msg)
+		publishToUser(uid, sseEvent{Type: "multiway_broken", Data: fiber.Map{"trade_id": tradeID, "chain_id": chainID, "cancelled_by": cancellerID, "message": msg}})
+	}
+}
+
 // DeclineMultiwayChain allows any participant (User 1, 2, or 3) to decline
 func (h *TradeHandler) DeclineMultiwayChain(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -6585,6 +6662,14 @@ func (h *TradeHandler) DeclineMultiwayChain(c *fiber.Ctx) error {
 	// Unlock user3's product now that the chain is declined
 	if decliningU3PID > 0 {
 		_, _ = h.db.Exec("UPDATE products SET status='available' WHERE id=? AND status='locked'", decliningU3PID)
+	}
+
+	// Notify the OTHER participants that the loop was broken.
+	// Only fire for "decline" — search_again preserves the loop by finding a new User3.
+	if payload.Action != "search_again" {
+		var brokenTradeID int
+		_ = h.db.QueryRow("SELECT original_trade_id FROM multiway_trades WHERE chain_id = ? LIMIT 1", chainID).Scan(&brokenTradeID)
+		h.notifyMultiwayLoopBroken(brokenTradeID, chainID, userID)
 	}
 
 	if payload.Action == "search_again" {

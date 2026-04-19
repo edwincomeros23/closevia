@@ -1241,6 +1241,36 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const bothMetConfirmed = buyerMetConfirmed && sellerMetConfirmed
   const userMetConfirmed = (isUserBuyer && buyerMetConfirmed) || (isUserSeller && sellerMetConfirmed)
 
+  // Pickup trade: location is locked to the seller's pickup_address.
+  // The target product's pickup address is surfaced at the trade level
+  // (target_product_pickup_address). Fall back to a seller trade_item only
+  // if older payloads still carry it there.
+  const isPickupTrade = trade?.meeting_type === 'pickup'
+  const pickupAddress =
+    trade?.target_product_pickup_address ||
+    (trade?.items || []).find((it) => it.offered_by === 'seller')?.product_pickup_address ||
+    ''
+  const pickupAddressRevealed = !!trade && !['pending', 'pending_multiway', 'countered'].includes(trade.status)
+  const maskToNeighborhood = (addr: string): string => {
+    if (!addr) return ''
+    const parts = addr.split(',').map((s) => s.trim()).filter(Boolean)
+    if (parts.length <= 1) return "Seller's neighborhood"
+    return parts.slice(1).join(', ')
+  }
+  const pickupDisplayAddress = pickupAddressRevealed ? pickupAddress : maskToNeighborhood(pickupAddress)
+
+  // Auto-select the pickup address for pickup trades so the existing
+  // date/time confirm flow still works without the meetup location picker.
+  // If the seller hasn't set a pickup_address and has no home_address,
+  // use a descriptive placeholder so the Confirm button can still enable —
+  // the parties will coordinate the exact spot via chat.
+  const effectivePickupLocation = pickupAddress || "Seller's pickup location (coordinate via chat)"
+  useEffect(() => {
+    if (isPickupTrade && selectedLocation !== effectivePickupLocation) {
+      setSelectedLocation(effectivePickupLocation)
+    }
+  }, [isPickupTrade, effectivePickupLocation, selectedLocation])
+
   // Auto-sync online payment status in dev/localhost where webhooks may not arrive.
   useEffect(() => {
     if (!isOpen) return
@@ -2803,13 +2833,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               </VStack>
                             </HStack>
                             <Badge
-                              colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
+                              colorScheme={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange' : 'blue') : 'green'}
                               variant="solid"
                               fontSize="sm"
                               px={3}
                               py={1}
                             >
-                              {trade.trade_option === 'meetup' ? '🤝 Pickup' : '🚚 Delivery'}
+                              {trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? '📍 Pickup' : '🤝 Meetup') : '🚚 Delivery'}
                             </Badge>
                           </HStack>
                           {(trade.status === 'accepted' || trade.status === 'active') && (
@@ -3447,7 +3477,41 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       )}
 
                       {/* Meetup Location Selection */}
-                      {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
+                      {isPickupTrade ? (
+                        // Pickup trade: location is locked to the seller's pickup_address.
+                        // Before the trade is accepted we mask to the neighborhood only; the
+                        // full address reveals once the trade moves to active.
+                        <Card variant="outline" borderColor="orange.300" bg="orange.50">
+                          <CardBody p={4}>
+                            <VStack align="stretch" spacing={3}>
+                              <HStack spacing={2}>
+                                <Icon as={FaMapMarkerAlt} color="orange.500" boxSize={5} />
+                                <Text fontWeight="700" color="orange.800">Pickup Location</Text>
+                                <Badge colorScheme="orange" variant="subtle">Locked</Badge>
+                              </HStack>
+                              {pickupAddress ? (
+                                <>
+                                  <Text fontSize="md" fontWeight="600" color="orange.900">
+                                    {pickupDisplayAddress}
+                                  </Text>
+                                  {!pickupAddressRevealed && (
+                                    <Text fontSize="xs" color="orange.700" fontStyle="italic">
+                                      🔒 Exact address is revealed to the buyer once the seller accepts the offer.
+                                    </Text>
+                                  )}
+                                  <Text fontSize="xs" color="gray.600">
+                                    This is the seller's set pickup location. The buyer comes to the seller — the location can't be changed. Pick a date and time below to continue.
+                                  </Text>
+                                </>
+                              ) : (
+                                <Text fontSize="sm" color="red.600">
+                                  The seller hasn't set a pickup address on this product. Please message them to coordinate.
+                                </Text>
+                              )}
+                            </VStack>
+                          </CardBody>
+                        </Card>
+                      ) : (isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
                         // Locked location - just show summary in the date/time display
                         null
                       ) : (
@@ -3739,10 +3803,16 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         <HStack justify="space-between" mb={2}>
                           <VStack align="start" spacing={0}>
                             <Text fontWeight="semibold" fontSize="md">
-                              Schedule a Meetup
+                              {isPickupTrade
+                                ? (isUserBuyer ? 'Propose Pickup Time' : "Review Buyer's Pickup Proposal")
+                                : 'Schedule a Meetup'}
                             </Text>
                             <Text fontSize="sm" color="gray.600">
-                              Pick a date within the next 7 days and a time that works for both of you.
+                              {isPickupTrade
+                                ? (isUserBuyer
+                                  ? 'You set the pickup date and time. The seller can accept or propose a reschedule.'
+                                  : 'The buyer picks a date and time. You can accept it or propose a reschedule.')
+                                : 'Pick a date within the next 7 days and a time that works for both of you.'}
                             </Text>
                           </VStack>
                           {(selectedDate || selectedTime) && (
@@ -3761,7 +3831,26 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           )}
                         </HStack>
 
-                        {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
+                        {isPickupTrade && isUserSeller && !buyerMeetupConfirmed && !sellerMeetupConfirmed ? (
+                          // Pickup trade: seller must wait for the buyer to propose a
+                          // date/time before they can respond.
+                          <Box
+                            p={4}
+                            bg="blue.50"
+                            borderRadius="md"
+                            borderWidth="1px"
+                            borderColor="blue.200"
+                          >
+                            <VStack spacing={1} align="start">
+                              <Text fontWeight="semibold" color="blue.800">
+                                ⏳ Waiting for the buyer to propose a pickup time
+                              </Text>
+                              <Text fontSize="sm" color="blue.700">
+                                The buyer chooses when to come by. You'll be able to accept their proposal or suggest a different time once it's submitted.
+                              </Text>
+                            </VStack>
+                          </Box>
+                        ) : (isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
                           // LOCKED STATE - Compact Display
                           <Box
                             p={4}

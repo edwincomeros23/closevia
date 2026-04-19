@@ -791,19 +791,37 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     try {
       setSubmittingReview(true)
 
+      let tradeId: number | null = reviewTradeId
+      if (!tradeId) {
+        const resolverRes = await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/review-trade`)
+        tradeId = resolverRes.data?.data?.trade_id || null
+      }
+      if (!tradeId) {
+        throw new Error('No trade was found for this loop yet.')
+      }
+
+      let uploadedProofUrl: string | undefined
       if (proofFile) {
         const formData = new FormData()
         formData.append('image', proofFile)
         formData.append('type', 'trade_proof')
         const uploadRes = await api.post('/api/upload', formData)
-        const uploadedProofUrl = uploadRes.data?.data?.url
+        if (!uploadRes.data?.success) {
+          throw new Error(uploadRes.data?.error || 'Upload failed: invalid response')
+        }
+        uploadedProofUrl = uploadRes.data?.data?.url
         if (!uploadedProofUrl) {
           throw new Error(uploadRes.data?.error || 'Upload succeeded but no image URL was returned.')
         }
       }
 
-      setSelectedAction('execute')
-      await executeMultiWayTrade(multiWayTrade.loop_id)
+      await api.put(`/api/trades/${tradeId}/complete`, {
+        rating,
+        feedback: feedback.trim(),
+        transaction_proof_url: uploadedProofUrl || undefined,
+        is_camera_photo: true,
+      })
+
       toast({ id: 'mwt-review-submitted', title: 'Review submitted', status: 'success' })
       onTradeCompleted?.()
       setReviewSubmitted(true)
@@ -2554,7 +2572,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               {myMetConfirmed ? 'You already confirmed' : 'Confirm You Met'}
                             </Button>
 
-                            {allMetConfirmed && (
+                            {allMetConfirmed && isTwoWayLoop && (
                               <Button
                                 colorScheme="green"
                                 size="lg"
@@ -2566,6 +2584,27 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               >
                                 Review & Complete Trade
                               </Button>
+                            )}
+
+                            {allMetConfirmed && !isTwoWayLoop && (
+                              <Box
+                                p={4}
+                                bg="green.50"
+                                borderRadius="2xl"
+                                borderWidth="1px"
+                                borderColor="green.200"
+                                textAlign="center"
+                              >
+                                <VStack spacing={1}>
+                                  <Icon as={FaCheckCircle} color="green.500" boxSize={6} />
+                                  <Text fontWeight="600" color="green.800" fontSize="md">
+                                    Trade loop completed
+                                  </Text>
+                                  <Text fontSize="xs" color="green.700">
+                                    All participants confirmed the meetup. This trade has moved to your history.
+                                  </Text>
+                                </VStack>
+                              </Box>
                             )}
                           </VStack>
                         )}

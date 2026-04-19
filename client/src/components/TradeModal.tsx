@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Spinner, Flex, Link } from '@chakra-ui/react'
+import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Spinner, Flex, Link, Checkbox, Alert, AlertIcon } from '@chakra-ui/react'
 import { FaMapMarkerAlt, FaTruck, FaLocationArrow, FaBoxOpen, FaHandshake } from 'react-icons/fa'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -32,6 +32,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [submittingTrade, setSubmittingTrade] = useState(false)
   const [cashAmount, setCashAmount] = useState<string>('')
   const [tradeOption, setTradeOption] = useState<TradeOption | 'pickup' | null>(null)
+  const [pickupAcknowledged, setPickupAcknowledged] = useState(false)
   const [hasPendingOfferOnTarget, setHasPendingOfferOnTarget] = useState(false)
   const [loadingPendingCheck, setLoadingPendingCheck] = useState(false)
   const [detectingLocation, setDetectingLocation] = useState(false)
@@ -83,6 +84,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     setTradeMessage('')
     setCashAmount('')
     setTradeOption(null)
+    setPickupAcknowledged(false)
     setHasPendingOfferOnTarget(false)
     setDetectedCoords(null)
     setDetectedLocationLabel('')
@@ -138,6 +140,12 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     console.log('Selected offer IDs:', selectedOfferIds)
     console.log('Selected products:', selectedProducts)
   }, [isOpen, selectedOfferIds, selectedProducts])
+
+  // Reset the pickup acknowledgement whenever the user switches away from pickup
+  // so they re-confirm the commitment if they come back to it.
+  useEffect(() => {
+    if (tradeOption !== 'pickup') setPickupAcknowledged(false)
+  }, [tradeOption])
 
   const toggleOfferSelection = (id: number) => {
     setSelectedOfferIds(prev => {
@@ -222,6 +230,17 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       return
     }
 
+    if (tradeOption === 'pickup' && !pickupAcknowledged) {
+      toast({
+        id: "trademodal-pickup-ack",
+        title: 'Confirm pickup commitment',
+        description: "Please confirm you're willing to travel to the seller's pickup location.",
+        status: 'warning',
+        duration: 3500,
+      })
+      return
+    }
+
     // Layer 2 validation: Check for pending offer before submission
     if (hasPendingOfferOnTarget) {
       toast({
@@ -258,6 +277,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       setTradeMessage('')
       setCashAmount('')
       setTradeOption(null)
+      setPickupAcknowledged(false)
       setDetectedCoords(null)
       setManualAddress('')
       onClose()
@@ -519,15 +539,38 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                     )}
 
                     {tradeOption === 'pickup' && (
-                      <Box p={2.5} bg="orange.50" borderWidth="1px" borderColor="orange.200" borderRadius="md" mb={3}>
-                        <Text fontSize="10px" color="orange.800" fontWeight="600" mb={1}>Pick Up from Seller's Location</Text>
-                        <Text fontSize="10px" color="orange.800">
-                          ✓ Seller has set a pickup location
-                        </Text>
-                        <Text fontSize="10px" color="orange.800">
-                          ✓ You can accept or request time/date changes
-                        </Text>
-                      </Box>
+                      <VStack spacing={2} align="stretch" mb={3}>
+                        <Box p={2.5} bg="orange.50" borderWidth="1px" borderColor="orange.200" borderRadius="md">
+                          <Text fontSize="10px" color="orange.800" fontWeight="600" mb={1}>Pick Up from Seller's Location</Text>
+                          <Text fontSize="10px" color="orange.800">
+                            ✓ You travel to the seller — the location is set by them and can't be changed
+                          </Text>
+                          <Text fontSize="10px" color="orange.800">
+                            ✓ You pick the date and time; the seller can accept or propose a reschedule
+                          </Text>
+                        </Box>
+                        <Alert status="warning" variant="left-accent" borderRadius="md" py={2} px={2.5} fontSize="11px">
+                          <AlertIcon boxSize="14px" />
+                          <Box>
+                            <Text fontSize="11px" fontWeight="600" color="orange.900" mb={0.5}>
+                              Heads-up: you're the one traveling
+                            </Text>
+                            <Text fontSize="10px" color="orange.800">
+                              The seller stays at their pickup spot. Make sure you're willing and able to go there before sending this offer.
+                            </Text>
+                          </Box>
+                        </Alert>
+                        <Checkbox
+                          size="sm"
+                          colorScheme="orange"
+                          isChecked={pickupAcknowledged}
+                          onChange={(e) => setPickupAcknowledged(e.target.checked)}
+                        >
+                          <Text fontSize="11px" color="gray.700">
+                            I understand and I'm willing to go to the seller's pickup location.
+                          </Text>
+                        </Checkbox>
+                      </VStack>
                     )}
 
                     {!hasFixedLocation && (
