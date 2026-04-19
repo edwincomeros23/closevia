@@ -136,7 +136,12 @@ func extractFirstImage(raw string) string {
 }
 
 func NewTradeHandler() *TradeHandler {
-	return &TradeHandler{db: database.DB}
+	h := &TradeHandler{db: database.DB}
+	// Runtime migration: track who last countered a trade so the OTHER party
+	// sees the countered offer in their "received offers" view. Duplicate-column
+	// errors on startup are harmlessly ignored (MySQL 5.7 has no IF NOT EXISTS).
+	_, _ = h.db.Exec("ALTER TABLE trades ADD COLUMN countered_by INT NULL")
+	return h
 }
 
 // applyCancellationPenalty updates strikes and auto-suspends a user after
@@ -1450,11 +1455,13 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	args := []interface{}{userID, userID}
 	switch direction {
 	case "incoming":
-		where = "WHERE t.seller_id = ?"
-		args = []interface{}{userID}
+		// A countered trade awaits the OTHER party's response, so it belongs in
+		// that party's incoming view — even when they were the original buyer.
+		where = "WHERE (t.seller_id = ? OR (t.status = 'countered' AND t.countered_by IS NOT NULL AND t.countered_by <> ? AND (t.buyer_id = ? OR t.seller_id = ?)))"
+		args = []interface{}{userID, userID, userID, userID}
 	case "outgoing":
-		where = "WHERE t.buyer_id = ?"
-		args = []interface{}{userID}
+		where = "WHERE t.buyer_id = ? AND NOT (t.status = 'countered' AND t.countered_by IS NOT NULL AND t.countered_by <> ?)"
+		args = []interface{}{userID, userID}
 	}
 	if status != "" {
 		if status == "pending" {
@@ -2010,8 +2017,9 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			}
 		}
 
-		// Update trade status, message, and cash amount
-		if _, err := tx.Exec("UPDATE trades SET status='countered', message=?, offered_cash_amount=?, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.Message, payload.CounterOfferedCashAmount, tradeID); err != nil {
+		// Update trade status, message, and cash amount. Record WHO countered so the
+		// OTHER party sees this trade in their "received offers" direction.
+		if _, err := tx.Exec("UPDATE trades SET status='countered', message=?, offered_cash_amount=?, countered_by=?, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.Message, payload.CounterOfferedCashAmount, userID, tradeID); err != nil {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade for counter offer"})
 		}
@@ -2027,7 +2035,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetPid)
 		var productTitle string
 		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", targetPid).Scan(&productTitle)
-		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Your trade offer was countered: "+productTitle)
+		recipientID := buyerID
+		if userID == buyerID {
+			recipientID = sellerID
+		}
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", recipientID, "Your trade offer was countered: "+productTitle)
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'countered', ?)", tradeID, userID, currentStatus, payload.Message)
 
 	case "complete":
@@ -4033,10 +4045,13 @@ func (h *TradeHandler) CountTrades(c *fiber.Ctx) error {
 		status = ""
 	}
 
-	where := "WHERE t.seller_id = ?"
-	args := []interface{}{userID}
+	// Mirror the direction filter used in ListTrades: a countered trade awaits
+	// the non-countering party, so it belongs in their "incoming" count.
+	where := "WHERE (t.seller_id = ? OR (t.status = 'countered' AND t.countered_by IS NOT NULL AND t.countered_by <> ? AND (t.buyer_id = ? OR t.seller_id = ?)))"
+	args := []interface{}{userID, userID, userID, userID}
 	if direction == "outgoing" {
-		where = "WHERE t.buyer_id = ?"
+		where = "WHERE t.buyer_id = ? AND NOT (t.status = 'countered' AND t.countered_by IS NOT NULL AND t.countered_by <> ?)"
+		args = []interface{}{userID, userID}
 	}
 	if status != "" {
 		if status == "pending" {
@@ -5552,9 +5567,82 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 			}
 		}
 		participantRows.Close()
+		if len(userIDs) > 0 {
+			placeholders := make([]string, len(userIDs))
+			selectArgs := make([]interface{}, 0, len(userIDs)+1)
+			selectArgs = append(selectArgs, loopNumericID)
+			for i, uid := range userIDs {
+				placeholders[i] = "?"
+				selectArgs = append(selectArgs, uid)
+			}
+
+			// First, collect the loops that are about to be auto-cancelled so we
+			// can notify the OTHER participants (e.g. user C when A+B just
+			// confirmed their AB match). Without this, C's card silently
+			// disappears from their dashboard with no signal.
+			cancelledLoopIDs := []int{}
+			findQ := fmt.Sprintf(`
+				SELECT DISTINCT l.id FROM trade_like_loops l
+				JOIN trade_like_loop_participants p ON p.loop_id = l.id
+				WHERE l.id <> ? AND l.status = 'pending' AND p.user_id IN (%s)
+			`, strings.Join(placeholders, ","))
+			if findRows, err := h.db.Query(findQ, selectArgs...); err == nil {
+				for findRows.Next() {
+					var lid int
+					if err := findRows.Scan(&lid); err == nil {
+						cancelledLoopIDs = append(cancelledLoopIDs, lid)
+					}
+				}
+				findRows.Close()
+			}
+
+			// Now cancel those loops
+			updateArgs := make([]interface{}, 0, len(userIDs)+1)
+			updateArgs = append(updateArgs, loopNumericID)
+			for _, uid := range userIDs {
+				updateArgs = append(updateArgs, uid)
+			}
+			q := fmt.Sprintf(`
+				UPDATE trade_like_loops l
+				JOIN trade_like_loop_participants p ON p.loop_id = l.id
+				SET l.status = 'cancelled'
+				WHERE l.id <> ? AND l.status = 'pending' AND p.user_id IN (%s)
+			`, strings.Join(placeholders, ","))
+			_, _ = h.db.Exec(q, updateArgs...)
+
+			// Notify participants of the cancelled loops who are NOT already in
+			// the confirmed loop (they just lost their match; they deserve to know).
+			if len(cancelledLoopIDs) > 0 {
+				confirmedSet := map[int]bool{}
+				for _, uid := range userIDs {
+					confirmedSet[uid] = true
+				}
+				for _, cid := range cancelledLoopIDs {
+					affectedRows, err := h.db.Query("SELECT DISTINCT user_id FROM trade_like_loop_participants WHERE loop_id = ?", cid)
+					if err != nil {
+						continue
+					}
+					affectedUserIDs := []int{}
+					for affectedRows.Next() {
+						var auid int
+						if err := affectedRows.Scan(&auid); err == nil && !confirmedSet[auid] {
+							affectedUserIDs = append(affectedUserIDs, auid)
+						}
+					}
+					affectedRows.Close()
+					msg := "A trade match was cancelled because the other trader committed to a different match."
+					for _, auid := range affectedUserIDs {
+						_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", auid, msg)
+						publishNotification(auid, msg)
+						publishToUser(auid, sseEvent{Type: "trade_loop_cancelled", Data: fiber.Map{"loop_id": loopIDFromLikeLoopID(cid), "reason": "other_match_confirmed"}})
+					}
+				}
+			}
+		}
 
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'Trade loop confirmed! Coordinate the meet-up in the group chat.', FALSE FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
-
+		// Rebuild loop suggestions for all participants (mirrors multiway accept flow).
+		go h.rebuildTradeLoopCacheForUsers(userIDs)
 		return c.JSON(models.APIResponse{Success: true, Message: "Trade loop confirmed"})
 	}
 
@@ -5607,7 +5695,36 @@ func (h *TradeHandler) DeclineTradeLoop(c *fiber.Ctx) error {
 	}
 
 	_, _ = h.db.Exec("UPDATE trade_like_loops SET status = 'cancelled' WHERE id = ?", loopNumericID)
-	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'A participant declined the trade loop.', FALSE FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+
+	var declinerName string
+	_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&declinerName)
+	if declinerName == "" {
+		declinerName = fmt.Sprintf("User #%d", userID)
+	}
+	msg := fmt.Sprintf("%s declined the trade match.", declinerName)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', ?, FALSE FROM trade_like_loop_participants WHERE loop_id = ? AND user_id <> ?", msg, loopNumericID, userID)
+
+	otherUserIDs := []int{}
+	otherRows, err := h.db.Query("SELECT DISTINCT user_id FROM trade_like_loop_participants WHERE loop_id = ? AND user_id <> ?", loopNumericID, userID)
+	if err == nil {
+		for otherRows.Next() {
+			var otherUID int
+			if scanErr := otherRows.Scan(&otherUID); scanErr == nil {
+				otherUserIDs = append(otherUserIDs, otherUID)
+				publishNotification(otherUID, msg)
+				publishToUser(otherUID, sseEvent{Type: "trade_loop_cancelled", Data: fiber.Map{"loop_id": loopID, "reason": "declined", "declined_by": userID}})
+			}
+		}
+		otherRows.Close()
+	}
+
+	// Mirror the multiway decline hooks: rebuild loop suggestions and surface
+	// alternatives so the jilted party isn't left with a dead card.
+	allParticipants := append([]int{userID}, otherUserIDs...)
+	go h.rebuildTradeLoopCacheForUsers(allParticipants)
+	for _, otherUID := range otherUserIDs {
+		go h.notifyAlternativeLoopsIfAny(otherUID, "")
+	}
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Trade loop declined"})
 }
