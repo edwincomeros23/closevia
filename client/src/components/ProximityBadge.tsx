@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { Badge, Tooltip, Spinner, HStack, Icon, useColorModeValue } from '@chakra-ui/react'
 import { FaMapMarkerAlt } from 'react-icons/fa'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '../services/api'
 import { DistanceResult } from '../types'
 
@@ -10,44 +11,29 @@ interface ProximityBadgeProps {
   showIcon?: boolean
 }
 
+const AI_DISABLED = import.meta.env.VITE_DISABLE_AI === 'true'
+
 const ProximityBadge: React.FC<ProximityBadgeProps> = ({ type, targetId, showIcon = true }) => {
-  const [distance, setDistance] = useState<DistanceResult | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const fetchDistance = async () => {
-      try {
-        setLoading(true)
-        // Allow disabling AI proximity calls via environment variable
-        if (import.meta.env.VITE_DISABLE_AI === 'true') {
-          setError('Proximity disabled')
-          setLoading(false)
-          return
-        }
-
-        const response = await api.get('/api/ai/proximity', {
-          params: { type, target_id: targetId }
-        })
-        if (response.data && response.data.success && response.data.data) {
-          setDistance(response.data.data)
-        } else {
-          setError('Location not available')
-        }
-      } catch (err: any) {
-        // Don't throw; set a friendly error and stop showing the badge
-        setError(err?.response?.data?.error || 'Location not available')
-        // eslint-disable-next-line no-console
-        console.debug('Proximity API error', err?.response?.status, err?.response?.data)
-      } finally {
-        setLoading(false)
+  const { data: distance, isLoading: loading, error } = useQuery<DistanceResult | null>({
+    queryKey: ['proximity', type, targetId],
+    queryFn: async () => {
+      const response = await api.get('/api/ai/proximity', {
+        params: { type, target_id: targetId },
+      })
+      if (response.data?.success && response.data?.data) {
+        return response.data.data as DistanceResult
       }
-    }
+      return null
+    },
+    enabled: !!targetId && !AI_DISABLED,
+    staleTime: 1000 * 60 * 15, // 15 minutes — locked home locations rarely change
+    gcTime: 1000 * 60 * 30,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  })
 
-    if (targetId) {
-      fetchDistance()
-    }
-  }, [type, targetId])
+  if (AI_DISABLED) return null
 
   if (loading) {
     return (

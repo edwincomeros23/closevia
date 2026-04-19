@@ -84,14 +84,10 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setOfferCount(count)
       const notifs = Array.isArray(notifRes.data?.data) ? notifRes.data.data : []
 
-      // Apply the same filter used in the Notifications page to avoid counting
-      // auto-detected trade_loop spam notifications that are never shown to the user
+      // Apply the same filter used in the Notifications page — multiway
+      // "Trade Loop Found" notifications are hidden, so don't count them either.
       const visibleNotifs = notifs.filter((n: any) => {
-        if (n.type === 'trade_loop' && n.message && (
-          n.message.includes('A 3-way trade opportunity was found') ||
-          n.message.includes('Great match!') ||
-          n.message.includes('in a 3-way trade')
-        )) return false
+        if (n.type === 'trade_loop') return false
         return true
       })
 

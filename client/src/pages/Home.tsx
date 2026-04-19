@@ -564,7 +564,7 @@ const Home: React.FC = () => {
       page: 1,
       limit: 20,
     })
-    setHasSearched(false)
+    setHasSearched(true)
   }, [])
 
   const handleLogout = useCallback(() => {
@@ -1497,7 +1497,14 @@ const Home: React.FC = () => {
               <Button
                 size="lg"
                 colorScheme="brand"
-                onClick={clearFilters}
+                onClick={() => {
+                  const hasExtraFilters = filters.keyword || filters.condition || filters.verified_seller_only || filters.sort_by !== 'most_relevant'
+                  if (hasExtraFilters) {
+                    clearFilters()
+                  } else {
+                    setHasSearched(true)
+                  }
+                }}
               >
                 {filters.keyword || filters.condition || filters.verified_seller_only || filters.sort_by !== 'most_relevant'
                   ? "Reset All Filters"

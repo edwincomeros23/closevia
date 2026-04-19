@@ -796,13 +796,18 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		log.Printf("⚠️ [GetProducts] No Viewer Coords received (viewer_lat='%s', viewer_lng='%s')", viewerLatStr, viewerLonStr)
 	}
 
-	// Haversine distance expression (result in km). Returns NULL when product has no coords.
-	// Formula: 6371 * acos( cos(r(vlat))*cos(r(plat))*cos(r(plng)-r(vlng)) + sin(r(vlat))*sin(r(plat)) )
+	// Haversine distance expression (result in km). Returns NULL when target has no coords.
+	// Uses the seller's home location (same source as the displayed ProximityBadge) so
+	// sort order matches the distance shown on each card. Falls back to seller's general
+	// lat/lon, then to the product's own coords if neither is set.
+	// Formula: 6371 * acos( cos(r(vlat))*cos(r(tlat))*cos(r(tlng)-r(vlng)) + sin(r(vlat))*sin(r(tlat)) )
 	var haversineExpr string
 	if viewerLat != nil && viewerLon != nil {
+		targetLat := "COALESCE(u.home_latitude, u.latitude, p.latitude)"
+		targetLon := "COALESCE(u.home_longitude, u.longitude, p.longitude)"
 		haversineExpr = fmt.Sprintf(
-			`(6371 * ACOS(COS(RADIANS(%f)) * COS(RADIANS(p.latitude)) * COS(RADIANS(p.longitude) - RADIANS(%f)) + SIN(RADIANS(%f)) * SIN(RADIANS(p.latitude))))`,
-			*viewerLat, *viewerLon, *viewerLat,
+			`(6371 * ACOS(COS(RADIANS(%f)) * COS(RADIANS(%s)) * COS(RADIANS(%s) - RADIANS(%f)) + SIN(RADIANS(%f)) * SIN(RADIANS(%s))))`,
+			*viewerLat, targetLat, targetLon, *viewerLon, *viewerLat, targetLat,
 		)
 	} else {
 		haversineExpr = "NULL"
@@ -830,8 +835,8 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 
 	switch sortBy {
 	case "nearest":
-		// Sort nearest first; products without coords go to the end
-		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, ISNULL(distance_km) ASC, distance_km ASC`, isActiveBoosted)
+		// Active-boosted stays on top; everything else sorted purely by distance (closest first).
+		query += fmt.Sprintf(` ORDER BY %s DESC, ISNULL(distance_km) ASC, distance_km ASC`, isActiveBoosted)
 	case "newest":
 		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
 	case "most_offers":
@@ -840,7 +845,8 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
 	default: // most_relevant — when viewer coords available, sort by distance by default
 		if viewerLat != nil {
-			query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, ISNULL(distance_km) ASC, distance_km ASC, %s DESC`, isActiveBoosted, boostTimestamp)
+			// Active-boosted stays on top; below that, distance wins regardless of premium flag/tier.
+			query += fmt.Sprintf(` ORDER BY %s DESC, ISNULL(distance_km) ASC, distance_km ASC, %s DESC`, isActiveBoosted, boostTimestamp)
 		} else {
 			query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
 		}
