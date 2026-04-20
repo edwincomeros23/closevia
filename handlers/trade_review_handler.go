@@ -111,6 +111,28 @@ func (h *TradeHandler) SubmitTradeReview(c *fiber.Ctx) error {
 
 	reviewID, _ := result.LastInsertId()
 
+	// For MUTUAL TRADES: also insert review record for the paired trade
+	// This ensures the review appears regardless of which trade record is viewed
+	var pairedTradeID int
+	err = h.db.QueryRow(`
+		SELECT id FROM trades
+		WHERE buyer_id = ? AND seller_id = ? 
+		AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
+		LIMIT 1
+	`, sellerID, buyerID).Scan(&pairedTradeID)
+
+	if err == nil && pairedTradeID > 0 && pairedTradeID != tradeID {
+		// Found a paired mutual trade - insert the same review for that trade too
+		log.Printf("[MUTUAL REVIEW SYNC] Inserting review copy for paired trade %d (main: %d, reviewer: %d)", pairedTradeID, tradeID, userID)
+		_, _ = h.db.Exec(`
+			INSERT INTO trade_reviews 
+			(trade_id, reviewer_id, rating, feedback, proof_url, is_camera_photo, is_followup, is_auto_generated, rating_delta)
+			VALUES (?, ?, ?, ?, ?, ?, ?, FALSE, ?)`,
+			pairedTradeID, userID, payload.Rating, payload.Feedback, payload.ProofURL,
+			payload.IsCameraPhoto, payload.IsFollowup, ratingDelta,
+		)
+	}
+
 	// Update trades table with latest review data
 	var ratingCol, feedbackCol, proofCol, cameraCol, lockedCol, timestampCol string
 	if userID == buyerID {
@@ -141,6 +163,78 @@ func (h *TradeHandler) SubmitTradeReview(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("Error updating trade: %v", err)
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to finalize review submission"})
+	}
+
+	// For MUTUAL TRADES: also update the paired trade record with the same review data
+	if pairedTradeID > 0 && pairedTradeID != tradeID {
+		// On the paired trade, the user's role is reversed
+		// If they were buyer on tradeID, they're seller on pairedTradeID (roles reversed)
+		pairedRatingCol := ratingCol
+		pairedFeedbackCol := feedbackCol
+		pairedProofCol := proofCol
+		pairedCameraCol := cameraCol
+		pairedLockedCol := lockedCol
+		pairedTimestampCol := timestampCol
+
+		if userID == buyerID {
+			// User was buyer on main trade, so they're seller on paired trade
+			pairedRatingCol = "seller_rating"
+			pairedFeedbackCol = "seller_feedback"
+			pairedProofCol = "seller_proof_url"
+			pairedCameraCol = "seller_photo_is_camera"
+			pairedLockedCol = "seller_initial_review_locked"
+			pairedTimestampCol = "seller_review_created_at"
+		} else {
+			// User was seller on main trade, so they're buyer on paired trade
+			pairedRatingCol = "buyer_rating"
+			pairedFeedbackCol = "buyer_feedback"
+			pairedProofCol = "buyer_proof_url"
+			pairedCameraCol = "buyer_photo_is_camera"
+			pairedLockedCol = "buyer_initial_review_locked"
+			pairedTimestampCol = "buyer_review_created_at"
+		}
+
+		pairedUpdateQuery := fmt.Sprintf(`
+			UPDATE trades 
+			SET %s=?, %s=?, %s=?, %s=?, %s=TRUE, %s=NOW(), updated_at=CURRENT_TIMESTAMP
+			WHERE id = ?`,
+			pairedRatingCol, pairedFeedbackCol, pairedProofCol, pairedCameraCol, pairedLockedCol, pairedTimestampCol,
+		)
+
+		_, _ = h.db.Exec(pairedUpdateQuery, payload.Rating, payload.Feedback, payload.ProofURL, payload.IsCameraPhoto, pairedTradeID)
+	}
+
+	// Mark current user as having completed their review (initial only, not followups)
+	if !payload.IsFollowup {
+		completedCol := "buyer_completed"
+		if userID == sellerID {
+			completedCol = "seller_completed"
+		}
+		_, _ = h.db.Exec(fmt.Sprintf("UPDATE trades SET %s=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", completedCol), tradeID)
+
+		// For MUTUAL TRADES: also update the paired trade record
+		// Find the reverse/paired trade where roles are swapped
+		var pairedTradeID int
+		err = h.db.QueryRow(`
+			SELECT id FROM trades
+			WHERE buyer_id = ? AND seller_id = ? 
+			AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
+			LIMIT 1
+		`, sellerID, buyerID).Scan(&pairedTradeID)
+
+		if err == nil && pairedTradeID > 0 && pairedTradeID != tradeID {
+			// Found a paired mutual trade - update its corresponding completion flag
+			log.Printf("[MUTUAL TRADE SYNC] Found paired trade %d for mutual pair (%d↔%d). Syncing review flags.", pairedTradeID, buyerID, sellerID)
+
+			// On the paired trade, the roles are reversed:
+			// - Original: userID is buyer/seller on tradeID
+			// - Paired: userID is seller/buyer on pairedTradeID (roles reversed)
+			pairedCompletedCol := "seller_completed" // If userID was buyer on tradeID, they're seller on pairedTradeID
+			if userID == sellerID {
+				pairedCompletedCol = "buyer_completed" // If userID was seller on tradeID, they're buyer on pairedTradeID
+			}
+			_, _ = h.db.Exec(fmt.Sprintf("UPDATE trades SET %s=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", pairedCompletedCol), pairedTradeID)
+		}
 	}
 
 	// Check if both parties have submitted initial reviews
@@ -185,9 +279,9 @@ func (h *TradeHandler) SubmitTradeReview(c *fiber.Ctx) error {
 		Success: true,
 		Message: "Review submitted successfully",
 		Data: fiber.Map{
-			"review_id": reviewID,
-			"trade_id":  tradeID,
-			"is_followup":  payload.IsFollowup,
+			"review_id":      reviewID,
+			"trade_id":       tradeID,
+			"is_followup":    payload.IsFollowup,
 			"auto_completed": buyerReviewCount > 0 && sellerReviewCount > 0,
 		},
 	})
@@ -283,7 +377,7 @@ func (h *TradeHandler) GetReviewSummary(c *fiber.Ctx) error {
 // Helper function to get review summary for a specific reviewer
 func getReviewSummaryForReviewer(db *sql.DB, tradeID int, reviewerID int) *models.ReviewSummary {
 	summary := &models.ReviewSummary{
-		RatingTrend: "stable",
+		RatingTrend:  "stable",
 		RatingChange: 0,
 	}
 

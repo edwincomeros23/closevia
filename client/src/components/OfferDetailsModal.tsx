@@ -13,7 +13,7 @@ interface OfferDetailsModalProps {
   trade: Trade | null
   isOpen: boolean
   onClose: () => void
-  onAccepted: () => void
+  onAccepted: (action?: 'accept' | 'counter') => void
   onDeclined: () => void
 }
 
@@ -176,7 +176,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'accept' } as TradeAction)
       toast({
         id: "offerdetailsmodal-offer-accepted", title: 'Offer accepted', status: 'success' })
-      onAccepted()
+      onAccepted('accept')
       onClose()
     } catch (e: any) {
       toast({
@@ -277,7 +277,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'counter', counter_offered_product_ids: selectedCounterIds, message: counterMsg, counter_offered_cash_amount: cashDelta ? Number(cashDelta) : undefined } as TradeAction)
       toast({
         id: "offerdetailsmodal-counter-offer-sent", title: 'Counter offer sent', status: 'success' })
-      onAccepted()
+      onAccepted('counter')
       onClose()
     } catch (e: any) {
       toast({
@@ -455,11 +455,15 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 colorScheme={
                   effectiveTrade?.status === 'pending' ? 'yellow' : 
                   effectiveTrade?.status === 'accepted' ? 'green' : 
-                  effectiveTrade?.status === 'declined' ? 'red' : 'gray'
+                  effectiveTrade?.status === 'declined' ? 'red' : 
+                  effectiveTrade?.status === 'countered' ? 'purple' : 'gray'
                 } 
                 fontSize="xs"
               >
-                {effectiveTrade?.status ? effectiveTrade.status.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN'}
+                {effectiveTrade?.status === 'countered' 
+                  ? (effectiveTrade?.countered_by === user?.id ? 'COUNTER-OFFER SENT' : 'COUNTER-OFFER RECEIVED')
+                  : (effectiveTrade?.status ? effectiveTrade.status.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN')
+                }
               </Badge>
             </VStack>
             <ModalCloseButton position="static" />
@@ -787,17 +791,22 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         {/* Footer */}
         <Box borderTopWidth="1px" borderColor="gray.200" p={2} bg="white">
           <HStack spacing={1.5} justify="flex-end">
-            {/* Only show action buttons if trade is pending AND user is the seller (received this offer) */}
-            {effectiveTrade?.status === 'pending' && effectiveTrade?.buyer_id !== user?.id ? (
+            {/* 
+                Show action buttons if:
+                1. Status is 'pending' AND user is the seller (recipient)
+                2. Status is 'countered' AND user is NOT the one who countered
+            */}
+            {((effectiveTrade?.status === 'pending' || effectiveTrade?.status === 'pending_multiway') && effectiveTrade?.seller_id === user?.id) ||
+             (effectiveTrade?.status === 'countered' && effectiveTrade?.countered_by !== user?.id) ? (
               <>
                 {/* Decline Button */}
                 <Button size="xs" variant="outline" colorScheme="red" onClick={decline} fontSize="11px">
                   Decline
                 </Button>
 
-                {/* Counter Button */}
+                {/* Counter Back Button */}
                 <Button size="xs" variant="outline" colorScheme="brand" onClick={openCounter} fontSize="11px">
-                  Counter
+                  Counter Back
                 </Button>
 
                 {/* Accept Button */}
@@ -807,7 +816,12 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </>
             ) : (
               <Text fontSize="11px" color="gray.500" fontStyle="italic">
-                {effectiveTrade?.buyer_id === user?.id ? 'No actions available for offers you sent' : `No actions available for ${effectiveTrade?.status} trades`}
+                {effectiveTrade?.status === 'countered' && effectiveTrade?.countered_by === user?.id 
+                  ? 'Waiting for other party to respond to your counter-offer' 
+                  : (effectiveTrade?.buyer_id === user?.id && (effectiveTrade?.status === 'pending' || effectiveTrade?.status === 'pending_multiway'))
+                    ? 'No actions available for offers you sent' 
+                    : `No actions available for ${effectiveTrade?.status?.replace(/_/g, ' ')} trades`
+                }
               </Text>
             )}
           </HStack>
