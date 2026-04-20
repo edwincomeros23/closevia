@@ -5178,13 +5178,40 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
-	rows, err := h.db.Query(`
-		SELECT l.id, l.status
-		FROM trade_like_loops l
-		JOIN trade_like_loop_participants p ON p.loop_id = l.id
-		WHERE p.user_id = ? AND l.status IN ('pending', 'confirmed')
-		ORDER BY l.updated_at DESC
-	`, userID)
+	statusFilter := c.Query("status", "")
+	var query string
+	var args []interface{}
+	switch statusFilter {
+	case "completed":
+		query = `
+			SELECT l.id, l.status, l.updated_at
+			FROM trade_like_loops l
+			JOIN trade_like_loop_participants p ON p.loop_id = l.id
+			WHERE p.user_id = ? AND l.status = 'completed'
+			ORDER BY l.updated_at DESC
+		`
+		args = []interface{}{userID}
+	case "cancelled":
+		query = `
+			SELECT l.id, l.status, l.updated_at
+			FROM trade_like_loops l
+			JOIN trade_like_loop_participants p ON p.loop_id = l.id
+			WHERE p.user_id = ? AND l.status = 'cancelled'
+			ORDER BY l.updated_at DESC
+		`
+		args = []interface{}{userID}
+	default:
+		query = `
+			SELECT l.id, l.status, l.updated_at
+			FROM trade_like_loops l
+			JOIN trade_like_loop_participants p ON p.loop_id = l.id
+			WHERE p.user_id = ? AND l.status IN ('pending', 'confirmed')
+			ORDER BY l.updated_at DESC
+		`
+		args = []interface{}{userID}
+	}
+
+	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		if strings.Contains(err.Error(), "doesn't exist") || strings.Contains(err.Error(), "Error 1146") {
 			log.Printf("GetTradeLoops: missing like-loop tables: %v", err)
@@ -5198,7 +5225,8 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 	for rows.Next() {
 		var loopID int
 		var status string
-		if err := rows.Scan(&loopID, &status); err != nil {
+		var updatedAt time.Time
+		if err := rows.Scan(&loopID, &status, &updatedAt); err != nil {
 			continue
 		}
 
@@ -5217,6 +5245,8 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 			"can_decline":  canDecline,
 			"participants": participants,
 			"edges":        edges,
+			"updated_at":   updatedAt,
+			"completed_at": updatedAt,
 		})
 	}
 
