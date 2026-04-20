@@ -224,6 +224,26 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
             }
             break
+          case 'trade_completed':
+            // Trade completed - move from ongoing to history
+            showNotification('Trade completed! 🎉', 'success')
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+            queryClient.invalidateQueries({ queryKey: ['trades'] })
+            refreshCounts()
+            if (refreshCallbacksRef.current.ongoingTrades) {
+              refreshCallbacksRef.current.ongoingTrades()
+            }
+            break
+          case 'trade_auto_completed':
+            // Trade auto-completed after both reviews submitted
+            showNotification('Trade auto-completed!', 'success')
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+            queryClient.invalidateQueries({ queryKey: ['trades'] })
+            refreshCounts()
+            if (refreshCallbacksRef.current.ongoingTrades) {
+              refreshCallbacksRef.current.ongoingTrades()
+            }
+            break
           case 'trade_message':
             break
           default:

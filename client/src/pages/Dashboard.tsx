@@ -1422,14 +1422,14 @@ const Dashboard: React.FC = () => {
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
     const buyout = (buyoutOffers || []).length
-    const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway').length
-    const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
+    const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'countered').length
+    const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'countered') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
     const ongoingMultiway = (multiWayTrades || []).filter((t: any) =>
       t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed'
     ).length
     
     // Deduplicate: status='multiway_active' trades are present in both ongoingTradesData and multiWayTrades
-    const standardActiveCount = (ongoingTradesData || []).filter(t => t.status !== 'multiway_active').length
+    const standardActiveCount = (ongoingTradesData || []).filter(t => t.status !== 'multiway_active' && t.status !== 'countered').length
     const ongoing = standardActiveCount + ongoingMultiway;
     return {
       buyout,
@@ -1481,7 +1481,7 @@ const Dashboard: React.FC = () => {
   }, [buyoutOffers, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const sentOffers = useMemo(() => {
-    const active = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
+    const active = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'countered') // Include multiway matches and counter-offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1535,7 +1535,7 @@ const Dashboard: React.FC = () => {
   }, [updateTrade])
 
   const receivedOffers = useMemo(() => {
-    const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
+    const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'countered') // Include multiway matches and counter-offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -5847,22 +5847,28 @@ const Dashboard: React.FC = () => {
             trade={selectedTrade}
             isOpen={detailsOpen}
             onClose={() => setDetailsOpen(false)}
-            onAccepted={async () => {
+            onAccepted={async (action) => {
               invalidateOffers()
               invalidateDashboard()
-              setActiveTab(1)
-              setOffersSubTab(3)
+              
+              if (action === 'accept') {
+                setActiveTab(1)
+                setOffersSubTab(3)
 
-              // After accepting, show Trade Details (chat/meetup/delivery) for both parties
-              if (selectedTrade) {
-                try {
-                  const res = await api.get(`/api/trades/${selectedTrade.id}`)
-                  const freshTrade = res.data?.data
-                  if (freshTrade) setSelectedTrade(freshTrade)
-                } catch {
-                  // Non-fatal
+                // After accepting, show Trade Details (chat/meetup/delivery) for both parties
+                if (selectedTrade) {
+                  try {
+                    const res = await api.get(`/api/trades/${selectedTrade.id}`)
+                    const freshTrade = res.data?.data
+                    if (freshTrade) setSelectedTrade(freshTrade)
+                  } catch {
+                    // Non-fatal
+                  }
+                  setViewTradeModalOpen(true)
                 }
-                setViewTradeModalOpen(true)
+              } else if (action === 'counter') {
+                setActiveTab(1)
+                setOffersSubTab(1) // Show Sent Offers tab after countering
               }
             }}
             onDeclined={() => { invalidateOffers(); invalidateDashboard() }}
@@ -5872,7 +5878,12 @@ const Dashboard: React.FC = () => {
             trade={selectedTrade}
             isOpen={viewTradeModalOpen}
             onClose={() => setViewTradeModalOpen(false)}
-            onStatusUpdate={() => { invalidateOffers(); invalidateDashboard() }}
+            onStatusUpdate={() => { 
+              invalidateOffers()
+              invalidateDashboard()
+              // Switch to History tab if a trade was completed
+              setActiveTab(4)
+            }}
             onTradeUpdate={setSelectedTrade}
           />
 
@@ -5898,8 +5909,9 @@ const Dashboard: React.FC = () => {
                 void fetchMultiWayTrades()
                 invalidateOffers()
                 invalidateProducts()
-                setActiveTab(1)
-                setOffersSubTab(3)
+                invalidateDashboard()
+                // Switch to History tab
+                setActiveTab(4)
               }}
             />
           )}
@@ -5908,7 +5920,11 @@ const Dashboard: React.FC = () => {
             trade={selectedTrade}
             isOpen={completionModalOpen}
             onClose={() => setCompletionModalOpen(false)}
-            onCompleted={() => { invalidateOffers(); invalidateDashboard() }}
+            onCompleted={() => { 
+              invalidateOffers()
+              invalidateDashboard()
+              setActiveTab(4)
+            }}
             currentUserId={user?.id}
           />
 

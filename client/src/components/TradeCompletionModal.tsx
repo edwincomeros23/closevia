@@ -270,10 +270,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         transactionProof
       })
       await api.put(`/api/trades/${trade.id}/complete`, {
-        rating,
-        feedback: feedback.trim(),
-        transaction_proof_url: transactionProof,
-        is_camera_photo: true // Enforced via capture="environment"
+        instant_complete: true,
       })
 
       setHasSubmitted(true)
@@ -652,7 +649,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                 isLoading={submitting}
                 loadingText="Completing..."
                 leftIcon={<FaCheck />}
-                isDisabled={rating === 0 || uploadingImage || (isPhotoMandatory && !transactionProof)}
+                isDisabled={uploadingImage}
                 mt={{ base: 2, md: 4 }}
               >
                 Complete Trade

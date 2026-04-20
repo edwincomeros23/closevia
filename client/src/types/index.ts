@@ -260,6 +260,7 @@ export interface Trade {
   // Review rating fields
   buyer_rating?: number // Rating given by buyer (1-5)
   seller_rating?: number // Rating given by seller (1-5)
+  countered_by?: number
 }
 
 // Multi-way/Three-way Trading Types
