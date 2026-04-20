@@ -528,69 +528,6 @@ func (h *TradeHandler) createLikeLoop(participants []likeParticipant) (int, bool
 	return loopID, true
 }
 
-func (h *TradeHandler) cancelSmallerLikeLoops(loopID int) {
-	// Collect the product IDs used by the newly created loop so we only cancel
-	// other pending loops that conflict on at least one product — NOT every loop
-	// involving the same users (which would wrongly kill independent matches).
-	rows, err := h.db.Query(`
-		SELECT offered_product_id, wanted_product_id FROM trade_like_loop_participants WHERE loop_id = ?
-	`, loopID)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-
-	productIDs := map[int]bool{}
-	for rows.Next() {
-		var offeredID, wantedID int
-		if err := rows.Scan(&offeredID, &wantedID); err == nil {
-			productIDs[offeredID] = true
-			productIDs[wantedID] = true
-		}
-	}
-	if len(productIDs) == 0 {
-		return
-	}
-
-	pids := make([]int, 0, len(productIDs))
-	for pid := range productIDs {
-		pids = append(pids, pid)
-	}
-
-	placeholders := make([]string, len(pids))
-	args := make([]interface{}, 0, len(pids)+1)
-	args = append(args, loopID)
-	for i, pid := range pids {
-		placeholders[i] = "?"
-		args = append(args, pid)
-	}
-
-	// Only cancel other pending loops whose participants use at least one of the
-	// same products (offered OR wanted). This allows multiple independent matches
-	// between the same pair of users to coexist.
-	query := fmt.Sprintf(`
-		UPDATE trade_like_loops l
-		JOIN trade_like_loop_participants p ON p.loop_id = l.id
-		SET l.status = 'cancelled'
-		WHERE l.id <> ?
-		  AND l.status = 'pending'
-		  AND (p.offered_product_id IN (%s) OR p.wanted_product_id IN (%s))
-		  AND (SELECT COUNT(*) FROM trade_like_loop_participants WHERE loop_id = l.id) >= ?
-	`, strings.Join(placeholders, ","), strings.Join(placeholders, ","))
-
-	// Combined arguments: loopID, offered IN, wanted IN, loop size check
-	fullArgs := make([]interface{}, 0, 1+len(pids)*2+1)
-	fullArgs = append(fullArgs, loopID)
-	for _, pid := range pids {
-		fullArgs = append(fullArgs, pid)
-	}
-	for _, pid := range pids {
-		fullArgs = append(fullArgs, pid)
-	}
-	fullArgs = append(fullArgs, len(pids)) // Current loop size
-	_, _ = h.db.Exec(query, fullArgs...)
-}
-
 func (h *TradeHandler) notifyLikeLoopParticipants(participants []likeParticipant, message string) {
 	for _, p := range participants {
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", p.UserID, message)

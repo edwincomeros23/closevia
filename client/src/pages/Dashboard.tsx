@@ -836,12 +836,23 @@ const Dashboard: React.FC = () => {
     const waitingOnOthers: any[] = []
     const autoSearchResults: any[] = []
     const completed: any[] = []
+    const currentUserID = Number(user?.id || 0)
 
     for (const trade of tradeMatchTrades) {
       // Confirmed matches move to Ongoing Trades; this tab only tracks pending review.
       const status = trade?.status || ''
       const canJoin = trade?.can_join === true
       const canDecline = trade?.can_decline === true
+
+      // Skip loops the current user has already confirmed — those now live in
+      // Ongoing Trades (see ongoingMultiWayTrades) so they don't show twice.
+      if (status === 'pending' && currentUserID > 0) {
+        const participants = Array.isArray(trade?.participants) ? trade.participants : []
+        const me = participants.find((p: any) => Number(p?.user_id ?? p?.id) === currentUserID)
+        if (me && (me.status === 'confirmed' || me.trade_status === 'confirmed')) {
+          continue
+        }
+      }
 
       if (status === 'pending' && (canJoin || canDecline)) {
         needsAction.push(trade)
@@ -851,7 +862,7 @@ const Dashboard: React.FC = () => {
     }
 
     return { needsAction, waitingOnOthers, autoSearchResults, completed }
-  }, [tradeMatchTrades])
+  }, [tradeMatchTrades, user?.id])
 
   const multiWayIndicatorCount = groupedMultiWayTrades.needsAction.length + groupedMultiWayTrades.waitingOnOthers.length + groupedMultiWayTrades.completed.length
   const tradeMatchIndicatorCount = groupedTradeMatchTrades.needsAction.length + groupedTradeMatchTrades.waitingOnOthers.length + groupedTradeMatchTrades.completed.length
@@ -1625,11 +1636,28 @@ const Dashboard: React.FC = () => {
   //   - 'active' / 'multiway_active' — 3-way chain (multiway_trades table) fully agreed
   //   - 'confirmed'                  — 3-5 participant like-loop (trade_like_loops table) fully agreed
   // Do NOT show 'pending_user3' or 'user3_accepted' — those belong in the Multi-Way tab.
+  // For 2-way trade matches, also show the loop in Ongoing Trades once the current
+  // user has accepted their side (status='pending' at loop level, but the current
+  // user's participant row is 'confirmed') — so the accepter sees it immediately
+  // while waiting on the other party.
   const ongoingMultiWayTrades = useMemo(() => {
-    return (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed'
-    )
-  }, [multiWayTrades])
+    const currentUserID = Number(user?.id || 0)
+    return (multiWayTrades || []).filter((t: any) => {
+      if (t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed') {
+        return true
+      }
+      if (t?.status === 'pending' && currentUserID > 0) {
+        const participants = Array.isArray(t?.participants) ? t.participants : []
+        if (participants.length === 2) {
+          const me = participants.find((p: any) => Number(p?.user_id ?? p?.id) === currentUserID)
+          if (me && (me.status === 'confirmed' || me.trade_status === 'confirmed')) {
+            return true
+          }
+        }
+      }
+      return false
+    })
+  }, [multiWayTrades, user?.id])
 
   // Unified search handler - clears tab-specific searches when unified search is used
   const handleUnifiedSearchChange = (value: string) => {
