@@ -299,6 +299,25 @@ func CreateTables() error {
 		}
 	}
 
+	// Multi-way review columns
+	loopParticipantCols := map[string]string{
+		"rating":      "INT DEFAULT 0",
+		"feedback":    "TEXT NULL",
+		"proof_url":   "VARCHAR(512) NULL",
+		"is_reviewed": "BOOLEAN DEFAULT FALSE",
+		"reviewed_at": "TIMESTAMP NULL",
+	}
+	for col, def := range loopParticipantCols {
+		_, err := DB.Exec(fmt.Sprintf("ALTER TABLE trade_like_loop_participants ADD COLUMN %s %s", col, def))
+		if err != nil {
+			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number == 1060 {
+				continue
+			}
+		} else {
+			log.Printf("Migration: Added column %s to trade_like_loop_participants table", col)
+		}
+	}
+
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS app_settings (
 			setting_key VARCHAR(100) PRIMARY KEY,
@@ -647,6 +666,11 @@ func CreateTables() error {
 			position_in_loop INT NOT NULL,
 			status ENUM('pending', 'confirmed', 'declined') DEFAULT 'pending',
 			confirmed_at TIMESTAMP NULL,
+			rating INT DEFAULT 0,
+			feedback TEXT NULL,
+			proof_url VARCHAR(512) NULL,
+			is_reviewed BOOLEAN DEFAULT FALSE,
+			reviewed_at TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (loop_id) REFERENCES trade_like_loops(id) ON DELETE CASCADE,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
