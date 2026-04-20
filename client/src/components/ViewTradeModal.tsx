@@ -410,7 +410,8 @@ interface DeliveryTabProps {
   distance: number
   isUserSeller: boolean
   isUserBuyer: boolean
-  setIsReviewModalOpen: (open: boolean) => void
+  handleInstantComplete: () => Promise<void>
+  completingTrade: boolean
   handleConfirmPayment: () => Promise<void>
   handleConfirmDelivery: () => Promise<void>
   saveDeliveryState: (updates: Partial<DeliveryState>) => Promise<void>
@@ -435,7 +436,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   handleConfirmDelivery,
   saveDeliveryState,
   confirmDeliveryType,
-  setIsReviewModalOpen,
+  handleInstantComplete,
+  completingTrade,
   confirmingPayment,
   confirmingDeliveryType,
   syncingOnlinePayment,
@@ -666,13 +668,15 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               <Button
                 colorScheme="green"
                 size="lg"
-                onClick={() => setIsReviewModalOpen(true)}
-                leftIcon={<FaStar />}
+                onClick={handleInstantComplete}
+                isLoading={completingTrade}
+                loadingText="Completing..."
+                leftIcon={<FaCheckCircle />}
                 w="full"
                 transition="all 0.2s"
                 _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
               >
-                Review & Complete Trade
+                Complete Trade
               </Button>
             )}
           </VStack>
@@ -806,11 +810,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       }
 
       await api.put(`/api/trades/${trade.id}/complete`, {
-        rating,
-        feedback: feedback.trim(),
-        // Backend expects these keys
-        transaction_proof_url: uploadedProofUrl || undefined,
-        is_camera_photo: true,
+        instant_complete: true,
       })
 
       toast({
@@ -1069,12 +1069,11 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
                   size="md"
                   onClick={submitReview}
                   isLoading={submitting}
-                  isDisabled={!rating || !feedback.trim() || (proofRequired && !proofFile)}
                   w="full"
                   transition="all 0.2s"
                   _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
                 >
-                  Submit Review
+                  Complete Trade
                 </Button>
               </VStack>
             </Box>
@@ -1160,6 +1159,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false) // New: cancel trade confirmation
   const [cancelingTrade, setCancelingTrade] = useState(false) // New: cancel trade loading state
+  const [completingTrade, setCompletingTrade] = useState(false) // Instant complete loading state
   const cancelDialogRef = useRef<HTMLButtonElement>(null) // New: for AlertDialog focus
 
   // ============ Meetup Dispute & Agreement System ============
@@ -2511,6 +2511,42 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
   // ============ END: Cancel trade functionality ============
 
+  // ============ Instant Complete (skip review) ============
+  const handleInstantComplete = async () => {
+    if (!trade || completingTrade) return
+
+    try {
+      setCompletingTrade(true)
+      await api.put(`/api/trades/${trade.id}/complete`, {
+        instant_complete: true,
+      })
+
+      toast({
+        id: 'viewtrademodal-trade-completed',
+        title: 'Trade Completed!',
+        description: 'The trade has been completed for both parties.',
+        status: 'success',
+        duration: 3000,
+      })
+
+      onStatusUpdate()
+      setTimeout(() => {
+        onClose()
+      }, 1000)
+    } catch (error: any) {
+      toast({
+        id: 'viewtrademodal-complete-failed',
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to complete trade',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setCompletingTrade(false)
+    }
+  }
+  // ============ END: Instant Complete ============
+
 
   if (!trade) return null
 
@@ -3401,7 +3437,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       handleConfirmDelivery={handleConfirmDelivery}
                       saveDeliveryState={saveDeliveryState}
                       confirmDeliveryType={confirmDeliveryType}
-                      setIsReviewModalOpen={setIsReviewModalOpen}
+                      handleInstantComplete={handleInstantComplete}
+                      completingTrade={completingTrade}
                       confirmingPayment={confirmingPayment}
                       confirmingDeliveryType={confirmingDeliveryType}
                       syncingOnlinePayment={syncingOnlinePayment}
@@ -4210,13 +4247,15 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     <Button
                                       colorScheme="green"
                                       size={["sm", "md"]}
-                                      onClick={() => setIsReviewModalOpen(true)}
-                                      leftIcon={<FaStar />}
+                                      onClick={handleInstantComplete}
+                                      isLoading={completingTrade}
+                                      loadingText="Completing..."
+                                      leftIcon={<FaCheckCircle />}
                                       w="full"
                                       transition="all 0.2s"
                                       _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
                                     >
-                                      Leave Review & Complete Trade
+                                      Complete Trade
                                     </Button>
                                   )}
                                 </VStack>
@@ -4349,18 +4388,20 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         Suggest Different
                                       </Button>
                                     </HStack>
-                                    {/* Leave Review Button - Available but disabled until agree */}
+                                    {/* Complete Trade Button - Instantly complete without review */}
                                     <Button
                                       colorScheme={meetupAgreed ? "green" : "gray"}
                                       variant={meetupAgreed ? "solid" : "outline"}
                                       size={["sm", "md"]}
-                                      onClick={() => setIsReviewModalOpen(true)}
+                                      onClick={handleInstantComplete}
                                       leftIcon={<FaStar />}
                                       w="full"
-                                      isDisabled={!meetupAgreed}
+                                      isDisabled={!meetupAgreed || completingTrade}
+                                      isLoading={completingTrade}
+                                      loadingText="Completing..."
                                       _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
                                     >
-                                      {meetupAgreed ? 'Leave Review & Complete Trade' : '⭐ Review (after agreement)'}
+                                      {meetupAgreed ? '✓ Complete Trade' : '⭐ Complete (after agreement)'}
                                     </Button>
                                   </VStack>
                                 ) : (
@@ -4368,18 +4409,20 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     <Text fontSize="xs" color="gray.600" textAlign="center">
                                       Waiting for {isUserBuyer ? trade.seller_name : trade.buyer_name} to respond.
                                     </Text>
-                                    {/* Leave Review Button - Available but disabled until agree */}
+                                    {/* Complete Trade Button - Instantly complete without review */}
                                     <Button
                                       colorScheme={meetupAgreed ? "green" : "gray"}
                                       variant={meetupAgreed ? "solid" : "outline"}
                                       size={["sm", "md"]}
-                                      onClick={() => setIsReviewModalOpen(true)}
+                                      onClick={handleInstantComplete}
                                       leftIcon={<FaStar />}
                                       w="full"
-                                      isDisabled={!meetupAgreed}
+                                      isDisabled={!meetupAgreed || completingTrade}
+                                      isLoading={completingTrade}
+                                      loadingText="Completing..."
                                       _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
                                     >
-                                      {meetupAgreed ? 'Leave Review & Complete Trade' : '⭐ Review (after agreement)'}
+                                      {meetupAgreed ? '✓ Complete Trade' : '⭐ Complete (after agreement)'}
                                     </Button>
                                   </VStack>
                                 )}

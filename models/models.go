@@ -378,6 +378,8 @@ type Trade struct {
 	BuyerInitialReviewLocked  bool          `json:"buyer_initial_review_locked"`        // Prevents tampering with initial review
 	SellerInitialReviewLocked bool          `json:"seller_initial_review_locked"`       // Prevents tampering with initial review
 	ReviewHistory             []TradeReview `json:"reviews,omitempty"`                  // Full review history (initial + followups)
+	// Counter offer fields
+	CounteredBy int `json:"countered_by,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade

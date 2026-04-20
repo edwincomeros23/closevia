@@ -305,6 +305,7 @@ func (h *TradeHandler) evaluateLikeLoops(userID int) []string {
 	loopsCreated = append(loopsCreated, h.createMutualLikeLoops(byUser, userID)...)
 
 	// Detect 3-5 cycles from the current user.
+	// We do this second and only if products aren't already taken by 2-way matches
 	loopsCreated = append(loopsCreated, h.createLikeCycles(byUser, userID, 5)...)
 
 	return loopsCreated
@@ -453,6 +454,42 @@ func (h *TradeHandler) createLikeCycles(byUser map[int][]likeEdge, userID int, m
 func (h *TradeHandler) createLikeLoop(participants []likeParticipant) (int, bool) {
 	if len(participants) < 2 || len(participants) > 5 {
 		return 0, false
+	}
+
+	// PRE-CHECK: If this is a multi-way loop (len > 2), check if any participants
+	// are already assigned to a direct 1-to-1 match (len == 2).
+	// This prevents discovery of larger loops from disrupting active direct matches.
+	if len(participants) > 2 {
+		productIDs := make([]int, 0, len(participants)*2)
+		for _, p := range participants {
+			productIDs = append(productIDs, p.OfferedProductID, p.WantedProductID)
+		}
+
+		placeholders := make([]string, len(participants)*2)
+		args := make([]interface{}, 0, len(participants)*4)
+		for i, pid := range productIDs {
+			placeholders[i] = "?"
+			args = append(args, pid)
+		}
+		// Second set of args for the second IN clause
+		for _, pid := range productIDs {
+			args = append(args, pid)
+		}
+
+		checkQuery := fmt.Sprintf(`
+			SELECT COUNT(*) 
+			FROM trade_like_loop_participants p
+			JOIN trade_like_loops l ON l.id = p.loop_id
+			WHERE l.status = 'pending'
+			  AND (p.offered_product_id IN (%s) OR p.wanted_product_id IN (%s))
+			  AND (SELECT COUNT(*) FROM trade_like_loop_participants WHERE loop_id = l.id) <= 2
+		`, strings.Join(placeholders, ","), strings.Join(placeholders, ","))
+
+		var existingSmallLoops int
+		_ = h.db.QueryRow(checkQuery, args...).Scan(&existingSmallLoops)
+		if existingSmallLoops > 0 {
+			return 0, false
+		}
 	}
 
 	loopKey := buildLikeLoopKey(participants)
@@ -754,6 +791,34 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 	}
 	if tradeStatus != "pending" && tradeStatus != "pending_multiway" {
 		return false, "", "Trade is not eligible for multi-way matching", debug, nil
+	}
+
+	// CHECK FOR MUTUAL 1-ON-1 TRADE (both users invited each other):
+	// If sellerID has already created a trade targeting one of buyerID's products,
+	// this is a completed 1-on-1 match, NOT a multiway opportunity.
+	// Check if sellerID has a trade where they're the buyer and targeting one of buyerID's products
+	var counterTradeID int
+	err = h.db.QueryRow(`
+		SELECT id FROM trades
+		WHERE buyer_id = ? AND seller_id = ? AND status IN ('pending', 'accepted')
+		LIMIT 1
+	`, sellerID, buyerID).Scan(&counterTradeID)
+
+	if err == nil && counterTradeID > 0 {
+		// Found a mutual trade! This is a 1-on-1 match, not multiway
+		log.Printf("[1-on-1 MUTUAL MATCH] Trade %d (User %d -> User %d) matched with reverse trade %d (User %d -> User %d)",
+			tradeID, buyerID, sellerID, counterTradeID, sellerID, buyerID)
+
+		// Clean up any multiway entries that were created for the first trade (if they exist)
+		// This prevents orphaned multiway suggestions from appearing in the tab
+		_, _ = h.db.Exec(`
+			DELETE FROM multiway_trades 
+			WHERE original_trade_id IN (?, ?)
+			AND status IN ('pending_user3', 'pending_initiator_upgrade')
+		`, tradeID, counterTradeID)
+
+		// Do NOT search for multiway - mark both trades as matched 1-on-1
+		return false, "accepted", "Mutual 1-on-1 trade detected - not multiway", debug, nil
 	}
 
 	matches, dbg, err := services.FindMultiwayMatchDetailed(h.db, buyerID, sellerID, tradeID, []int{})
@@ -1455,12 +1520,16 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	args := []interface{}{userID, userID}
 	switch direction {
 	case "incoming":
-		// A countered trade awaits the OTHER party's response, so it belongs in
-		// that party's incoming view — even when they were the original buyer.
-		where = "WHERE (t.seller_id = ? OR (t.status = 'countered' AND t.countered_by IS NOT NULL AND t.countered_by <> ? AND (t.buyer_id = ? OR t.seller_id = ?)))"
+		// User needs to act:
+		// 1. Pending/Pending Multiway where user is the seller
+		// 2. Countered where user was NOT the one who countered
+		where = "WHERE ((t.status IN ('pending', 'pending_multiway') AND t.seller_id = ?) OR (t.status = 'countered' AND t.countered_by IS NOT NULL AND t.countered_by <> ? AND (t.buyer_id = ? OR t.seller_id = ?)))"
 		args = []interface{}{userID, userID, userID, userID}
 	case "outgoing":
-		where = "WHERE t.buyer_id = ? AND NOT (t.status = 'countered' AND t.countered_by IS NOT NULL AND t.countered_by <> ?)"
+		// User is waiting for others:
+		// 1. Pending/Pending Multiway where user is the buyer
+		// 2. Countered where user WAS the one who countered
+		where = "WHERE ((t.status IN ('pending', 'pending_multiway') AND t.buyer_id = ?) OR (t.status = 'countered' AND t.countered_by IS NOT NULL AND t.countered_by = ?))"
 		args = []interface{}{userID, userID}
 	}
 	if status != "" {
@@ -1476,7 +1545,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	query := `
         SELECT
 		  t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, COALESCE(t.message, '') as message, t.offered_cash_amount, t.created_at, t.updated_at,
-          t.buyer_completed, t.seller_completed, t.completed_at`
+          t.buyer_completed, t.seller_completed, t.completed_at, t.countered_by`
 
 	// Check if trade_option column exists
 	testRow := h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
@@ -1532,6 +1601,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
           COALESCE(t.buyer_meetup_location, '') as buyer_meetup_location, COALESCE(t.buyer_meetup_time, '') as buyer_meetup_time,
           COALESCE(t.seller_meetup_location, '') as seller_meetup_location, COALESCE(t.seller_meetup_time, '') as seller_meetup_time,
 		  COALESCE(t.buyer_met, FALSE) as buyer_met, COALESCE(t.seller_met, FALSE) as seller_met,
+		  t.countered_by,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title,
           p.image_url AS product_image_url, p.image_urls AS product_image_urls,
           COALESCE(NULLIF(p.pickup_address, ''), NULLIF(us.home_address, ''), '') AS target_product_pickup_address
@@ -1560,7 +1630,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		var targetPickupAddr sql.NullString
 		var offeredCashNull sql.NullFloat64
 
-		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.MeetingType, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs, &targetPickupAddr); err == nil {
+		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.MeetingType, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.CounteredBy, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs, &targetPickupAddr); err == nil {
 			if targetPickupAddr.Valid {
 				tr.TargetProductPickupAddress = targetPickupAddr.String
 			}
@@ -1770,6 +1840,15 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 	case "accept":
 		if currentStatus != "pending" && currentStatus != "pending_multiway" && currentStatus != "countered" {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Trade is no longer pending (" + currentStatus + ")"})
+		}
+
+		// Prevent accepting your own counter-offer
+		if currentStatus == "countered" {
+			var counteredBy int
+			err := h.db.QueryRow("SELECT countered_by FROM trades WHERE id = ?", tradeID).Scan(&counteredBy)
+			if err == nil && counteredBy == userID {
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You cannot accept your own counter-offer. Waiting for the other party."})
+			}
 		}
 		tx, err := h.db.Begin()
 		if err != nil {
@@ -2755,13 +2834,14 @@ func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 	// Lock the trade row to prevent concurrent completions
 	var currentStatus string
 	var targetProductID int
+	var buyerID, sellerID int
 	var buyerCompleted, sellerCompleted bool
 
 	err = tx.QueryRow(`
-		SELECT status, target_product_id, buyer_completed, seller_completed
+		SELECT status, target_product_id, buyer_completed, seller_completed, buyer_id, seller_id
 		FROM trades 
 		WHERE id = ? 
-		FOR UPDATE`, tradeID).Scan(&currentStatus, &targetProductID, &buyerCompleted, &sellerCompleted)
+		FOR UPDATE`, tradeID).Scan(&currentStatus, &targetProductID, &buyerCompleted, &sellerCompleted, &buyerID, &sellerID)
 
 	if err != nil {
 		log.Printf("Trade %d not found: %v", tradeID, err)
@@ -2769,6 +2849,12 @@ func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 	}
 
 	log.Printf("Trade %d status: %s, buyer_completed: %t, seller_completed: %t", tradeID, currentStatus, buyerCompleted, sellerCompleted)
+	
+	// If already completed, nothing to do
+	if currentStatus == "completed" {
+		log.Printf("Trade %d is already completed, skipping", tradeID)
+		return nil
+	}
 
 	// Verify both parties have completed
 	if !buyerCompleted || !sellerCompleted {
@@ -2836,6 +2922,29 @@ func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 	if rowsAffected == 0 {
 		log.Printf("Trade %d was already completed by another process", tradeID)
 		return fmt.Errorf("trade was already completed by another process")
+	}
+
+	// For MUTUAL TRADES: also complete the paired trade record
+	// Find the reverse/paired trade where roles are swapped
+	var pairedTradeID int
+	err = tx.QueryRow(`
+		SELECT id FROM trades
+		WHERE buyer_id = ? AND seller_id = ? 
+		AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
+		LIMIT 1
+	`, sellerID, buyerID).Scan(&pairedTradeID)
+
+	if err == nil && pairedTradeID > 0 && pairedTradeID != tradeID {
+		// Found a paired mutual trade - complete it too
+		log.Printf("[MUTUAL TRADE COMPLETE] Completing paired trade %d alongside trade %d", pairedTradeID, tradeID)
+		_, err = tx.Exec(`
+			UPDATE trades 
+			SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+			WHERE id = ?`, pairedTradeID)
+		if err != nil {
+			log.Printf("Warning: Failed to complete paired trade %d: %v", pairedTradeID, err)
+			// Continue anyway - main trade is completed
+		}
 	}
 
 	log.Printf("Successfully completed trade %d and marked products as traded", tradeID)
@@ -3100,7 +3209,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	query := `
         SELECT
 		  t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, COALESCE(t.message, '') as message, t.offered_cash_amount, t.created_at, t.updated_at,
-          t.buyer_completed, t.seller_completed, t.completed_at`
+          t.buyer_completed, t.seller_completed, t.completed_at, t.countered_by`
 
 	// Check if trade_option column exists
 	testRow := h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
@@ -3158,6 +3267,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
           COALESCE(t.seller_meetup_time, '') as seller_meetup_time,
 					COALESCE(t.buyer_met, FALSE) as buyer_met,
 					COALESCE(t.seller_met, FALSE) as seller_met,
+					t.countered_by,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title,
           COALESCE(NULLIF(p.pickup_address, ''), NULLIF(us.home_address, ''), '') AS target_product_pickup_address
         FROM trades t
@@ -3171,7 +3281,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	var proofOfDelivery sql.NullString
 	var offeredCashNull sql.NullFloat64
 	var targetPickupAddr sql.NullString
-	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.MeetingType, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.MeetupTime, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &targetPickupAddr)
+	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.MeetingType, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.MeetupTime, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.CounteredBy, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &targetPickupAddr)
 	if targetPickupAddr.Valid {
 		tr.TargetProductPickupAddress = targetPickupAddr.String
 	}
@@ -4098,18 +4208,15 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 	}
 
 	var payload struct {
-		Rating        int    `json:"rating"`
-		Feedback      string `json:"feedback"`
-		ProofURL      string `json:"transaction_proof_url,omitempty"`
-		IsCameraPhoto bool   `json:"is_camera_photo"`
+		Rating          int    `json:"rating"`
+		Feedback        string `json:"feedback"`
+		ProofURL        string `json:"transaction_proof_url,omitempty"`
+		IsCameraPhoto   bool   `json:"is_camera_photo"`
+		InstantComplete bool   `json:"instant_complete"`
+		LoopID          string `json:"loop_id,omitempty"`
 	}
 	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
-	}
-
-	// Validate rating
-	if payload.Rating < 1 || payload.Rating > 5 {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Rating must be between 1 and 5"})
 	}
 
 	// Fetch trade details
@@ -4121,6 +4228,112 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 	}
 	if userID != buyerID && userID != sellerID {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
+	}
+
+	// === INSTANT COMPLETE MODE ===
+	// Skips rating/feedback/proof, marks both users as completed, finalizes trade immediately
+	if payload.InstantComplete {
+		log.Printf("[INSTANT COMPLETE] User %d completing trade %d instantly for both parties", userID, tradeID)
+
+		tx, err := h.db.Begin()
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Transaction failed"})
+		}
+		defer tx.Rollback()
+
+		// 1. Mark both parties as completed in the primary record
+		_, err = tx.Exec(
+			"UPDATE trades SET buyer_completed=TRUE, seller_completed=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
+			tradeID)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade completion"})
+		}
+
+		// 2. Identify and update paired mutual trade (if it exists as a separate record)
+		var pairedTradeID int
+		_ = tx.QueryRow(`
+			SELECT id FROM trades
+			WHERE (buyer_id = ? AND seller_id = ?) 
+			AND id != ?
+			AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
+			LIMIT 1
+		`, sellerID, buyerID, tradeID).Scan(&pairedTradeID)
+
+		if pairedTradeID > 0 {
+			log.Printf("[INSTANT COMPLETE] Also updating paired mutual trade %d", pairedTradeID)
+			_, _ = tx.Exec(
+				"UPDATE trades SET buyer_completed=TRUE, seller_completed=TRUE, status='completed', completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
+				pairedTradeID)
+		}
+
+		// 3. Mark the multi-way chain as completed if applicable
+		_, _ = tx.Exec(`
+			UPDATE multiway_trades 
+			SET status = 'completed', updated_at = NOW() 
+			WHERE (original_trade_id = ? OR user3_trade_id = ?) 
+			AND status IN ('active', 'multiway_active', 'user3_accepted', 'pending_user3')
+		`, tradeID, tradeID)
+
+		if err := tx.Commit(); err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit completion"})
+		}
+
+		// 4. Finalize the trade (mark products as traded, set status to completed)
+		// This function handles product status and notifications internally
+		// We call it after the flags are set so it passes the 'both completed' check
+		err = h.completeTradeTransaction(tradeID)
+		if err != nil {
+			log.Printf("[INSTANT COMPLETE] Failed to complete trade transaction %d: %v", tradeID, err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to finalize trade"})
+		}
+
+		// If this trade belongs to a 2-way like-loop, close the loop too so the
+		// card moves out of ongoing trades and into history for both users.
+		if payload.LoopID != "" {
+			if loopNumericID, parseOK := parseLikeLoopID(payload.LoopID); parseOK {
+				// Mark all offered products in the loop as traded
+				if prodRows, perr := h.db.Query("SELECT offered_product_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID); perr == nil {
+					for prodRows.Next() {
+						var pid int
+						if scanErr := prodRows.Scan(&pid); scanErr == nil {
+							_, _ = h.db.Exec("UPDATE products SET status = 'traded' WHERE id = ?", pid)
+						}
+					}
+					prodRows.Close()
+				}
+				_, _ = h.db.Exec("UPDATE trade_like_loops SET status = 'completed' WHERE id = ?", loopNumericID)
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'Trade loop completed! All items are now marked as traded.', FALSE FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+
+				// Publish SSE so both users' UIs refresh and drop the card
+				participantRows, _ := h.db.Query("SELECT user_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+				if participantRows != nil {
+					for participantRows.Next() {
+						var puid int
+						if scanErr := participantRows.Scan(&puid); scanErr == nil {
+							publishToUser(puid, sseEvent{Type: "trade_loop_completed", Data: fiber.Map{"loop_id": payload.LoopID}})
+						}
+					}
+					participantRows.Close()
+				}
+			}
+		}
+
+		// Notify both parties
+		publishToUser(buyerID, sseEvent{Type: "trade_completed", Data: fiber.Map{"trade_id": tradeID}})
+		publishToUser(sellerID, sseEvent{Type: "trade_completed", Data: fiber.Map{"trade_id": tradeID}})
+
+		// Add notifications
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Trade completed successfully!")
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "Trade completed successfully!")
+
+		return c.JSON(models.APIResponse{Success: true, Message: "Trade completed successfully"})
+	}
+
+	// === STANDARD REVIEW-BASED COMPLETION ===
+
+	// Validate rating
+	if payload.Rating < 1 || payload.Rating > 5 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Rating must be between 1 and 5"})
 	}
 
 	// Enforce photo evidence rule for meetup and delivery
@@ -5568,73 +5781,106 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 		}
 		participantRows.Close()
 		if len(userIDs) > 0 {
-			placeholders := make([]string, len(userIDs))
-			selectArgs := make([]interface{}, 0, len(userIDs)+1)
-			selectArgs = append(selectArgs, loopNumericID)
-			for i, uid := range userIDs {
-				placeholders[i] = "?"
-				selectArgs = append(selectArgs, uid)
-			}
-
-			// First, collect the loops that are about to be auto-cancelled so we
-			// can notify the OTHER participants (e.g. user C when A+B just
-			// confirmed their AB match). Without this, C's card silently
-			// disappears from their dashboard with no signal.
-			cancelledLoopIDs := []int{}
-			findQ := fmt.Sprintf(`
-				SELECT DISTINCT l.id FROM trade_like_loops l
-				JOIN trade_like_loop_participants p ON p.loop_id = l.id
-				WHERE l.id <> ? AND l.status = 'pending' AND p.user_id IN (%s)
-			`, strings.Join(placeholders, ","))
-			if findRows, err := h.db.Query(findQ, selectArgs...); err == nil {
-				for findRows.Next() {
-					var lid int
-					if err := findRows.Scan(&lid); err == nil {
-						cancelledLoopIDs = append(cancelledLoopIDs, lid)
+			// Collect the product IDs used in this confirmed loop so we only
+			// cancel other pending loops that conflict on product ownership —
+			// not every loop involving the same users.
+			prodRows, _ := h.db.Query("SELECT offered_product_id, wanted_product_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+			productIDs := map[int]bool{}
+			if prodRows != nil {
+				for prodRows.Next() {
+					var oid, wid int
+					if err := prodRows.Scan(&oid, &wid); err == nil {
+						productIDs[oid] = true
+						productIDs[wid] = true
 					}
 				}
-				findRows.Close()
+				prodRows.Close()
 			}
 
-			// Now cancel those loops
-			updateArgs := make([]interface{}, 0, len(userIDs)+1)
-			updateArgs = append(updateArgs, loopNumericID)
-			for _, uid := range userIDs {
-				updateArgs = append(updateArgs, uid)
-			}
-			q := fmt.Sprintf(`
-				UPDATE trade_like_loops l
-				JOIN trade_like_loop_participants p ON p.loop_id = l.id
-				SET l.status = 'cancelled'
-				WHERE l.id <> ? AND l.status = 'pending' AND p.user_id IN (%s)
-			`, strings.Join(placeholders, ","))
-			_, _ = h.db.Exec(q, updateArgs...)
-
-			// Notify participants of the cancelled loops who are NOT already in
-			// the confirmed loop (they just lost their match; they deserve to know).
-			if len(cancelledLoopIDs) > 0 {
-				confirmedSet := map[int]bool{}
-				for _, uid := range userIDs {
-					confirmedSet[uid] = true
+			if len(productIDs) > 0 {
+				pids := make([]int, 0, len(productIDs))
+				for pid := range productIDs {
+					pids = append(pids, pid)
 				}
-				for _, cid := range cancelledLoopIDs {
-					affectedRows, err := h.db.Query("SELECT DISTINCT user_id FROM trade_like_loop_participants WHERE loop_id = ?", cid)
-					if err != nil {
-						continue
-					}
-					affectedUserIDs := []int{}
-					for affectedRows.Next() {
-						var auid int
-						if err := affectedRows.Scan(&auid); err == nil && !confirmedSet[auid] {
-							affectedUserIDs = append(affectedUserIDs, auid)
+				pidPlaceholders := make([]string, len(pids))
+				for i := range pids {
+					pidPlaceholders[i] = "?"
+				}
+				pidPH := strings.Join(pidPlaceholders, ",")
+
+				// First, collect the loops that are about to be auto-cancelled so we
+				// can notify the OTHER participants (e.g. user C when A+B just
+				// confirmed their AB match). Without this, C's card silently
+				// disappears from their dashboard with no signal.
+				cancelledLoopIDs := []int{}
+				findArgs := make([]interface{}, 0, 1+len(pids)*2)
+				findArgs = append(findArgs, loopNumericID)
+				for _, pid := range pids {
+					findArgs = append(findArgs, pid)
+				}
+				for _, pid := range pids {
+					findArgs = append(findArgs, pid)
+				}
+				findQ := fmt.Sprintf(`
+					SELECT DISTINCT l.id FROM trade_like_loops l
+					JOIN trade_like_loop_participants p ON p.loop_id = l.id
+					WHERE l.id <> ? AND l.status = 'pending'
+					  AND (p.offered_product_id IN (%s) OR p.wanted_product_id IN (%s))
+				`, pidPH, pidPH)
+				if findRows, err := h.db.Query(findQ, findArgs...); err == nil {
+					for findRows.Next() {
+						var lid int
+						if err := findRows.Scan(&lid); err == nil {
+							cancelledLoopIDs = append(cancelledLoopIDs, lid)
 						}
 					}
-					affectedRows.Close()
-					msg := "A trade match was cancelled because the other trader committed to a different match."
-					for _, auid := range affectedUserIDs {
-						_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", auid, msg)
-						publishNotification(auid, msg)
-						publishToUser(auid, sseEvent{Type: "trade_loop_cancelled", Data: fiber.Map{"loop_id": loopIDFromLikeLoopID(cid), "reason": "other_match_confirmed"}})
+					findRows.Close()
+				}
+
+				// Now cancel those loops
+				cancelArgs := make([]interface{}, 0, 1+len(pids)*2)
+				cancelArgs = append(cancelArgs, loopNumericID)
+				for _, pid := range pids {
+					cancelArgs = append(cancelArgs, pid)
+				}
+				for _, pid := range pids {
+					cancelArgs = append(cancelArgs, pid)
+				}
+				q := fmt.Sprintf(`
+					UPDATE trade_like_loops l
+					JOIN trade_like_loop_participants p ON p.loop_id = l.id
+					SET l.status = 'cancelled'
+					WHERE l.id <> ? AND l.status = 'pending'
+					  AND (p.offered_product_id IN (%s) OR p.wanted_product_id IN (%s))
+				`, pidPH, pidPH)
+				_, _ = h.db.Exec(q, cancelArgs...)
+
+				// Notify participants of the cancelled loops who are NOT already in
+				// the confirmed loop (they just lost their match; they deserve to know).
+				if len(cancelledLoopIDs) > 0 {
+					confirmedSet := map[int]bool{}
+					for _, uid := range userIDs {
+						confirmedSet[uid] = true
+					}
+					for _, cid := range cancelledLoopIDs {
+						affectedRows, err := h.db.Query("SELECT DISTINCT user_id FROM trade_like_loop_participants WHERE loop_id = ?", cid)
+						if err != nil {
+							continue
+						}
+						affectedUserIDs := []int{}
+						for affectedRows.Next() {
+							var auid int
+							if err := affectedRows.Scan(&auid); err == nil && !confirmedSet[auid] {
+								affectedUserIDs = append(affectedUserIDs, auid)
+							}
+						}
+						affectedRows.Close()
+						msg := "A trade match was cancelled because the other trader committed to a different match."
+						for _, auid := range affectedUserIDs {
+							_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", auid, msg)
+							publishNotification(auid, msg)
+							publishToUser(auid, sseEvent{Type: "trade_loop_cancelled", Data: fiber.Map{"loop_id": loopIDFromLikeLoopID(cid), "reason": "other_match_confirmed"}})
+						}
 					}
 				}
 			}

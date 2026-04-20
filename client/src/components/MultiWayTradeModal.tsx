@@ -337,6 +337,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [submittingReview, setSubmittingReview] = useState(false)
   const [reviewSubmitted, setReviewSubmitted] = useState(false)
+  const [completingTrade, setCompletingTrade] = useState(false)
 
   // Sync review status from props
   useEffect(() => {
@@ -836,6 +837,53 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     } finally {
       setSubmittingReview(false)
       setSelectedAction(null)
+    }
+  }
+
+  const handleInstantComplete = async () => {
+    if (!multiWayTrade.loop_id || completingTrade) return
+
+    try {
+      setCompletingTrade(true)
+      
+      // Resolve the trade ID for this loop if not already known
+      let tradeId: number | null = reviewTradeId
+      if (!tradeId) {
+        const resolverRes = await api.post(`/api/trades/loops/${multiWayTrade.loop_id}/review-trade`)
+        tradeId = resolverRes.data?.data?.trade_id || null
+      }
+      if (!tradeId) {
+        throw new Error('No trade was found for this loop yet.')
+      }
+
+      await api.put(`/api/trades/${tradeId}/complete`, {
+        instant_complete: true,
+        loop_id: multiWayTrade.loop_id,
+      })
+
+      toast({
+        id: 'mwt-trade-completed',
+        title: 'Trade Completed!',
+        description: 'The trade loop has been completed for you.',
+        status: 'success',
+        duration: 3000,
+      })
+
+      onTradeCompleted?.()
+      setIsReviewModalOpen(false)
+      setTimeout(() => {
+        onClose()
+      }, 1000)
+    } catch (error: any) {
+      toast({
+        id: 'mwt-complete-failed',
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to complete trade',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setCompletingTrade(false)
     }
   }
 
@@ -2577,13 +2625,15 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               <Button
                                 colorScheme="green"
                                 size="lg"
-                                onClick={() => setIsReviewModalOpen(true)}
-                                leftIcon={<FaStar />}
+                                onClick={handleInstantComplete}
+                                isLoading={completingTrade}
+                                loadingText="Completing..."
+                                leftIcon={<FaCheckCircle />}
                                 w="full"
                                 transition="all 0.2s"
                                 _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
                               >
-                                Review & Complete Trade
+                                Complete Trade
                               </Button>
                             )}
 
@@ -2912,16 +2962,16 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 borderRadius="3xl"
                 fontWeight="600"
                 colorScheme="brand"
-                onClick={submitReview}
-                isLoading={submittingReview}
-                leftIcon={<FaStar />}
-                isDisabled={reviewSubmitted}
+                onClick={handleInstantComplete}
+                isLoading={completingTrade}
+                loadingText="Completing..."
+                leftIcon={<FaCheckCircle />}
                 shadow="md"
-                _hover={reviewSubmitted ? undefined : { transform: 'translateY(-2px)' }}
+                _hover={{ transform: 'translateY(-2px)' }}
                 transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
                 mb={2}
               >
-                Review & Complete Trade
+                Complete Trade
               </Button>
             </VStack>
           </ModalBody>

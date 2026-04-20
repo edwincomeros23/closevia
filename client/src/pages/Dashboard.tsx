@@ -836,12 +836,23 @@ const Dashboard: React.FC = () => {
     const waitingOnOthers: any[] = []
     const autoSearchResults: any[] = []
     const completed: any[] = []
+    const currentUserID = Number(user?.id || 0)
 
     for (const trade of tradeMatchTrades) {
       // Confirmed matches move to Ongoing Trades; this tab only tracks pending review.
       const status = trade?.status || ''
       const canJoin = trade?.can_join === true
       const canDecline = trade?.can_decline === true
+
+      // Skip loops the current user has already confirmed — those now live in
+      // Ongoing Trades (see ongoingMultiWayTrades) so they don't show twice.
+      if (status === 'pending' && currentUserID > 0) {
+        const participants = Array.isArray(trade?.participants) ? trade.participants : []
+        const me = participants.find((p: any) => Number(p?.user_id ?? p?.id) === currentUserID)
+        if (me && (me.status === 'confirmed' || me.trade_status === 'confirmed')) {
+          continue
+        }
+      }
 
       if (status === 'pending' && (canJoin || canDecline)) {
         needsAction.push(trade)
@@ -851,7 +862,7 @@ const Dashboard: React.FC = () => {
     }
 
     return { needsAction, waitingOnOthers, autoSearchResults, completed }
-  }, [tradeMatchTrades])
+  }, [tradeMatchTrades, user?.id])
 
   const multiWayIndicatorCount = groupedMultiWayTrades.needsAction.length + groupedMultiWayTrades.waitingOnOthers.length + groupedMultiWayTrades.completed.length
   const tradeMatchIndicatorCount = groupedTradeMatchTrades.needsAction.length + groupedTradeMatchTrades.waitingOnOthers.length + groupedTradeMatchTrades.completed.length
@@ -1422,14 +1433,14 @@ const Dashboard: React.FC = () => {
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
     const buyout = (buyoutOffers || []).length
-    const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway').length
-    const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
+    const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'countered').length
+    const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'countered') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
     const ongoingMultiway = (multiWayTrades || []).filter((t: any) =>
       t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed'
     ).length
     
     // Deduplicate: status='multiway_active' trades are present in both ongoingTradesData and multiWayTrades
-    const standardActiveCount = (ongoingTradesData || []).filter(t => t.status !== 'multiway_active').length
+    const standardActiveCount = (ongoingTradesData || []).filter(t => t.status !== 'multiway_active' && t.status !== 'countered').length
     const ongoing = standardActiveCount + ongoingMultiway;
     return {
       buyout,
@@ -1481,7 +1492,7 @@ const Dashboard: React.FC = () => {
   }, [buyoutOffers, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const sentOffers = useMemo(() => {
-    const active = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
+    const active = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'countered') // Include multiway matches and counter-offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1535,7 +1546,7 @@ const Dashboard: React.FC = () => {
   }, [updateTrade])
 
   const receivedOffers = useMemo(() => {
-    const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
+    const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'countered') // Include multiway matches and counter-offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1625,11 +1636,28 @@ const Dashboard: React.FC = () => {
   //   - 'active' / 'multiway_active' — 3-way chain (multiway_trades table) fully agreed
   //   - 'confirmed'                  — 3-5 participant like-loop (trade_like_loops table) fully agreed
   // Do NOT show 'pending_user3' or 'user3_accepted' — those belong in the Multi-Way tab.
+  // For 2-way trade matches, also show the loop in Ongoing Trades once the current
+  // user has accepted their side (status='pending' at loop level, but the current
+  // user's participant row is 'confirmed') — so the accepter sees it immediately
+  // while waiting on the other party.
   const ongoingMultiWayTrades = useMemo(() => {
-    return (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed'
-    )
-  }, [multiWayTrades])
+    const currentUserID = Number(user?.id || 0)
+    return (multiWayTrades || []).filter((t: any) => {
+      if (t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed') {
+        return true
+      }
+      if (t?.status === 'pending' && currentUserID > 0) {
+        const participants = Array.isArray(t?.participants) ? t.participants : []
+        if (participants.length === 2) {
+          const me = participants.find((p: any) => Number(p?.user_id ?? p?.id) === currentUserID)
+          if (me && (me.status === 'confirmed' || me.trade_status === 'confirmed')) {
+            return true
+          }
+        }
+      }
+      return false
+    })
+  }, [multiWayTrades, user?.id])
 
   // Unified search handler - clears tab-specific searches when unified search is used
   const handleUnifiedSearchChange = (value: string) => {
@@ -5847,22 +5875,28 @@ const Dashboard: React.FC = () => {
             trade={selectedTrade}
             isOpen={detailsOpen}
             onClose={() => setDetailsOpen(false)}
-            onAccepted={async () => {
+            onAccepted={async (action) => {
               invalidateOffers()
               invalidateDashboard()
-              setActiveTab(1)
-              setOffersSubTab(3)
+              
+              if (action === 'accept') {
+                setActiveTab(1)
+                setOffersSubTab(3)
 
-              // After accepting, show Trade Details (chat/meetup/delivery) for both parties
-              if (selectedTrade) {
-                try {
-                  const res = await api.get(`/api/trades/${selectedTrade.id}`)
-                  const freshTrade = res.data?.data
-                  if (freshTrade) setSelectedTrade(freshTrade)
-                } catch {
-                  // Non-fatal
+                // After accepting, show Trade Details (chat/meetup/delivery) for both parties
+                if (selectedTrade) {
+                  try {
+                    const res = await api.get(`/api/trades/${selectedTrade.id}`)
+                    const freshTrade = res.data?.data
+                    if (freshTrade) setSelectedTrade(freshTrade)
+                  } catch {
+                    // Non-fatal
+                  }
+                  setViewTradeModalOpen(true)
                 }
-                setViewTradeModalOpen(true)
+              } else if (action === 'counter') {
+                setActiveTab(1)
+                setOffersSubTab(1) // Show Sent Offers tab after countering
               }
             }}
             onDeclined={() => { invalidateOffers(); invalidateDashboard() }}
@@ -5872,7 +5906,12 @@ const Dashboard: React.FC = () => {
             trade={selectedTrade}
             isOpen={viewTradeModalOpen}
             onClose={() => setViewTradeModalOpen(false)}
-            onStatusUpdate={() => { invalidateOffers(); invalidateDashboard() }}
+            onStatusUpdate={() => { 
+              invalidateOffers()
+              invalidateDashboard()
+              // Switch to History tab if a trade was completed
+              setActiveTab(4)
+            }}
             onTradeUpdate={setSelectedTrade}
           />
 
@@ -5898,8 +5937,9 @@ const Dashboard: React.FC = () => {
                 void fetchMultiWayTrades()
                 invalidateOffers()
                 invalidateProducts()
-                setActiveTab(1)
-                setOffersSubTab(3)
+                invalidateDashboard()
+                // Switch to History tab
+                setActiveTab(4)
               }}
             />
           )}
@@ -5908,7 +5948,11 @@ const Dashboard: React.FC = () => {
             trade={selectedTrade}
             isOpen={completionModalOpen}
             onClose={() => setCompletionModalOpen(false)}
-            onCompleted={() => { invalidateOffers(); invalidateDashboard() }}
+            onCompleted={() => { 
+              invalidateOffers()
+              invalidateDashboard()
+              setActiveTab(4)
+            }}
             currentUserId={user?.id}
           />
 
