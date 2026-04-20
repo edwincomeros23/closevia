@@ -905,7 +905,7 @@ const Dashboard: React.FC = () => {
       setMultiWayManagerOpen(true)
     } catch (e) {
       console.error('Failed to load loop details:', e)
-      toast({
+       toast({
         id: 'error-load-loop-details',
         title: 'Error',
         description: 'Failed to load trade loop details.',
