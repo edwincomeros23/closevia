@@ -1645,8 +1645,8 @@ const Offers: React.FC = () => {
           trade={selectedTrade}
           isOpen={detailsOpen}
           onClose={() => setDetailsOpen(false)}
-          onAccepted={fetchAll}
-          onDeclined={fetchAll}
+          onAccepted={() => { fetchAll() }}
+          onDeclined={() => { fetchAll() }}
         />
 
         <TradeCompletionModal
