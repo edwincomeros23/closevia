@@ -86,7 +86,7 @@ func runTradeTimeoutPass(db *sql.DB) error {
 		}
 	}
 
-	// Stage 3: Expire inactive trades after 7 days with no progress
+	// Stage 3: Expire inactive trades after 3 days with no progress
 	// Ping DB to recover stale connections before querying
 	if err := db.Ping(); err != nil {
 		return err
@@ -94,8 +94,8 @@ func runTradeTimeoutPass(db *sql.DB) error {
 	var expireIDs []int
 	expiredRows, err := db.Query(`
 		SELECT id FROM trades
-		WHERE status IN ('pending', 'accepted', 'countered', 'active')
-		  AND TIMESTAMPDIFF(DAY, updated_at, NOW()) >= 7
+		WHERE status IN ('pending', 'accepted', 'accepted_by_one', 'countered', 'active')
+		  AND TIMESTAMPDIFF(DAY, updated_at, NOW()) >= 3
 	`)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func runTradeTimeoutPass(db *sql.DB) error {
 		}
 	}
 
-	// Stage 4: Auto-dissolve expired multi-way chains (18hr acceptance window)
+	// Stage 4: Auto-dissolve expired multi-way chains (3-day acceptance window)
 	if err := dissolveExpiredMultiwayChains(db); err != nil {
 		log.Printf("dissolve expired multiway chains error: %v", err)
 	}
@@ -215,7 +215,7 @@ func autoExpireTrade(db *sql.DB, tradeID int) error {
 
 	// Double-check status hasn't changed since the SELECT outside the tx
 	switch currentStatus {
-	case "pending", "accepted", "countered", "active":
+	case "pending", "accepted", "accepted_by_one", "countered", "active":
 		// valid for expiry
 	default:
 		return nil // Already moved to a terminal status; skip
@@ -258,19 +258,19 @@ func autoExpireTrade(db *sql.DB, tradeID int) error {
 
 	// Notify both users (outside transaction)
 	_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
-		buyerID, "A trade has expired due to 7 days of inactivity.")
+		buyerID, "A trade has expired due to 3 days of inactivity.")
 	_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
-		sellerID, "A trade has expired due to 7 days of inactivity.")
+		sellerID, "A trade has expired due to 3 days of inactivity.")
 
 	// Record trade event (system action, no actor)
-	_, _ = db.Exec("INSERT INTO trade_events (trade_id, from_status, to_status, note) VALUES (?, ?, 'expired', 'Auto-expired after 7 days of inactivity')",
+	_, _ = db.Exec("INSERT INTO trade_events (trade_id, from_status, to_status, note) VALUES (?, ?, 'expired', 'Auto-expired after 3 days of inactivity')",
 		tradeID, currentStatus)
 
-	log.Printf("Trade %d auto-expired (was %s, inactive 7+ days)", tradeID, currentStatus)
+	log.Printf("Trade %d auto-expired (was %s, inactive 3+ days)", tradeID, currentStatus)
 	return nil
 }
 
-// dissolveExpiredMultiwayChains finds multi-way chains past their 18hr acceptance
+// dissolveExpiredMultiwayChains finds multi-way chains past their 3-day acceptance
 // window and auto-dissolves them. The original trade is restored to 'pending' so
 // the algorithm can re-search, and all parties are notified.
 func dissolveExpiredMultiwayChains(db *sql.DB) error {
@@ -317,7 +317,7 @@ func dissolveExpiredMultiwayChains(db *sql.DB) error {
 		// Cancel the chain
 		_, _ = db.Exec(`
 			UPDATE multiway_trades
-			SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+			SET status = 'expired', cancelled_at = NOW(), updated_at = NOW()
 			WHERE id = ?
 		`, c.id)
 
@@ -329,7 +329,7 @@ func dissolveExpiredMultiwayChains(db *sql.DB) error {
 		`, c.tradeID)
 
 		// Notify all parties
-		msg := "A multi-way trade match has expired because not all parties accepted within 18 hours. Your items are available again."
+		msg := "A multi-way trade match has expired because not all parties accepted within 3 days. Your items are available again."
 		for _, uid := range []int{c.u1, c.u2, c.u3} {
 			if uid <= 0 {
 				continue
@@ -586,4 +586,3 @@ func notifyStuckLoopsAndChains(db *sql.DB) error {
 
 	return nil
 }
-

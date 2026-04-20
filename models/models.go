@@ -320,7 +320,7 @@ type Trade struct {
 	BuyerID         int         `json:"buyer_id"`
 	SellerID        int         `json:"seller_id"`
 	TargetProductID int         `json:"target_product_id"`
-	Status          string      `json:"status" validate:"oneof=pending accepted declined countered active awaiting_confirmation completed auto_completed cancelled expired"`
+	Status          string      `json:"status" validate:"oneof=pending accepted accepted_by_one accepted_by_both declined countered active ongoing awaiting_confirmation completed auto_completed cancelled cancelled_due_to_conflict expired broken history pending_multiway multiway_active"`
 	Message         string      `json:"message,omitempty"`
 	OfferedCash     *float64    `json:"offered_cash_amount,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
@@ -328,6 +328,8 @@ type Trade struct {
 	Items           []TradeItem `json:"items"`
 	BuyerCompleted  bool        `json:"buyer_completed"`
 	SellerCompleted bool        `json:"seller_completed"`
+	BuyerAccepted   bool        `json:"buyer_accepted"`
+	SellerAccepted  bool        `json:"seller_accepted"`
 	CompletedAt     *time.Time  `json:"completed_at,omitempty"`
 	// Timeout-based completion fields
 	FirstCompletionAt         *time.Time `json:"first_completion_at,omitempty"`
@@ -379,7 +381,8 @@ type Trade struct {
 	SellerInitialReviewLocked bool          `json:"seller_initial_review_locked"`       // Prevents tampering with initial review
 	ReviewHistory             []TradeReview `json:"reviews,omitempty"`                  // Full review history (initial + followups)
 	// Counter offer fields
-	CounteredBy int `json:"countered_by,omitempty"`
+	CounteredBy   int  `json:"countered_by,omitempty"`
+	ParentTradeID *int `json:"parent_trade_id,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade

@@ -1541,6 +1541,9 @@ func ensureTradeColumns() {
 		name       string
 		definition string
 	}{
+		{"buyer_accepted", "BOOLEAN DEFAULT FALSE"},
+		{"seller_accepted", "BOOLEAN DEFAULT FALSE"},
+		{"parent_trade_id", "INT NULL"},
 		{"trade_option", "VARCHAR(20) NULL DEFAULT 'meetup'"},
 		{"delivery_address", "TEXT NULL"},
 		{"buyer_rating", "INT NULL"},
@@ -1612,17 +1615,34 @@ func ensureTradeColumns() {
 		}
 	}
 
-	// Ensure trades status ENUM includes auto_completed, awaiting_confirmation, expired, pending_multiway, multiway_active
+	// Ensure trades status ENUM includes richer lifecycle/conflict states used by the trading flow.
 	var tradeStatusType string
 	if err := DB.QueryRow(`
 		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trades' AND COLUMN_NAME = 'status'
 	`).Scan(&tradeStatusType); err == nil {
-		if !contains(tradeStatusType, "'pending_multiway'") || !contains(tradeStatusType, "'multiway_active'") {
-			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','declined','countered','active','awaiting_confirmation','completed','cancelled','auto_completed','expired','pending_multiway','multiway_active') DEFAULT 'pending'`); err != nil {
+		requiredTradeStatuses := []string{
+			"'accepted_by_one'",
+			"'accepted_by_both'",
+			"'ongoing'",
+			"'cancelled_due_to_conflict'",
+			"'broken'",
+			"'history'",
+			"'pending_multiway'",
+			"'multiway_active'",
+		}
+		needsTradeStatusUpdate := false
+		for _, required := range requiredTradeStatuses {
+			if !contains(tradeStatusType, required) {
+				needsTradeStatusUpdate = true
+				break
+			}
+		}
+		if needsTradeStatusUpdate {
+			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','accepted_by_one','accepted_by_both','declined','countered','active','ongoing','awaiting_confirmation','completed','cancelled','cancelled_due_to_conflict','auto_completed','expired','broken','history','pending_multiway','multiway_active') DEFAULT 'pending'`); err != nil {
 				log.Printf("Warning: failed to update trades status enum: %v", err)
 			} else {
-				log.Println("Updated trades status enum to include 'pending_multiway' and 'multiway_active'")
+				log.Println("Updated trades status enum with lifecycle/conflict states")
 			}
 		}
 	}
@@ -1657,20 +1677,34 @@ func ensureTradeColumns() {
 		INDEX idx_multiway_expires (expires_at)
 	)`)
 
-	// Ensure multiway_trades status enum includes pending_initiator_upgrade on existing databases.
+	// Ensure multiway_trades status enum includes lifecycle/conflict states on existing databases.
 	var multiwayStatusType string
 	if err := DB.QueryRow(`
 		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'status'
 	`).Scan(&multiwayStatusType); err == nil {
-		if !contains(multiwayStatusType, "'pending_initiator_upgrade'") {
+		requiredMultiwayStatuses := []string{
+			"'pending_initiator_upgrade'",
+			"'waiting_acceptance'",
+			"'broken'",
+			"'expired'",
+			"'history'",
+		}
+		needsMultiwayStatusUpdate := false
+		for _, required := range requiredMultiwayStatuses {
+			if !contains(multiwayStatusType, required) {
+				needsMultiwayStatusUpdate = true
+				break
+			}
+		}
+		if needsMultiwayStatusUpdate {
 			if _, err := DB.Exec(`
 				ALTER TABLE multiway_trades
-				MODIFY COLUMN status ENUM('searching','pending_user3','pending_initiator_upgrade','user3_accepted','user3_declined','active','completed','cancelled','fully_declined') DEFAULT 'searching'
+				MODIFY COLUMN status ENUM('searching','pending_user3','pending_initiator_upgrade','waiting_acceptance','user3_accepted','user3_declined','active','completed','cancelled','expired','broken','history','fully_declined') DEFAULT 'searching'
 			`); err != nil {
 				log.Printf("Warning: failed to update multiway_trades status enum: %v", err)
 			} else {
-				log.Println("Updated multiway_trades status enum to include 'pending_initiator_upgrade'")
+				log.Println("Updated multiway_trades status enum with lifecycle/conflict states")
 			}
 		}
 	}

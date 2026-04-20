@@ -191,7 +191,7 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
-export type TradeStatus = 'pending' | 'pending_multiway' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired' | 'multiway_active' | 'pending_user3' | 'user3_accepted'
+export type TradeStatus = 'pending' | 'pending_multiway' | 'accepted' | 'accepted_by_one' | 'accepted_by_both' | 'declined' | 'countered' | 'active' | 'ongoing' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'cancelled_due_to_conflict' | 'expired' | 'broken' | 'history' | 'multiway_active' | 'pending_user3' | 'user3_accepted'
 export type TradeOption = 'meetup' | 'delivery'
 
 export interface TradeItem {
@@ -224,6 +224,8 @@ export interface Trade {
   target_product_pickup_address?: string
   buyer_completed?: boolean
   seller_completed?: boolean
+  buyer_accepted?: boolean
+  seller_accepted?: boolean
   completed_at?: string | null
   meetup_status?: 'pending' | 'accepted' | 'declined' | 'disputed' | string
   meetup_confirmed?: boolean
@@ -261,6 +263,7 @@ export interface Trade {
   buyer_rating?: number // Rating given by buyer (1-5)
   seller_rating?: number // Rating given by seller (1-5)
   countered_by?: number
+  parent_trade_id?: number | null
 }
 
 // Multi-way/Three-way Trading Types
