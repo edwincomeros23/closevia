@@ -254,18 +254,66 @@ export const useArchivedTrades = () => {
 }
 
 // Custom hook for trade history with caching
+// Merges completed one-to-one trades with completed trade-match / multi-way loops
+// so both show up in the Dashboard history tab.
 export const useTradeHistory = () => {
   return useQuery({
     queryKey: DASHBOARD_QUERY_KEYS.tradeHistory,
     queryFn: async (): Promise<Trade[]> => {
-      const response = await api.get('/api/trades', {
-        params: {
+      const [tradesRes, loopsRes] = await Promise.all([
+        api.get('/api/trades', {
+          params: { status: 'completed', include: 'products', limit: 100 }
+        }),
+        api.get('/api/trades/loops', { params: { status: 'completed' } }).catch(() => ({ data: { data: [] } })),
+      ])
+
+      const trades: Trade[] = Array.isArray(tradesRes.data?.data)
+        ? tradesRes.data.data
+        : (Array.isArray(tradesRes.data) ? tradesRes.data : [])
+
+      const loops: any[] = Array.isArray(loopsRes.data?.data)
+        ? loopsRes.data.data
+        : (Array.isArray(loopsRes.data) ? loopsRes.data : [])
+
+      // Resolve the current user's ID so we can shape each loop from their perspective.
+      const storedUserId = Number(localStorage.getItem('userId') || 0)
+
+      const loopTrades: Trade[] = loops.map((loop: any) => {
+        const participants: any[] = Array.isArray(loop?.participants) ? loop.participants : []
+        const me = participants.find((p: any) => Number(p?.user_id ?? p?.id) === storedUserId) || participants[0] || {}
+        // Partner = who received my offered product (i.e. who wanted it).
+        const partner = participants.find((p: any) => Number(p?.wanted_product_id) === Number(me?.product_id)) || participants.find((p: any) => Number(p?.user_id ?? p?.id) !== storedUserId) || {}
+        const completedAt: string = loop?.completed_at || loop?.updated_at || new Date().toISOString()
+
+        return {
+          // Negative synthetic id to avoid collision with real trade IDs.
+          id: -Number(loop?.id || 0),
+          buyer_id: Number(me?.user_id || storedUserId),
+          seller_id: Number(partner?.user_id || 0),
+          // "You received" = the product you wanted (and got)
+          target_product_id: Number(me?.wanted_product_id || 0),
+          product_title: String(me?.wanted_title || ''),
+          product_image_url: String(partner?.product_image_url || ''),
           status: 'completed',
-          include: 'products',
-          limit: 100
-        }
+          created_at: completedAt,
+          updated_at: completedAt,
+          completed_at: completedAt,
+          items: [],
+          buyer_name: String(me?.user_name || ''),
+          seller_name: String(partner?.user_name || ''),
+          // Tag so the UI can tell this came from a loop rather than a 1:1 trade.
+          trade_option: 'meetup',
+          // Extra context for loop-aware renderers (non-Trade fields are permissive here).
+          ...({ loop_id: loop?.loop_id, loop_length: loop?.loop_length, is_trade_loop: true } as any),
+        } as Trade
       })
-      return Array.isArray(response.data?.data) ? response.data.data : (Array.isArray(response.data) ? response.data : [])
+
+      // Deduplicate by id in case the same record is returned twice.
+      const unique = new Map<number, Trade>()
+      for (const t of [...trades, ...loopTrades]) {
+        if (t && typeof t.id === 'number') unique.set(t.id, t)
+      }
+      return Array.from(unique.values())
     },
     staleTime: 1000 * 60 * 5, // 5 minutes (completed trades don't change)
     placeholderData: keepPreviousData,
