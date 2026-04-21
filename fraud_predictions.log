@@ -654,3 +654,107 @@
   "seller_id": 3400,
   "timestamp": "2026-04-20T15:15:31-04:00"
 }
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 430,
+  "risk_level": "",
+  "seller_id": 3400,
+  "timestamp": "2026-04-20T17:56:31-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 431,
+  "risk_level": "",
+  "seller_id": 3392,
+  "timestamp": "2026-04-20T17:57:19-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 432,
+  "risk_level": "",
+  "seller_id": 3392,
+  "timestamp": "2026-04-20T18:12:18-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 433,
+  "risk_level": "",
+  "seller_id": 3400,
+  "timestamp": "2026-04-20T18:13:28-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 434,
+  "risk_level": "",
+  "seller_id": 3400,
+  "timestamp": "2026-04-20T19:56:42-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 435,
+  "risk_level": "",
+  "seller_id": 3392,
+  "timestamp": "2026-04-20T19:57:39-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 436,
+  "risk_level": "",
+  "seller_id": 3400,
+  "timestamp": "2026-04-20T20:26:05-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 437,
+  "risk_level": "",
+  "seller_id": 3392,
+  "timestamp": "2026-04-20T20:26:43-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 438,
+  "risk_level": "",
+  "seller_id": 3392,
+  "timestamp": "2026-04-20T21:34:53-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 439,
+  "risk_level": "",
+  "seller_id": 3399,
+  "timestamp": "2026-04-20T21:36:07-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 440,
+  "risk_level": "",
+  "seller_id": 3400,
+  "timestamp": "2026-04-20T21:36:58-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 441,
+  "risk_level": "",
+  "seller_id": 3400,
+  "timestamp": "2026-04-20T21:53:23-04:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 442,
+  "risk_level": "",
+  "seller_id": 3399,
+  "timestamp": "2026-04-20T21:54:01-04:00"
+}

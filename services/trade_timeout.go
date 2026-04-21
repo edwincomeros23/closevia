@@ -436,7 +436,7 @@ func expireOngoingMultiwayChains(db *sql.DB) error {
 
 	type expired struct {
 		id, tradeID, u1, u2, u3 int
-		chainID                  string
+		chainID                 string
 	}
 	var chains []expired
 	for rows.Next() {
@@ -504,10 +504,10 @@ func expireStaleLikeLoops(db *sql.DB) error {
 
 	for _, id := range expiredIDs {
 		// Update loop status
-		_, _ = db.Exec("UPDATE trade_like_loops SET status = 'cancelled' WHERE id = ?", id)
-		
+		_, _ = db.Exec("UPDATE trade_like_loops SET status = 'expired', updated_at = NOW() WHERE id = ?", id)
+
 		// Update participants
-		_, _ = db.Exec("UPDATE trade_like_loop_participants SET status = 'declined' WHERE loop_id = ?", id)
+		_, _ = db.Exec("UPDATE trade_like_loop_participants SET status = 'expired' WHERE loop_id = ?", id)
 
 		// Notify participants
 		pRows, _ := db.Query("SELECT user_id FROM trade_like_loop_participants WHERE loop_id = ?", id)

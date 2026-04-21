@@ -298,6 +298,97 @@ export const prepareImageForUpload = async (
   }
 }
 
+const canvasToJpegBlob = (
+  canvas: HTMLCanvasElement,
+  quality: number
+): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob)
+        else reject(new Error('Failed to compress image'))
+      },
+      'image/jpeg',
+      quality
+    )
+  })
+}
+
+const loadImageFromFile = (file: File): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Failed to load image for resizing'))
+    }
+    img.src = url
+  })
+}
+
+/**
+ * Prepare a smaller JPEG copy for AI vision requests.
+ * The final listing upload can keep the regular 5MB image, but AI providers
+ * are less forgiving because multipart images become base64 inside provider
+ * requests. Keeping this copy under ~2.8MB prevents flaky 413/422 fallback
+ * failures while preserving enough detail for product analysis.
+ */
+export const prepareImageForAIAnalysis = async (
+  file: File,
+  maxSizeMB: number = 2.8,
+  maxDimension: number = 1600
+): Promise<File> => {
+  const normalized = (await prepareImageForUpload(file, 5)).file
+  const maxSizeBytes = maxSizeMB * 1024 * 1024
+  if (normalized.size <= maxSizeBytes && normalized.type === 'image/jpeg') {
+    return normalized
+  }
+
+  const img = await loadImageFromFile(normalized)
+  let scale = Math.min(1, maxDimension / Math.max(img.width, img.height))
+  const qualities = [0.88, 0.82, 0.76, 0.7, 0.62, 0.55]
+  let bestBlob: Blob | null = null
+
+  for (let resizeAttempt = 0; resizeAttempt < 4; resizeAttempt++) {
+    const width = Math.max(1, Math.round(img.width * scale))
+    const height = Math.max(1, Math.round(img.height * scale))
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Failed to resize image')
+
+    canvas.width = width
+    canvas.height = height
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, 0, width, height)
+    ctx.drawImage(img, 0, 0, width, height)
+
+    for (const quality of qualities) {
+      const blob = await canvasToJpegBlob(canvas, quality)
+      bestBlob = blob
+      if (blob.size <= maxSizeBytes) {
+        return new File([blob], normalized.name.replace(/\.[^.]+$/, '.jpg'), {
+          type: 'image/jpeg',
+          lastModified: Date.now(),
+        })
+      }
+    }
+
+    scale *= 0.8
+  }
+
+  if (!bestBlob) {
+    return normalized
+  }
+  return new File([bestBlob], normalized.name.replace(/\.[^.]+$/, '.jpg'), {
+    type: 'image/jpeg',
+    lastModified: Date.now(),
+  })
+}
+
 /**
  * Batch prepare multiple images for upload
  */

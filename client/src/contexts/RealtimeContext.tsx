@@ -210,7 +210,14 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             break
           case 'trade_review_submitted':
           case 'trade_completed':
-            showNotification(message || (payload.type === 'trade_completed' ? 'Trade completed!' : 'New trade review submitted'), 'success')
+          case 'trade_loop_message':
+          case 'trade_loop_completed':
+          case 'trade_loop_ongoing':
+          case 'trade_loop_broken':
+          case 'trade_loop_cancelled':
+            if (payload.type !== 'trade_loop_message') {
+              showNotification(message || (payload.type === 'trade_completed' ? 'Trade completed!' : 'Trade updated'), 'success')
+            }
             // Refresh counts and all relevant tabs
             refreshCounts()
             if (refreshCallbacksRef.current.multiway) refreshCallbacksRef.current.multiway()
@@ -228,7 +235,13 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               if (refreshCallbacksRef.current.multiwayAlert) refreshCallbacksRef.current.multiwayAlert()
             } else if (data.notification_type === 'trade_offer') {
               showNotification(message || 'New notification', 'success')
+              queryClient.invalidateQueries({ queryKey: ['dashboard', 'offers'] })
               if (refreshCallbacksRef.current.receivedOffers) refreshCallbacksRef.current.receivedOffers()
+            } else if (data.notification_type === 'trade_update') {
+              showNotification(message || 'Trade updated', 'info')
+              queryClient.invalidateQueries({ queryKey: ['dashboard', 'offers'] })
+              if (refreshCallbacksRef.current.receivedOffers) refreshCallbacksRef.current.receivedOffers()
+              if (refreshCallbacksRef.current.ongoingTrades) refreshCallbacksRef.current.ongoingTrades()
             } else if (data.notification_type === 'product_sold') {
               showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
               if (refreshCallbacksRef.current.products) refreshCallbacksRef.current.products()
@@ -334,5 +347,3 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 }
 
 export const useRealtime = () => useContext(RealtimeContext)
-
-

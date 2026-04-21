@@ -251,6 +251,18 @@ func CreateTables() error {
 		DB.Exec("ALTER TABLE users ADD COLUMN name_changed_at TIMESTAMP NULL")
 	}
 
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'display_name_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing display_name_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN display_name_changed_at TIMESTAMP NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'email_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing email_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN email_changed_at TIMESTAMP NULL")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_changed_at'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing phone_changed_at column to users table...")
@@ -317,6 +329,8 @@ func CreateTables() error {
 			log.Printf("Migration: Added column %s to trade_like_loop_participants table", col)
 		}
 	}
+	_, _ = DB.Exec(`ALTER TABLE trade_like_loops MODIFY COLUMN status ENUM('pending','partially_accepted','accepted','confirmed','ongoing','completed','history','rejected','cancelled','cancelled_due_to_conflict','broken','expired') DEFAULT 'pending'`)
+	_, _ = DB.Exec(`ALTER TABLE trade_like_loop_participants MODIFY COLUMN status ENUM('pending','confirmed','accepted','declined','rejected','cancelled','cancelled_due_to_conflict','expired') DEFAULT 'pending'`)
 
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS app_settings (
@@ -335,7 +349,9 @@ func CreateTables() error {
 			phone_otp_expires TIMESTAMP NULL,
 			password_hash VARCHAR(255) NOT NULL,
 			password_changed_at TIMESTAMP NULL,
+			display_name_changed_at TIMESTAMP NULL,
 			name_changed_at TIMESTAMP NULL,
+			email_changed_at TIMESTAMP NULL,
 			phone_changed_at TIMESTAMP NULL,
 			role VARCHAR(10) NOT NULL DEFAULT 'user',
 			is_organization TINYINT(1) NOT NULL DEFAULT 0,
@@ -360,6 +376,8 @@ func CreateTables() error {
 			verification_status VARCHAR(50) DEFAULT 'not_verified',
 			school_name VARCHAR(255) NULL,
 			school_email VARCHAR(255) NULL,
+			academic_program VARCHAR(255) NULL,
+			year_level VARCHAR(80) NULL,
 			school_email_verified_at TIMESTAMP NULL,
 			school_id_image_path VARCHAR(512) NULL,
 			verification_rejection_reason TEXT NULL,
@@ -384,7 +402,7 @@ func CreateTables() error {
 			image_url VARCHAR(500),
 			seller_id INT NOT NULL,
 			premium BOOLEAN DEFAULT FALSE,
-			status ENUM('available', 'sold', 'traded', 'locked') DEFAULT 'available',
+			status ENUM('available', 'sold', 'traded', 'locked', 'suspended', 'deleted') DEFAULT 'available',
 			allow_buying BOOLEAN DEFAULT TRUE,
 			barter_only BOOLEAN DEFAULT FALSE,
 			max_items_per_offer INT DEFAULT 0,
@@ -650,7 +668,7 @@ func CreateTables() error {
 		`CREATE TABLE IF NOT EXISTS trade_like_loops (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			loop_key VARCHAR(255) NOT NULL,
-			status ENUM('pending', 'confirmed', 'cancelled') DEFAULT 'pending',
+			status ENUM('pending', 'partially_accepted', 'accepted', 'confirmed', 'ongoing', 'completed', 'history', 'rejected', 'cancelled', 'cancelled_due_to_conflict', 'broken', 'expired') DEFAULT 'pending',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			confirmed_at TIMESTAMP NULL,
@@ -664,7 +682,7 @@ func CreateTables() error {
 			offered_product_id INT NOT NULL,
 			wanted_product_id INT NOT NULL,
 			position_in_loop INT NOT NULL,
-			status ENUM('pending', 'confirmed', 'declined') DEFAULT 'pending',
+			status ENUM('pending', 'confirmed', 'accepted', 'declined', 'rejected', 'cancelled', 'cancelled_due_to_conflict', 'expired') DEFAULT 'pending',
 			confirmed_at TIMESTAMP NULL,
 			rating INT DEFAULT 0,
 			feedback TEXT NULL,
@@ -1383,6 +1401,8 @@ func ensureUserColumns() {
 		{"verification_status", "ENUM('not_verified','pending','verified','rejected') NOT NULL DEFAULT 'not_verified'"},
 		{"school_name", "VARCHAR(255) NULL"},
 		{"school_email", "VARCHAR(255) NULL"},
+		{"academic_program", "VARCHAR(255) NULL"},
+		{"year_level", "VARCHAR(80) NULL"},
 		{"school_email_verified_at", "TIMESTAMP NULL"},
 		{"school_id_image_path", "VARCHAR(512) NULL"},
 		{"verification_rejection_reason", "TEXT NULL"},
@@ -1393,6 +1413,9 @@ func ensureUserColumns() {
 		{"phone_otp_hash", "VARCHAR(255) NULL"},
 		{"phone_otp_expires", "TIMESTAMP NULL"},
 		{"password_changed_at", "TIMESTAMP NULL"},
+		{"display_name_changed_at", "TIMESTAMP NULL"},
+		{"name_changed_at", "TIMESTAMP NULL"},
+		{"email_changed_at", "TIMESTAMP NULL"},
 		{"school_id_document_type", "VARCHAR(20) NULL"},
 		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"last_login", "TIMESTAMP NULL"},
@@ -1524,13 +1547,13 @@ func updateProductStatusEnum() {
 		return
 	}
 
-	// If status doesn't include all required values, update it
-	if !contains(columnType, "'traded'") || !contains(columnType, "'locked'") {
-		query := `ALTER TABLE products MODIFY COLUMN status ENUM('available','sold','traded','locked') DEFAULT 'available'`
+	// If status doesn't include all required values, update it.
+	if !contains(columnType, "'traded'") || !contains(columnType, "'locked'") || !contains(columnType, "'suspended'") || !contains(columnType, "'deleted'") {
+		query := `ALTER TABLE products MODIFY COLUMN status ENUM('available','sold','traded','locked','suspended','deleted') DEFAULT 'available'`
 		if _, err := DB.Exec(query); err != nil {
 			log.Printf("Warning: failed to update status enum: %v", err)
 		} else {
-			log.Println("Updated products status enum to include 'traded' and 'locked'")
+			log.Println("Updated products status enum to include 'traded', 'locked', 'suspended', and 'deleted'")
 		}
 	}
 }

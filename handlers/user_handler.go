@@ -669,7 +669,7 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 
 	// Use context with timeout to prevent hanging queries (requires index on email)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		err := h.db.QueryRowContext(ctx, `
+	err := h.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(slug, ''), name, email, password_hash, role, verified, 
 		       COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), premium_expires_at,
 		       COALESCE(strikes, 0), COALESCE(is_suspended, FALSE)
@@ -893,8 +893,10 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var user models.User
 	var schoolEmailVerifiedAt sql.NullTime
 	var passwordChangedAt sql.NullTime
+	var displayNameChangedAt sql.NullTime
 	var nameChangedAt sql.NullTime
 	var phoneChangedAt sql.NullTime
+	var emailChangedAt sql.NullTime
 	var lastLogin sql.NullTime
 	var premiumExpiresAt sql.NullTime
 
@@ -921,6 +923,8 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(verification_status, 'not_verified') AS verification_status,
 		        COALESCE(school_name, '') AS school_name,
 		        COALESCE(school_email, '') AS school_email,
+		        COALESCE(academic_program, '') AS academic_program,
+		        COALESCE(year_level, '') AS year_level,
 		        school_email_verified_at,
 		        COALESCE(verification_rejection_reason, '') AS verification_rejection_reason,
 		        COALESCE(email_notifications_enabled, TRUE) AS email_notifications_enabled,
@@ -930,7 +934,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        premium_expires_at,
 		        COALESCE(strikes, 0) AS strikes,
 		        COALESCE(is_suspended, FALSE) AS is_suspended,
-		        created_at, updated_at, password_changed_at, name_changed_at, phone_changed_at, last_login,
+		        created_at, updated_at, password_changed_at, display_name_changed_at, name_changed_at, phone_changed_at, email_changed_at, last_login,
 		        home_latitude, home_longitude, COALESCE(home_address, '') AS home_address
 		 FROM users WHERE id = ?`,
 		userID,
@@ -942,10 +946,10 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.OrgWebsite, &user.OrgLocation, &user.OrgContactEmail,
 		&user.ProfilePicture, &user.Bio, &user.BackgroundImage,
 		&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
-		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
+		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &user.AcademicProgram, &user.YearLevel, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
 		&user.LanguagePreference, &user.PremiumTier, &premiumExpiresAt, &user.Strikes, &user.IsSuspended,
-		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &nameChangedAt, &phoneChangedAt, &lastLogin,
+		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &displayNameChangedAt, &nameChangedAt, &phoneChangedAt, &emailChangedAt, &lastLogin,
 		&user.HomeLatitude, &user.HomeLongitude, &user.HomeAddress,
 	)
 
@@ -955,11 +959,17 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	if passwordChangedAt.Valid {
 		user.PasswordChangedAt = &passwordChangedAt.Time
 	}
+	if displayNameChangedAt.Valid {
+		user.DisplayNameChangedAt = &displayNameChangedAt.Time
+	}
 	if nameChangedAt.Valid {
 		user.NameChangedAt = &nameChangedAt.Time
 	}
 	if phoneChangedAt.Valid {
 		user.PhoneChangedAt = &phoneChangedAt.Time
+	}
+	if emailChangedAt.Valid {
+		user.EmailChangedAt = &emailChangedAt.Time
 	}
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
@@ -1068,6 +1078,8 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		Phone                     *string  `json:"phone"`
 		ProfilePicture            *string  `json:"profile_picture"`
 		Bio                       *string  `json:"bio"`
+		AcademicProgram           *string  `json:"academic_program"`
+		YearLevel                 *string  `json:"year_level"`
 		BackgroundImage           *string  `json:"background_image"`
 		BackgroundPosition        *string  `json:"background_position"`
 		LanguagePreference        *string  `json:"language_preference"`
@@ -1092,10 +1104,32 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 
 	if updateData.Email != nil {
 		newEmail = strings.TrimSpace(strings.ToLower(*updateData.Email))
+		emailRegex := regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+		if !emailRegex.MatchString(newEmail) {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Please enter a valid email address.",
+			})
+		}
 		// Get current email to compare
 		err := h.db.QueryRow("SELECT email FROM users WHERE id = ?", userID).Scan(&currentEmail)
 		if err == nil && newEmail != "" && newEmail != currentEmail {
 			emailChanged = true
+			var emailChangedAt sql.NullTime
+			if err := h.db.QueryRow("SELECT email_changed_at FROM users WHERE id = ?", userID).Scan(&emailChangedAt); err == nil && emailChangedAt.Valid {
+				canChangeAt := emailChangedAt.Time.AddDate(0, 3, 0)
+				if time.Now().Before(canChangeAt) {
+					return c.Status(429).JSON(models.APIResponse{
+						Success: false,
+						Error:   "Email can only be changed once every 3 months for account security.",
+						Data: fiber.Map{
+							"field":           "email",
+							"last_changed_at": emailChangedAt.Time,
+							"can_change_at":   canChangeAt,
+						},
+					})
+				}
+			}
 
 			// Check if new email is already taken by another user
 			var exists int
@@ -1113,14 +1147,12 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	var phoneChanged bool
 	if updateData.Phone != nil {
 		normalizedPhone = strings.TrimSpace(*updateData.Phone)
-		if normalizedPhone != "" {
-			phoneRegex := regexp.MustCompile(`^\d{10,15}$`)
-			if !phoneRegex.MatchString(normalizedPhone) {
-				return c.Status(400).JSON(models.APIResponse{
-					Success: false,
-					Error:   "Phone number must be 10 to 15 digits",
-				})
-			}
+		phoneRegex := regexp.MustCompile(`^09\d{9}$`)
+		if !phoneRegex.MatchString(normalizedPhone) {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Use a valid Philippine mobile number in 11-digit format, like 09XXXXXXXXX.",
+			})
 		}
 
 		var currentPhone sql.NullString
@@ -1130,27 +1162,29 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		}
 	}
 
-	// Check 30-day cooldown for name change
+	// Check 3-month cooldown for display name change
 	if updateData.Name != nil {
 		newName := strings.TrimSpace(*updateData.Name)
 		if newName != "" {
 			var currentName string
+			var displayNameChangedAt sql.NullTime
 			var nameChangedAt sql.NullTime
-			err := h.db.QueryRow("SELECT name, COALESCE(name_changed_at, NULL) FROM users WHERE id = ?", userID).Scan(&currentName, &nameChangedAt)
+			err := h.db.QueryRow("SELECT name, display_name_changed_at, name_changed_at FROM users WHERE id = ?", userID).Scan(&currentName, &displayNameChangedAt, &nameChangedAt)
 			if err == nil && newName != currentName {
-				// Name is being changed
-				if nameChangedAt.Valid {
-					// Check if 30 days have passed since last change
-					daysSinceChange := time.Since(nameChangedAt.Time).Hours() / 24
-					if daysSinceChange < 30 {
-						daysRemaining := 30 - int(daysSinceChange)
+				lastChangedAt := displayNameChangedAt
+				if !lastChangedAt.Valid {
+					lastChangedAt = nameChangedAt
+				}
+				if lastChangedAt.Valid {
+					canChangeAt := lastChangedAt.Time.AddDate(0, 3, 0)
+					if time.Now().Before(canChangeAt) {
 						return c.Status(429).JSON(models.APIResponse{
 							Success: false,
-							Error:   fmt.Sprintf("You can only change your name once every 30 days. Please try again in %d days.", daysRemaining),
+							Error:   "You can only change your display name once every 3 months.",
 							Data: fiber.Map{
-								"days_remaining":  daysRemaining,
-								"last_changed_at": nameChangedAt.Time,
-								"can_change_at":   nameChangedAt.Time.AddDate(0, 0, 30),
+								"field":           "display_name",
+								"last_changed_at": lastChangedAt.Time,
+								"can_change_at":   canChangeAt,
 							},
 						})
 					}
@@ -1159,22 +1193,20 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		}
 	}
 
-	// Check 30-day cooldown for phone change
+	// Check 3-month cooldown for phone change
 	if updateData.Phone != nil && phoneChanged {
 		var phoneChangedAt sql.NullTime
-		err := h.db.QueryRow("SELECT COALESCE(phone_changed_at, NULL) FROM users WHERE id = ?", userID).Scan(&phoneChangedAt)
+		err := h.db.QueryRow("SELECT phone_changed_at FROM users WHERE id = ?", userID).Scan(&phoneChangedAt)
 		if err == nil && phoneChangedAt.Valid {
-			// Check if 30 days have passed since last change
-			daysSinceChange := time.Since(phoneChangedAt.Time).Hours() / 24
-			if daysSinceChange < 30 {
-				daysRemaining := 30 - int(daysSinceChange)
+			canChangeAt := phoneChangedAt.Time.AddDate(0, 3, 0)
+			if time.Now().Before(canChangeAt) {
 				return c.Status(429).JSON(models.APIResponse{
 					Success: false,
-					Error:   fmt.Sprintf("You can only change your phone number once every 30 days. Please try again in %d days.", daysRemaining),
+					Error:   "You recently changed your phone number. Please wait before updating it again.",
 					Data: fiber.Map{
-						"days_remaining":  daysRemaining,
+						"field":           "phone",
 						"last_changed_at": phoneChangedAt.Time,
-						"can_change_at":   phoneChangedAt.Time.AddDate(0, 0, 30),
+						"can_change_at":   canChangeAt,
 					},
 				})
 			}
@@ -1187,11 +1219,12 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 
 	if updateData.Name != nil {
 		query += ", name = ?"
-		args = append(args, *updateData.Name)
+		args = append(args, strings.TrimSpace(*updateData.Name))
 		// Get current name to check if it's changing
 		var currentName string
 		h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&currentName)
-		if *updateData.Name != currentName {
+		if strings.TrimSpace(*updateData.Name) != currentName {
+			query += ", display_name_changed_at = CURRENT_TIMESTAMP"
 			query += ", name_changed_at = CURRENT_TIMESTAMP"
 		}
 	}
@@ -1200,6 +1233,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		args = append(args, newEmail)
 		if emailChanged {
 			query += ", verified = false"
+			query += ", email_changed_at = CURRENT_TIMESTAMP"
 			var currentEmail string
 			_ = h.db.QueryRow("SELECT email FROM users WHERE id = ?", userID).Scan(&currentEmail)
 			if isWmsuEmail(currentEmail) && !isWmsuEmail(newEmail) {
@@ -1227,7 +1261,17 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 
 	if updateData.Bio != nil {
 		query += ", bio = ?"
-		args = append(args, *updateData.Bio)
+		args = append(args, strings.TrimSpace(*updateData.Bio))
+	}
+
+	if updateData.AcademicProgram != nil {
+		query += ", academic_program = ?"
+		args = append(args, strings.TrimSpace(*updateData.AcademicProgram))
+	}
+
+	if updateData.YearLevel != nil {
+		query += ", year_level = ?"
+		args = append(args, strings.TrimSpace(*updateData.YearLevel))
 	}
 
 	if updateData.BackgroundImage != nil {
@@ -1279,10 +1323,15 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		if strings.Contains(err.Error(), "Unknown column") || strings.Contains(err.Error(), "1054") {
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name_changed_at TIMESTAMP NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_changed_at TIMESTAMP NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_changed_at TIMESTAMP NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_image VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_position VARCHAR(50) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS academic_program VARCHAR(255) NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS year_level VARCHAR(80) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS language_preference VARCHAR(10) NULL DEFAULT 'en'")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_notifications_enabled BOOLEAN DEFAULT TRUE")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS push_notifications_enabled BOOLEAN DEFAULT TRUE")

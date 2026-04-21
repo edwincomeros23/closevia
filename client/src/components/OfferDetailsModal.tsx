@@ -74,6 +74,17 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   }, [isOpen, trade])
 
   const effectiveTrade = detailedTrade || trade
+  const needsUserAcceptance = Boolean(
+    effectiveTrade?.status === 'accepted_by_one' &&
+    user?.id &&
+    ((effectiveTrade.buyer_id === user.id && !effectiveTrade.buyer_accepted) ||
+      (effectiveTrade.seller_id === user.id && !effectiveTrade.seller_accepted))
+  )
+  const canRespondToOffer = Boolean(
+    ((effectiveTrade?.status === 'pending' || effectiveTrade?.status === 'pending_multiway') && effectiveTrade?.seller_id === user?.id) ||
+    needsUserAcceptance ||
+    (effectiveTrade?.status === 'countered' && effectiveTrade?.countered_by !== user?.id)
+  )
 
   // Resilient extraction of buyer-offered items and their product IDs
   const buyerItems = useMemo(() => {
@@ -791,13 +802,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         {/* Footer */}
         <Box borderTopWidth="1px" borderColor="gray.200" p={2} bg="white">
           <HStack spacing={1.5} justify="flex-end">
-            {/* 
-                Show action buttons if:
-                1. Status is 'pending' AND user is the seller (recipient)
-                2. Status is 'countered' AND user is NOT the one who countered
-            */}
-            {((effectiveTrade?.status === 'pending' || effectiveTrade?.status === 'pending_multiway') && effectiveTrade?.seller_id === user?.id) ||
-             (effectiveTrade?.status === 'countered' && effectiveTrade?.countered_by !== user?.id) ? (
+            {canRespondToOffer ? (
               <>
                 {/* Decline Button */}
                 <Button size="xs" variant="outline" colorScheme="red" onClick={decline} fontSize="11px">
@@ -974,5 +979,3 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 }
 
 export default OfferDetailsModal
-
-

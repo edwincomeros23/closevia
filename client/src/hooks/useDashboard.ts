@@ -14,6 +14,8 @@ export const DASHBOARD_QUERY_KEYS = {
   tradeHistory: ['dashboard', 'tradeHistory'] as const,
 }
 
+const OFFER_REFETCH_INTERVAL_MS = 5000
+
 // Custom hook for user products with caching
 export const useDashboardProducts = (userId: number | undefined) => {
   return useQuery({
@@ -75,14 +77,15 @@ export const useDashboardCounts = () => {
     queryKey: DASHBOARD_QUERY_KEYS.counts,
     queryFn: async () => {
       const response = await api.get('/api/dashboard/counts')
+      const data = response.data?.data || response.data || {}
       return {
-        unread_notifications: response.data?.unread_notifications || 0,
-        pending_offers: response.data?.pending_offers || 0,
+        unread_notifications: data.unread_notifications || 0,
+        pending_offers: data.pending_offers || 0,
       }
     },
     // Counts should refresh more frequently
-    staleTime: 1000 * 60, // 1 minute
-    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    staleTime: 1000 * 15,
+    refetchInterval: 1000 * 15,
     placeholderData: keepPreviousData,
   })
 }
@@ -92,20 +95,11 @@ export const useSentOffers = () => {
   return useQuery({
     queryKey: DASHBOARD_QUERY_KEYS.sentOffers,
     queryFn: async (): Promise<Trade[]> => {
-      const [pendingRes, counteredRes] = await Promise.all([
+      const results = await Promise.allSettled([
         api.get('/api/trades', {
           params: {
             direction: 'outgoing',
             include: 'products',
-            status: 'pending',
-            limit: 100,
-          },
-        }),
-        api.get('/api/trades', {
-          params: {
-            direction: 'outgoing',
-            include: 'products',
-            status: 'countered',
             limit: 100,
           },
         }),
@@ -117,17 +111,20 @@ export const useSentOffers = () => {
           : (Array.isArray(response?.data) ? response.data : [])
       }
 
-      const allTrades = [...extractData(pendingRes), ...extractData(counteredRes)]
+      const allTrades = results.flatMap((result) => (
+        result.status === 'fulfilled' ? extractData(result.value) : []
+      ))
+
       const unique = new Map<number, Trade>()
       allTrades.forEach((tr: Trade) => {
         if (tr && tr.id) unique.set(tr.id, tr)
       })
       return Array.from(unique.values())
     },
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    staleTime: 1000 * 5,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-    refetchInterval: 30000, // 30s fallback — SSE handles immediate push updates
+    refetchInterval: OFFER_REFETCH_INTERVAL_MS,
     placeholderData: keepPreviousData,
   })
 }
@@ -137,20 +134,11 @@ export const useReceivedOffers = () => {
   return useQuery({
     queryKey: DASHBOARD_QUERY_KEYS.receivedOffers,
     queryFn: async (): Promise<Trade[]> => {
-      const [pendingRes, counteredRes] = await Promise.all([
+      const results = await Promise.allSettled([
         api.get('/api/trades', {
           params: {
             direction: 'incoming',
             include: 'products',
-            status: 'pending',
-            limit: 100,
-          },
-        }),
-        api.get('/api/trades', {
-          params: {
-            direction: 'incoming',
-            include: 'products',
-            status: 'countered',
             limit: 100,
           },
         }),
@@ -162,17 +150,20 @@ export const useReceivedOffers = () => {
           : (Array.isArray(response?.data) ? response.data : [])
       }
 
-      const allTrades = [...extractData(pendingRes), ...extractData(counteredRes)]
+      const allTrades = results.flatMap((result) => (
+        result.status === 'fulfilled' ? extractData(result.value) : []
+      ))
+
       const unique = new Map<number, Trade>()
       allTrades.forEach((tr: Trade) => {
         if (tr && tr.id) unique.set(tr.id, tr)
       })
       return Array.from(unique.values())
     },
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    staleTime: 1000 * 5,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-    refetchInterval: 30000, // 30s fallback — SSE handles immediate push updates
+    refetchInterval: OFFER_REFETCH_INTERVAL_MS,
     placeholderData: keepPreviousData,
   })
 }
@@ -182,28 +173,18 @@ export const useOngoingTrades = () => {
   return useQuery({
     queryKey: DASHBOARD_QUERY_KEYS.ongoingTrades,
     queryFn: async (): Promise<Trade[]> => {
-      // Fetch both directions and both statuses separately (API limitation: single status per request)
-      const [incomingAccepted, incomingActive, outgoingAccepted, outgoingActive, incomingMultiwayActive, outgoingMultiwayActive] = await Promise.all([
-        api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'accepted', limit: 100 } }),
-        api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'active', limit: 100 } }),
-        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'accepted', limit: 100 } }),
-        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'active', limit: 100 } }),
-        api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'multiway_active', limit: 100 } }),
-        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'multiway_active', limit: 100 } })
-      ])
-
+      const response = await api.get('/api/trades', {
+        params: {
+          include: 'products',
+          limit: 100,
+        },
+      })
       const extractData = (response: any) => {
         return Array.isArray(response?.data?.data) ? response.data.data : (Array.isArray(response?.data) ? response.data : [])
       }
 
-      const allTrades = [
-        ...extractData(incomingAccepted),
-        ...extractData(incomingActive),
-        ...extractData(outgoingAccepted),
-        ...extractData(outgoingActive),
-        ...extractData(incomingMultiwayActive),
-        ...extractData(outgoingMultiwayActive)
-      ]
+      const ongoingStatuses = new Set(['accepted', 'active', 'ongoing', 'awaiting_confirmation', 'multiway_active'])
+      const allTrades = extractData(response).filter((trade: Trade) => ongoingStatuses.has(trade.status))
 
       // Deduplicate by trade ID
       const uniqueTrades = new Map<number, Trade>()
@@ -213,10 +194,10 @@ export const useOngoingTrades = () => {
 
       return Array.from(uniqueTrades.values())
     },
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    staleTime: 1000 * 5,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    refetchInterval: OFFER_REFETCH_INTERVAL_MS,
     placeholderData: keepPreviousData,
   })
 }
@@ -264,7 +245,7 @@ export const useTradeHistory = () => {
         api.get('/api/trades', {
           params: { status: 'completed', include: 'products', limit: 100 }
         }),
-        api.get('/api/trades/loops', { params: { status: 'completed' } }).catch(() => ({ data: { data: [] } })),
+        api.get('/api/trades/loops').catch(() => ({ data: { data: [] } })),
       ])
 
       const trades: Trade[] = Array.isArray(tradesRes.data?.data)
@@ -276,16 +257,24 @@ export const useTradeHistory = () => {
         : (Array.isArray(loopsRes.data) ? loopsRes.data : [])
 
       // Resolve the current user's ID so we can shape each loop from their perspective.
-      const storedUserId = Number(localStorage.getItem('userId') || 0)
+      let storedUserId = Number(localStorage.getItem('userId') || 0)
+      if (!storedUserId) {
+        try {
+          storedUserId = Number(JSON.parse(localStorage.getItem('clovia_user') || '{}')?.id || 0)
+        } catch {
+          storedUserId = 0
+        }
+      }
 
-      const loopTrades: Trade[] = loops.map((loop: any) => {
+      const loopTrades: Trade[] = loops.flatMap((loop: any) => {
         const participants: any[] = Array.isArray(loop?.participants) ? loop.participants : []
-        const me = participants.find((p: any) => Number(p?.user_id ?? p?.id) === storedUserId) || participants[0] || {}
+        const me = participants.find((p: any) => Number(p?.user_id ?? p?.id) === storedUserId)
+        if (!me?.is_reviewed) return []
         // Partner = who received my offered product (i.e. who wanted it).
         const partner = participants.find((p: any) => Number(p?.wanted_product_id) === Number(me?.product_id)) || participants.find((p: any) => Number(p?.user_id ?? p?.id) !== storedUserId) || {}
         const completedAt: string = loop?.completed_at || loop?.updated_at || new Date().toISOString()
 
-        return {
+        return [{
           // Negative synthetic id to avoid collision with real trade IDs.
           id: -Number(loop?.id || 0),
           buyer_id: Number(me?.user_id || storedUserId),
@@ -304,8 +293,15 @@ export const useTradeHistory = () => {
           // Tag so the UI can tell this came from a loop rather than a 1:1 trade.
           trade_option: 'meetup',
           // Extra context for loop-aware renderers (non-Trade fields are permissive here).
-          ...({ loop_id: loop?.loop_id, loop_length: loop?.loop_length, is_trade_loop: true } as any),
-        } as Trade
+          ...({
+            loop_id: loop?.loop_id,
+            loop_length: loop?.loop_length,
+            is_trade_loop: true,
+            participants,
+            user_reviewed: true,
+            fully_completed: participants.length > 0 && participants.every((p: any) => Boolean(p?.is_reviewed)),
+          } as any),
+        } as Trade]
       })
 
       // Deduplicate by id in case the same record is returned twice.

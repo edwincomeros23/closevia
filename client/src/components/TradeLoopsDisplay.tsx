@@ -194,19 +194,35 @@ const TradeLoopsDisplay: React.FC = () => {
           const statusLabel = (() => {
             switch (loopStatus) {
               case 'pending_user3': return 'Awaiting Response'
+              case 'partially_accepted': return 'Partially Accepted'
               case 'user3_accepted': return 'Accepted'
               case 'pending_initiator_upgrade': return 'Awaiting Upgrade'
+              case 'confirmed':
+              case 'ongoing':
               case 'active': return 'Active'
               case 'completed': return 'Completed'
+              case 'history': return 'History'
+              case 'broken': return 'Broken'
+              case 'expired': return 'Expired'
+              case 'cancelled_due_to_conflict': return 'Cancelled by Conflict'
+              case 'rejected': return 'Rejected'
               default: return loopStatus
             }
           })()
           const statusColor = (() => {
             switch (loopStatus) {
+              case 'confirmed':
+              case 'ongoing':
               case 'active':
               case 'user3_accepted': return 'green'
               case 'completed': return 'blue'
               case 'pending_initiator_upgrade': return 'orange'
+              case 'broken':
+              case 'expired':
+              case 'cancelled':
+              case 'cancelled_due_to_conflict':
+              case 'rejected': return 'red'
+              case 'partially_accepted': return 'purple'
               default: return 'yellow'
             }
           })()

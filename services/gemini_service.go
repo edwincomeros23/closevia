@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type GeminiResponse struct {
@@ -281,7 +282,7 @@ Remember: Check for prohibited items FIRST. If found, respond ONLY with {"prohib
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		client := &http.Client{}
+		client := &http.Client{Timeout: 45 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("Error making request to Gemini API (%s): %v", model, err)

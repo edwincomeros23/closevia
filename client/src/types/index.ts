@@ -54,7 +54,7 @@ export interface Product {
   seller_name?: string
   seller_profile_picture?: string
   premium: boolean
-  status: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
+  status: 'available' | 'sold' | 'traded' | 'locked' | 'suspended' | 'deleted'
   allow_buying: boolean
   barter_only: boolean
   location?: string
@@ -127,7 +127,7 @@ export interface ProductUpdate {
   price?: number
   image_urls?: string[]
   premium?: boolean
-  status?: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
+  status?: 'available' | 'sold' | 'traded' | 'locked' | 'suspended' | 'deleted'
   allow_buying?: boolean
   barter_only?: boolean
   location?: string
@@ -191,7 +191,7 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
-export type TradeStatus = 'pending' | 'pending_multiway' | 'accepted' | 'accepted_by_one' | 'accepted_by_both' | 'declined' | 'countered' | 'active' | 'ongoing' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'cancelled_due_to_conflict' | 'expired' | 'broken' | 'history' | 'multiway_active' | 'pending_user3' | 'user3_accepted'
+export type TradeStatus = 'pending' | 'partially_accepted' | 'pending_multiway' | 'accepted' | 'accepted_by_one' | 'accepted_by_both' | 'confirmed' | 'declined' | 'rejected' | 'countered' | 'active' | 'ongoing' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'cancelled_due_to_conflict' | 'expired' | 'broken' | 'history' | 'multiway_active' | 'pending_user3' | 'user3_accepted'
 export type TradeOption = 'meetup' | 'delivery'
 
 export interface TradeItem {
@@ -201,7 +201,7 @@ export interface TradeItem {
   offered_by: 'buyer' | 'seller'
   created_at: string
   product_title?: string
-  product_status?: 'available' | 'sold' | 'traded'
+  product_status?: 'available' | 'sold' | 'traded' | 'locked' | 'deleted'
   product_image_url?: string
   product_pickup_address?: string
 }
@@ -302,7 +302,7 @@ export interface MultiWayTrade {
   participants: MultiWayTradeParticipant[]
   edges: TradeEdge[]
   total_value?: number
-  status: 'pending' | 'confirmed' | 'cancelled' | 'active' | 'completed' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
+  status: 'pending' | 'partially_accepted' | 'accepted' | 'confirmed' | 'ongoing' | 'cancelled' | 'cancelled_due_to_conflict' | 'broken' | 'expired' | 'rejected' | 'history' | 'active' | 'completed' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
   created_at?: string
   expires_at?: string
 }

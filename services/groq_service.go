@@ -173,8 +173,7 @@ Remember: SAFETY IS THE HIGHEST PRIORITY. Check for prohibited items first. If f
 
 	// Call Groq API with vision model (with fallback and retry logic)
 	models := []string{
-		"llama-3.3-70b-versatile", // primary (most capable)
-		"llama-3.1-8b-instant",    // fallback (faster, smaller)
+		"meta-llama/llama-4-scout-17b-16e-instruct", // primary vision model
 	}
 
 	// Retry logic - max 3 attempts total
@@ -217,8 +216,11 @@ Remember: SAFETY IS THE HIGHEST PRIORITY. Check for prohibited items first. If f
 						"content": contentParts,
 					},
 				},
-				"temperature": 0.2,
-				"max_tokens":  1024,
+				"temperature":           0.2,
+				"max_completion_tokens": 1024,
+				"response_format": map[string]string{
+					"type": "json_object",
+				},
 			}
 
 			jsonData, err := json.Marshal(payload)
@@ -243,7 +245,7 @@ Remember: SAFETY IS THE HIGHEST PRIORITY. Check for prohibited items first. If f
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Authorization", "Bearer "+apiKey)
 
-			client := &http.Client{}
+			client := &http.Client{Timeout: 45 * time.Second}
 			resp, err := client.Do(req)
 			if err != nil {
 				log.Printf("Error making request to Groq API: %v", err)

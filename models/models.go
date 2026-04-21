@@ -134,6 +134,8 @@ type User struct {
 	VerificationStatus          string     `json:"verification_status,omitempty"`
 	SchoolName                  string     `json:"school_name,omitempty"`
 	SchoolEmail                 string     `json:"school_email,omitempty"`
+	AcademicProgram             string     `json:"academic_program,omitempty"`
+	YearLevel                   string     `json:"year_level,omitempty"`
 	SchoolEmailVerifiedAt       *time.Time `json:"school_email_verified_at,omitempty"`
 	SchoolIDImagePath           string     `json:"school_id_image_path,omitempty"`
 	VerificationRejectionReason string     `json:"verification_rejection_reason,omitempty"`
@@ -144,8 +146,10 @@ type User struct {
 	ActivityStatus              string     `json:"activity_status,omitempty"`
 	Strikes                     int        `json:"strikes"`
 	IsSuspended                 bool       `json:"is_suspended"`
+	DisplayNameChangedAt        *time.Time `json:"display_name_changed_at,omitempty"`
 	NameChangedAt               *time.Time `json:"name_changed_at,omitempty"`
 	PhoneChangedAt              *time.Time `json:"phone_changed_at,omitempty"`
+	EmailChangedAt              *time.Time `json:"email_changed_at,omitempty"`
 }
 
 // UserLogin represents login credentials
@@ -197,7 +201,7 @@ type Product struct {
 	SellerName           string            `json:"seller_name,omitempty"`
 	SellerProfilePicture string            `json:"seller_profile_picture,omitempty"`
 	Premium              bool              `json:"premium"`
-	Status               string            `json:"status" validate:"oneof=available sold traded locked"`
+	Status               string            `json:"status" validate:"oneof=available sold traded locked suspended deleted"`
 	AllowBuying          bool              `json:"allow_buying"` // Whether buying is allowed
 	BarterOnly           bool              `json:"barter_only"`  // Whether it's barter only
 	Location             string            `json:"location,omitempty"`
@@ -262,7 +266,7 @@ type ProductUpdate struct {
 	Price            *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
 	ImageURLs        *StringArray `json:"image_urls,omitempty"`
 	Premium          *bool        `json:"premium,omitempty"`
-	Status           *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked"`
+	Status           *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked suspended deleted"`
 	AllowBuying      *bool        `json:"allow_buying,omitempty"`
 	BarterOnly       *bool        `json:"barter_only,omitempty"`
 	Location         *string      `json:"location,omitempty"`
@@ -372,8 +376,8 @@ type Trade struct {
 	// Pickup address of the target (seller's) product, surfaced at trade level
 	// so the pickup UI can show it without relying on trade_items rows.
 	TargetProductPickupAddress string `json:"target_product_pickup_address,omitempty"`
-	BuyerMet              bool   `json:"buyer_met"`
-	SellerMet             bool   `json:"seller_met"`
+	BuyerMet                   bool   `json:"buyer_met"`
+	SellerMet                  bool   `json:"seller_met"`
 	// Enhanced review system fields
 	BuyerReviewCreatedAt      *time.Time    `json:"buyer_review_created_at,omitempty"`  // Timestamp of initial review
 	SellerReviewCreatedAt     *time.Time    `json:"seller_review_created_at,omitempty"` // Timestamp of initial review

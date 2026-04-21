@@ -89,7 +89,7 @@ import { useProducts } from '../contexts/ProductContext'
 import { api } from '../services/api'
 import { DASHBOARD_QUERY_KEYS } from '../hooks/useDashboard'
 import FloatingTab from '../components/FloatingTab'
-import { prepareImageForUpload } from '../utils/imageConverter'
+import { prepareImageForAIAnalysis, prepareImageForUpload } from '../utils/imageConverter'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
 import { checkMultipleImageQuality, getQualityLabel, getQualityColorScheme, type ImageQualityResult as ClientQualityResult } from '../utils/imageQualityChecker'
 import { getBackupPriceEstimate } from '../utils/priceEstimator'
@@ -493,7 +493,10 @@ const AddProduct: React.FC = () => {
     try {
       // Send all images in a batch (single API request)
       const fd = new FormData()
-      images.forEach(f => fd.append('images', f))
+      const aiImages = await Promise.all(
+        images.slice(0, 3).map(image => prepareImageForAIAnalysis(image))
+      )
+      aiImages.forEach(f => fd.append('images', f))
 
       const response = await api.post('/api/products/generate-details', fd)
       const data = response.data
