@@ -272,8 +272,8 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
         feedback: feedback.trim(),
-        transaction_proof_url: transactionProof,
-        is_camera_photo: true // Enforced via capture="environment"
+        transaction_proof_url: transactionProof || '',
+        is_camera_photo: !!transactionProof,
       })
 
       setHasSubmitted(true)
@@ -285,14 +285,14 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         duration: 3000
       })
 
-      // Refresh status
-      await fetchCompletionStatus()
-      onCompleted()
-
-      // Check if both parties completed after this submission
       const updatedRes = await api.get(`/api/trades/${trade.id}/completion-status`)
-      if (updatedRes.data.data.buyer_completed && updatedRes.data.data.seller_completed) {
+      const updatedStatus = updatedRes.data.data
+      setStatus(updatedStatus)
+
+      if (updatedStatus.buyer_completed && updatedStatus.seller_completed) {
+        setShowCelebration(true)
         setShowFinishButton(true)
+        onCompleted()
       }
     } catch (error: any) {
       console.error('Trade completion error:', error)
@@ -652,10 +652,10 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                 isLoading={submitting}
                 loadingText="Completing..."
                 leftIcon={<FaCheck />}
-                isDisabled={rating === 0 || uploadingImage || (isPhotoMandatory && !transactionProof)}
+                isDisabled={uploadingImage}
                 mt={{ base: 2, md: 4 }}
               >
-                Complete Trade
+                Leave a Review and Complete Trade
               </Button>
             </ModalFooter>
           )}

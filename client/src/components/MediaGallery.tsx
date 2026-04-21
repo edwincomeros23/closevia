@@ -30,7 +30,7 @@ interface MediaGalleryProps {
   imageUrls: string[]
   videoUrl?: string
   productTitle: string
-  productStatus: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
+  productStatus: 'available' | 'sold' | 'traded' | 'locked' | 'suspended' | 'deleted'
   isPremium: boolean
   wishlistCount?: number
   condition?: string

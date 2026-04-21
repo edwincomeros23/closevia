@@ -119,7 +119,7 @@ import ConnectionStatus from '../components/ConnectionStatus';
 import ErrorBoundary from '../components/ErrorBoundary';
 import VerifiedAvatar from '../components/VerifiedAvatar';
 import AdvertisementCMS from '../components/AdvertisementCMS';
-import { User, Product, Trade, PaginatedResponse, APIResponse } from '../types';
+import { User, Product, PaginatedResponse, APIResponse } from '../types';
 
 const ADMIN_STATS_CACHE_KEY = 'clovia_admin_stats_cache_v1';
 const ADMIN_STATS_CACHE_TTL_MS = 1 * 60 * 1000; // 1 minute
@@ -138,20 +138,54 @@ interface TradeMessage {
 }
 
 type OverviewDimensions = {
-  products: boolean;
-  trades: boolean;
-  categories: boolean;
+  [key: string]: boolean;
 };
 
-interface OverviewCategoryRow {
-  category: string;
+interface AdminExplorerSection {
+  key: string;
+  label: string;
   total: number;
-  available: number;
-  premium: number;
-  last_created_at: string;
+  rows: Record<string, unknown>[];
 }
 
-const OVERVIEW_TABLE_PAGE_SIZE = 10;
+const OVERVIEW_PREVIEW_PAGE_SIZE = 25;
+
+const DATA_EXPLORER_GROUPS = [
+  {
+    title: 'Data Type',
+    help: 'Choose the base records to preview and export.',
+    options: [
+      { key: 'users', label: 'Users' },
+      { key: 'products', label: 'Products' },
+      { key: 'trades', label: 'Trades' },
+      { key: 'multiway_trades', label: 'Multiway Trades' },
+      { key: 'trade_matches', label: 'Trade Matches' },
+      { key: 'categories', label: 'Categories' },
+      { key: 'reviews', label: 'Reviews' },
+      { key: 'reports', label: 'Reports / Flags' },
+      { key: 'premium_plans', label: 'Premium Plans' },
+      { key: 'premium_revenue', label: 'Premium Revenue' },
+    ],
+  },
+  {
+    title: 'User Filters',
+    help: 'Narrow user exports by account state.',
+    options: [
+      { key: 'premium_users', label: 'Premium Users' },
+      { key: 'verified_users', label: 'Verified Users' },
+      { key: 'unverified_users', label: 'Unverified Users' },
+    ],
+  },
+  {
+    title: 'Trade Filters',
+    help: 'Filter regular and multiway trade exports by lifecycle.',
+    options: [
+      { key: 'ongoing_trades', label: 'Ongoing Trades' },
+      { key: 'completed_trades', label: 'Completed Trades' },
+      { key: 'cancelled_trades', label: 'Cancelled Trades' },
+    ],
+  },
+] as const;
 
 interface AdminStats {
   total_users: number;
@@ -365,7 +399,7 @@ const UsageCalendar: React.FC<CalendarProps> = ({
 
 // â"€â"€â"€ Main Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const AdminDashboard: React.FC = () => {
-  type SectionId = 'overview' | 'moderation' | 'management' | 'system';
+  type SectionId = 'overview' | 'moderation' | 'management' | 'premium' | 'system';
 
   const navigate = useNavigate();
 
@@ -430,25 +464,19 @@ const AdminDashboard: React.FC = () => {
 
   // Overview: quick data explorer (Products / Trades / Categories)
   const defaults = getDefaultOverviewDates();
-  const [overviewStartDate, setOverviewStartDate] = useState<string>(defaults.start);
-  const [overviewEndDate, setOverviewEndDate] = useState<string>(defaults.end);
+  const [overviewStartDate, setOverviewStartDate] = useState<string>(`${defaults.start}T00:00`);
+  const [overviewEndDate, setOverviewEndDate] = useState<string>(`${defaults.end}T23:59`);
   const [overviewDims, setOverviewDims] = useState<OverviewDimensions>({
     products: true,
+    users: false,
     trades: false,
+    multiway_trades: false,
     categories: false,
   });
   const [overviewDataLoading, setOverviewDataLoading] = useState(false);
-  const [overviewRevenue, setOverviewRevenue] = useState<number | null>(null);
-  const [overviewRevenueLoading, setOverviewRevenueLoading] = useState(false);
-  const [overviewProductsData, setOverviewProductsData] = useState<Product[]>([]);
-  const [overviewProductsPage, setOverviewProductsPage] = useState(1);
-  const [overviewProductsTotalPages, setOverviewProductsTotalPages] = useState(1);
-  const [overviewProductsTotal, setOverviewProductsTotal] = useState(0);
-  const [overviewTradesData, setOverviewTradesData] = useState<Trade[]>([]);
-  const [overviewTradesPage, setOverviewTradesPage] = useState(1);
-  const [overviewTradesTotalPages, setOverviewTradesTotalPages] = useState(1);
-  const [overviewTradesTotal, setOverviewTradesTotal] = useState(0);
-  const [overviewCategoriesData, setOverviewCategoriesData] = useState<OverviewCategoryRow[]>([]);
+  const [overviewExportFormat, setOverviewExportFormat] = useState<'csv' | 'xlsx' | 'json'>('csv');
+  const [overviewExplorerSections, setOverviewExplorerSections] = useState<AdminExplorerSection[]>([]);
+  const [overviewExplorerTotal, setOverviewExplorerTotal] = useState(0);
 
   // Reports state
   const [reports, setReports] = useState<any[]>([]);
@@ -497,10 +525,13 @@ const AdminDashboard: React.FC = () => {
     email: string;
     vehicle_type: string;
     vehicle_plate: string;
+    vehicle_color: string;
     contact_number: string;
     status: string;
     license_image_url: string;
     selfie_image_url: string;
+    orcr_image_url: string;
+    motor_owner_image_url: string;
     rejection_reason: string;
     reviewed_at: string;
     created_at: string;
@@ -537,6 +568,12 @@ const AdminDashboard: React.FC = () => {
   const [remittancePayments, setRemittancePayments] = useState<AdminRemittancePayment[]>([]);
   const [remittanceLoading, setRemittanceLoading] = useState(false);
   const [verifyRemittanceLoadingId, setVerifyRemittanceLoadingId] = useState<number | null>(null);
+  const [premiumLoading, setPremiumLoading] = useState(false);
+  const [premiumSaving, setPremiumSaving] = useState(false);
+  const [premiumData, setPremiumData] = useState<any>({ settings: {}, plans: [], features: [], promotions: [], users: [] });
+  const [premiumUserTargetId, setPremiumUserTargetId] = useState('');
+  const [premiumUserTier, setPremiumUserTier] = useState('plus');
+  const [premiumUserDays, setPremiumUserDays] = useState(30);
 
   const { isOpen: isDayModalOpen, onOpen: openDayModal, onClose: closeDayModal } = useDisclosure();
   const {
@@ -567,6 +604,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'overview', label: 'Overview', icon: FiHome, description: 'Metrics & charts' },
     { id: 'moderation', label: 'Moderation Queue', icon: FiAlertTriangle, description: 'Reports & riders', badge: (reports.filter((r: any) => r.status === 'pending').length + riderApplications.filter(r => r.status === 'pending').length) || undefined },
     { id: 'management', label: 'Management', icon: FiGrid, description: 'Users, items & campaigns' },
+    { id: 'premium', label: 'Premium Management', icon: FiStar, description: 'Plans, promos & members', badge: stats?.premium_users || undefined },
     { id: 'system', label: 'System', icon: FiSettings, description: 'Metrics & calendar' },
   ];
 
@@ -682,101 +720,27 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
-  const getEndExclusiveYMD = useCallback((ymd: string): string => {
-    const parts = ymd.split('-').map(Number);
-    if (parts.length !== 3) return ymd;
-    const [y, m, d] = parts;
-    if (!y || !m || !d) return ymd;
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + 1);
-    const yyyy = dt.getFullYear();
-    const mm = String(dt.getMonth() + 1).padStart(2, '0');
-    const dd = String(dt.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  }, []);
+  const getSelectedExplorerTypes = useCallback(() => (
+    Object.entries(overviewDims)
+      .filter(([, selected]) => selected)
+      .map(([key]) => key)
+  ), [overviewDims]);
 
-  const fetchOverviewProductsPage = useCallback(async (page: number) => {
+  const buildExplorerParams = useCallback((forExport = false) => {
     const params = new URLSearchParams();
+    params.set('types', getSelectedExplorerTypes().join(','));
     if (overviewStartDate) params.set('start', overviewStartDate);
-    if (overviewEndDate) params.set('end', getEndExclusiveYMD(overviewEndDate));
-    params.set('page', String(page));
-    params.set('limit', String(OVERVIEW_TABLE_PAGE_SIZE));
-
-    const resp = await api.get<APIResponse<PaginatedResponse<Product>>>(`/api/admin/products?${params.toString()}`);
-    if (resp.data?.success) {
-      const data = resp.data.data;
-      setOverviewProductsData(data?.data || []);
-      setOverviewProductsPage(data?.page || page);
-      setOverviewProductsTotalPages(data?.total_pages || 1);
-      setOverviewProductsTotal(data?.total || 0);
-    } else {
-      setOverviewProductsData([]);
-      setOverviewProductsPage(1);
-      setOverviewProductsTotalPages(1);
-      setOverviewProductsTotal(0);
+    if (overviewEndDate) params.set('end', overviewEndDate);
+    if (!forExport) {
+      params.set('page', '1');
+      params.set('limit', String(OVERVIEW_PREVIEW_PAGE_SIZE));
     }
-  }, [getEndExclusiveYMD, overviewEndDate, overviewStartDate]);
-
-  const fetchOverviewTradesPage = useCallback(async (page: number) => {
-    const params = new URLSearchParams();
-    if (overviewStartDate) params.set('start', overviewStartDate);
-    if (overviewEndDate) params.set('end', getEndExclusiveYMD(overviewEndDate));
-    params.set('page', String(page));
-    params.set('limit', String(OVERVIEW_TABLE_PAGE_SIZE));
-
-    const resp = await api.get<APIResponse<PaginatedResponse<Trade>>>(`/api/admin/trades?${params.toString()}`);
-    if (resp.data?.success) {
-      const data = resp.data.data;
-      setOverviewTradesData(data?.data || []);
-      setOverviewTradesPage(data?.page || page);
-      setOverviewTradesTotalPages(data?.total_pages || 1);
-      setOverviewTradesTotal(data?.total || 0);
-    } else {
-      setOverviewTradesData([]);
-      setOverviewTradesPage(1);
-      setOverviewTradesTotalPages(1);
-      setOverviewTradesTotal(0);
-    }
-  }, [getEndExclusiveYMD, overviewEndDate, overviewStartDate]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      if (!overviewStartDate || !overviewEndDate) {
-        setOverviewRevenue(null);
-        setOverviewRevenueLoading(false);
-        return;
-      }
-
-      setOverviewRevenueLoading(true);
-      try {
-        const params = new URLSearchParams();
-        params.set('start', overviewStartDate);
-        params.set('end', overviewEndDate); // inclusive for revenue endpoint
-        const resp = await api.get<APIResponse<{ revenue: number }>>(`/api/admin/revenue?${params.toString()}`);
-        if (cancelled) return;
-        if (resp.data?.success) {
-          const raw = (resp.data.data as any)?.revenue;
-          setOverviewRevenue(typeof raw === 'number' ? raw : Number(raw || 0));
-        } else {
-          setOverviewRevenue(null);
-        }
-      } catch {
-        if (!cancelled) setOverviewRevenue(null);
-      } finally {
-        if (!cancelled) setOverviewRevenueLoading(false);
-      }
-    };
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [overviewEndDate, overviewStartDate]);
+    return params;
+  }, [getSelectedExplorerTypes, overviewEndDate, overviewStartDate]);
 
   const fetchOverviewDataTables = useCallback(async () => {
-    const anySelected = overviewDims.products || overviewDims.trades || overviewDims.categories;
+    const selectedTypes = getSelectedExplorerTypes();
+    const anySelected = selectedTypes.length > 0;
     if (!anySelected) {
       toast({ id: 'overview-no-dimensions', title: 'Select at least one option', status: 'warning', duration: 2500, isClosable: true });
       return;
@@ -784,36 +748,13 @@ const AdminDashboard: React.FC = () => {
 
     setOverviewDataLoading(true);
     try {
-      const common = new URLSearchParams();
-      if (overviewStartDate) common.set('start', overviewStartDate);
-      if (overviewEndDate) common.set('end', getEndExclusiveYMD(overviewEndDate));
-
-      if (overviewDims.products) {
-        await fetchOverviewProductsPage(1);
+      const resp = await api.get<APIResponse<{ sections: AdminExplorerSection[]; total: number }>>(`/api/admin/data-explorer?${buildExplorerParams().toString()}`);
+      if (resp.data?.success) {
+        setOverviewExplorerSections(resp.data.data?.sections || []);
+        setOverviewExplorerTotal(resp.data.data?.total || 0);
       } else {
-        setOverviewProductsData([]);
-        setOverviewProductsPage(1);
-        setOverviewProductsTotalPages(1);
-        setOverviewProductsTotal(0);
-      }
-
-      if (overviewDims.trades) {
-        await fetchOverviewTradesPage(1);
-      } else {
-        setOverviewTradesData([]);
-        setOverviewTradesPage(1);
-        setOverviewTradesTotalPages(1);
-        setOverviewTradesTotal(0);
-      }
-
-      if (overviewDims.categories) {
-        const params = new URLSearchParams(common);
-        params.set('limit', '50');
-        const resp = await api.get<APIResponse<OverviewCategoryRow[]>>(`/api/admin/categories?${params.toString()}`);
-        if (resp.data?.success && Array.isArray(resp.data.data)) setOverviewCategoriesData(resp.data.data);
-        else setOverviewCategoriesData([]);
-      } else {
-        setOverviewCategoriesData([]);
+        setOverviewExplorerSections([]);
+        setOverviewExplorerTotal(0);
       }
     } catch (err: any) {
       toast({
@@ -827,24 +768,15 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setOverviewDataLoading(false);
     }
-  }, [fetchOverviewProductsPage, fetchOverviewTradesPage, getEndExclusiveYMD, overviewDims, overviewEndDate, overviewStartDate, toast]);
+  }, [buildExplorerParams, getSelectedExplorerTypes, toast]);
 
   // Auto-fetch overview tables when options/date range change
   useEffect(() => {
-    const anySelected = overviewDims.products || overviewDims.trades || overviewDims.categories;
+    const anySelected = getSelectedExplorerTypes().length > 0;
 
     if (!anySelected) {
-      setOverviewProductsData([]);
-      setOverviewProductsPage(1);
-      setOverviewProductsTotalPages(1);
-      setOverviewProductsTotal(0);
-
-      setOverviewTradesData([]);
-      setOverviewTradesPage(1);
-      setOverviewTradesTotalPages(1);
-      setOverviewTradesTotal(0);
-
-      setOverviewCategoriesData([]);
+      setOverviewExplorerSections([]);
+      setOverviewExplorerTotal(0);
       return;
     }
 
@@ -854,7 +786,7 @@ const AdminDashboard: React.FC = () => {
     }, 200);
 
     return () => clearTimeout(t);
-  }, [fetchOverviewDataTables, overviewDims, overviewEndDate, overviewStartDate]);
+  }, [fetchOverviewDataTables, getSelectedExplorerTypes, overviewDims, overviewEndDate, overviewStartDate]);
 
   // â"€â"€ Fetch calendar daily stats â"€â"€
   const fetchDailyStats = useCallback(async (year: number, month: number) => {
@@ -916,94 +848,39 @@ const AdminDashboard: React.FC = () => {
     await fetchAdminStats();
   }, [fetchAdminStats]);
 
-  const handleExportRevenue = useCallback(async () => {
-    if (!stats) {
-      toast({ id: 'overview-export-no-stats', title: 'Stats are still loading', status: 'info', duration: 2500, isClosable: true });
-      return;
-    }
-
-    const totalIncome = Number(stats.total_income || 0);
-    const revenueBySourceEntries = stats.revenue_by_source ? Object.entries(stats.revenue_by_source) : [];
-    const hasAnyRevenue = totalIncome > 0 || revenueBySourceEntries.some(([, v]) => Number(v || 0) !== 0);
-
-    if (!hasAnyRevenue) {
-      toast({ id: 'overview-export-no-revenue', title: 'No revenue data available', status: 'warning', duration: 2500, isClosable: true });
+  const handleExportDataExplorer = useCallback(async () => {
+    if (getSelectedExplorerTypes().length === 0) {
+      toast({ id: 'overview-export-no-filters', title: 'Select at least one dataset or filter', status: 'warning', duration: 2500, isClosable: true });
       return;
     }
 
     setExportLoading(true);
     try {
-      const formatPhpPdf = (amount: number) => {
-        const n = Number(amount || 0);
-        return `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      };
-
-      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
-        import('jspdf'),
-        import('jspdf-autotable'),
-      ]);
-
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const now = new Date();
-      const title = 'Clovia Admin — Revenue Report';
-      const generated = now.toLocaleString('en-PH');
-
-      const pageW = pdf.internal.pageSize.getWidth();
-      const usableW = pageW - 28;
-
-      // Header band
-      pdf.setFillColor(49, 130, 206);
-      pdf.rect(0, 0, pageW, 22, 'F');
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(title, pageW / 2, 13, { align: 'center' });
-
-      pdf.setTextColor(60);
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Generated: ${generated}`, 14, 30);
-
-      // Total income
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(12);
-      pdf.setTextColor(30);
-      pdf.text('Total Income', 14, 40);
-      pdf.setFontSize(16);
-      pdf.text(formatPhpPdf(totalIncome), 14, 48);
-
-      // Revenue by Source
-      pdf.setFontSize(12);
-      pdf.text('Revenue by Source', 14, 60);
-
-      const sourceRows = revenueBySourceEntries.length > 0
-        ? revenueBySourceEntries.map(([source, amount]) => {
-          const label = String(source || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-          return [label, formatPhpPdf(Number(amount || 0))];
-        })
-        : [['No revenue sources', '']];
-
-      autoTable(pdf, {
-        startY: 64,
-        head: [['Source', 'Amount (PHP)']],
-        body: sourceRows,
-        theme: 'striped',
-        tableWidth: usableW,
-        headStyles: { fillColor: [49, 130, 206], textColor: 255, fontStyle: 'bold', fontSize: 10 },
-        bodyStyles: { fontSize: 10, overflow: 'linebreak' },
-        columnStyles: { 1: { halign: 'right' } },
-        margin: { left: 14, right: 14 },
+      const params = buildExplorerParams(true);
+      params.set('format', overviewExportFormat);
+      const response = await api.get(`/api/admin/data-explorer/export?${params.toString()}`, { responseType: 'blob' });
+      const blob = new Blob([response.data], {
+        type: overviewExportFormat === 'json'
+          ? 'application/json'
+          : overviewExportFormat === 'xlsx'
+            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            : 'text/csv',
       });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `clovia-data-export-${new Date().toISOString().slice(0, 10)}.${overviewExportFormat}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
 
-      const filename = `clovia-revenue-${now.toISOString().slice(0, 10)}.pdf`;
-      pdf.save(filename);
-
-      toast({ id: 'overview-exported-revenue-pdf', title: 'Revenue PDF downloaded', status: 'success', duration: 2500, isClosable: true });
+      toast({ id: 'overview-exported-data', title: 'Data export downloaded', status: 'success', duration: 2500, isClosable: true });
     } catch (e: any) {
       toast({
         id: 'overview-export-failed',
         title: 'Export failed',
-        description: e?.message || 'Unable to export revenue PDF',
+        description: e?.response?.data?.error || e?.message || 'Unable to export selected data',
         status: 'error',
         duration: 4000,
         isClosable: true,
@@ -1011,7 +888,7 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setExportLoading(false);
     }
-  }, [stats, toast]);
+  }, [buildExplorerParams, getSelectedExplorerTypes, overviewExportFormat, toast]);
 
   const handleBackfillLedgers = useCallback(async () => {
     try {
@@ -1584,6 +1461,53 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
+  const fetchPremiumManagement = useCallback(async () => {
+    try {
+      setPremiumLoading(true);
+      const response = await api.get('/api/admin/premium');
+      if (response.data?.success) setPremiumData(response.data.data);
+    } catch (err: any) {
+      toast({ id: 'premium-management-load-failed', title: 'Failed to load premium management', description: err?.response?.data?.error || err.message, status: 'error', duration: 4000, isClosable: true });
+    } finally {
+      setPremiumLoading(false);
+    }
+  }, [toast]);
+
+  const savePremiumManagement = useCallback(async () => {
+    try {
+      setPremiumSaving(true);
+      const response = await api.put('/api/admin/premium', premiumData);
+      if (response.data?.success) {
+        setPremiumData(response.data.data);
+        toast({ id: 'premium-management-saved', title: 'Premium settings saved', status: 'success', duration: 2500, isClosable: true });
+      }
+    } catch (err: any) {
+      toast({ id: 'premium-management-save-failed', title: 'Failed to save premium settings', description: err?.response?.data?.error || err.message, status: 'error', duration: 4000, isClosable: true });
+    } finally {
+      setPremiumSaving(false);
+    }
+  }, [premiumData, toast]);
+
+  const updatePremiumUser = useCallback(async (userId: number | string, action: string) => {
+    const id = Number(userId);
+    if (!id) {
+      toast({ id: 'premium-user-id-required', title: 'Enter a valid user ID', status: 'warning', duration: 2500, isClosable: true });
+      return;
+    }
+    try {
+      setPremiumSaving(true);
+      const response = await api.post(`/api/admin/premium/users/${id}`, { action, tier: premiumUserTier, duration_days: premiumUserDays });
+      if (response.data?.success) {
+        setPremiumData(response.data.data);
+        toast({ id: 'premium-user-updated', title: 'Premium user updated', status: 'success', duration: 2500, isClosable: true });
+      }
+    } catch (err: any) {
+      toast({ id: 'premium-user-update-failed', title: 'Failed to update premium user', description: err?.response?.data?.error || err.message, status: 'error', duration: 4000, isClosable: true });
+    } finally {
+      setPremiumSaving(false);
+    }
+  }, [premiumUserDays, premiumUserTier, toast]);
+
   // â"€â"€ Save campaign (Create/Update) â"€â"€
   const handleSaveCampaign = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1855,6 +1779,7 @@ const AdminDashboard: React.FC = () => {
       fetchRiderConfig(),
       fetchRemittancePayments(),
       fetchMultiwayDisputes(),
+      fetchPremiumManagement(),
     ]);
   }, [
     stats,
@@ -1866,6 +1791,7 @@ const AdminDashboard: React.FC = () => {
     fetchRiderConfig,
     fetchRemittancePayments,
     fetchMultiwayDisputes,
+    fetchPremiumManagement,
   ]);
 
   // Separate effect for rider filter changes - doesn't trigger full dashboard refresh
@@ -2101,275 +2027,123 @@ const AdminDashboard: React.FC = () => {
   // â"€â"€ SECTION: Overview â"€â"€
   const OverviewSection = () => (
     <VStack spacing={8} pr={20} align="stretch" w="full">
-      {/* Data explorer (fetch products / trades / categories) */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
         <CardHeader pb={2}>
-          <HStack>
-            <Icon as={FiGrid} color="brand.500" />
-            <Heading size="sm" color={textColor}>Data Explorer</Heading>
-          </HStack>
+          <Flex justify="space-between" gap={3} wrap="wrap" align="center">
+            <HStack>
+              <Icon as={FiGrid} color="brand.500" />
+              <Box>
+                <Heading size="sm" color={textColor}>Data Explorer</Heading>
+                <Text fontSize="xs" color={mutedTextColor}>Filter, preview, and export exactly the admin data you need.</Text>
+              </Box>
+            </HStack>
+            <Badge colorScheme="brand" borderRadius="full" px={3}>{overviewExplorerTotal.toLocaleString()} matching rows</Badge>
+          </Flex>
         </CardHeader>
         <CardBody pt={2}>
-          <Flex gap={3} wrap="wrap" align="center" justify="space-between">
-            <HStack spacing={3} wrap="wrap">
+          <VStack align="stretch" spacing={5}>
+            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+              {DATA_EXPLORER_GROUPS.map(group => (
+                <Box key={group.title} border="1px solid" borderColor={borderColor} borderRadius="lg" p={4} bg={tableBg}>
+                  <Text fontWeight="800" fontSize="sm" color={textColor}>{group.title}</Text>
+                  <Text fontSize="xs" color={mutedTextColor} mb={3}>{group.help}</Text>
+                  <VStack align="stretch" spacing={2}>
+                    {group.options.map(option => (
+                      <Checkbox
+                        key={option.key}
+                        isChecked={!!overviewDims[option.key]}
+                        onChange={(e) => setOverviewDims(prev => ({ ...prev, [option.key]: e.target.checked }))}
+                      >
+                        <Text fontSize="sm" fontWeight="600">{option.label}</Text>
+                      </Checkbox>
+                    ))}
+                  </VStack>
+                </Box>
+              ))}
+            </SimpleGrid>
+
+            <Flex gap={3} wrap="wrap" align="flex-end" justify="space-between">
+              <HStack spacing={3} wrap="wrap" align="flex-end">
+                <Box>
+                  <FormLabel fontSize="xs" color={mutedTextColor} mb={1}>Start date and time</FormLabel>
+                  <Input type="datetime-local" size="sm" value={overviewStartDate} onChange={(e) => setOverviewStartDate(e.target.value)} w={{ base: 'full', sm: '220px' }} />
+                </Box>
+                <Box>
+                  <FormLabel fontSize="xs" color={mutedTextColor} mb={1}>End date and time</FormLabel>
+                  <Input type="datetime-local" size="sm" value={overviewEndDate} onChange={(e) => setOverviewEndDate(e.target.value)} w={{ base: 'full', sm: '220px' }} />
+                </Box>
+                <Box>
+                  <FormLabel fontSize="xs" color={mutedTextColor} mb={1}>Export as</FormLabel>
+                  <Select size="sm" value={overviewExportFormat} onChange={(e) => setOverviewExportFormat(e.target.value as 'csv' | 'xlsx' | 'json')} w="150px">
+                    <option value="csv">CSV</option>
+                    <option value="xlsx">Excel (.xlsx)</option>
+                    <option value="json">JSON</option>
+                  </Select>
+                </Box>
+              </HStack>
+
               <HStack spacing={2}>
-                <Icon as={FiCalendar} color={mutedTextColor} />
-                <Tooltip
-                  hasArrow
-                  placement="top"
-                  label={
-                    overviewRevenueLoading
-                      ? 'Revenue: loading...'
-                      : overviewRevenue === null
-                        ? 'Select start and end dates to view revenue'
-                        : `Revenue: ${formatCurrency(overviewRevenue || 0)}`
-                  }
-                >
-                  <HStack spacing={2}>
-                    <Input
-                      type="date"
-                      size="sm"
-                      value={overviewStartDate}
-                      onChange={(e) => setOverviewStartDate(e.target.value)}
-                      w={{ base: 'full', sm: '170px' }}
-                    />
-                    <Text fontSize="sm" color={mutedTextColor} fontWeight="600">to</Text>
-                    <Input
-                      type="date"
-                      size="sm"
-                      value={overviewEndDate}
-                      onChange={(e) => setOverviewEndDate(e.target.value)}
-                      w={{ base: 'full', sm: '170px' }}
-                    />
-                  </HStack>
-                </Tooltip>
+                <Button size="sm" leftIcon={<FiRefreshCw />} variant="outline" onClick={fetchOverviewDataTables} isLoading={overviewDataLoading}>
+                  Preview
+                </Button>
+                <Button size="sm" leftIcon={<FiPrinter />} colorScheme="brand" onClick={handleExportDataExplorer} isLoading={exportLoading} loadingText="Exporting">
+                  Export
+                </Button>
               </HStack>
+            </Flex>
 
-              <HStack spacing={4} wrap="wrap">
-                <Text fontSize="sm" color={mutedTextColor} fontWeight="600">Options:</Text>
-                <Checkbox isChecked={overviewDims.products} onChange={(e) => setOverviewDims(prev => ({ ...prev, products: e.target.checked }))}>
-                  Products
-                </Checkbox>
-                <Checkbox isChecked={overviewDims.trades} onChange={(e) => setOverviewDims(prev => ({ ...prev, trades: e.target.checked }))}>
-                  Trades
-                </Checkbox>
-                <Checkbox isChecked={overviewDims.categories} onChange={(e) => setOverviewDims(prev => ({ ...prev, categories: e.target.checked }))}>
-                  Categories
-                </Checkbox>
-              </HStack>
-            </HStack>
-
-            <HStack spacing={2}>
-              <Button
-                size="sm"
-                leftIcon={<FiPrinter />}
-                colorScheme="brand"
-                variant="outline"
-                onClick={handleExportRevenue}
-                isLoading={exportLoading}
-                loadingText="Preparing…"
-              >
-                Export
-              </Button>
-            </HStack>
-          </Flex>
-
-          {overviewDataLoading ? (
-            <Center py={8}><Spinner color="brand.500" /></Center>
-          ) : (
-            <VStack align="stretch" spacing={6} mt={4}>
-              {overviewDims.products && (
-                <Box>
-                  <HStack mb={2} justify="space-between">
-                    <Text fontWeight="700" fontSize="sm" color={textColor}>Products</Text>
-                    <Text fontSize="xs" color={mutedTextColor}>
-                      {overviewProductsTotal ? `${overviewProductsTotal.toLocaleString()} total` : `${overviewProductsData.length} rows`}
-                      {overviewProductsTotalPages > 1 ? ` • Page ${overviewProductsPage}/${overviewProductsTotalPages}` : ''}
-                    </Text>
-                  </HStack>
-                  {overviewProductsData.length === 0 ? (
-                    <Text fontSize="sm" color={mutedTextColor}>No products found for the selected range.</Text>
-                  ) : (
-                    <Box overflowX="auto" w="full">
-                      <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '680px' }}>
-                        <Thead bg={headerBg}>
-                          <Tr>
-                            <Th w="64px" px={2} color={mutedTextColor}>#</Th>
-                            <Th px={2} color={mutedTextColor}>Title</Th>
-                            <Th w="110px" px={2} color={mutedTextColor}>Status</Th>
-                            <Th w="180px" px={2} color={mutedTextColor}>Seller</Th>
-                            <Th w="120px" px={2} color={mutedTextColor}>Created</Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          {overviewProductsData.map((p) => (
-                            <Tr key={p.id} _hover={{ bg: hoverBg }}>
-                              <Td px={2} fontSize="xs" color={mutedTextColor} fontWeight="700">#{p.id}</Td>
-                              <Td px={2}>
-                                <Text fontSize="sm" fontWeight="600" noOfLines={1}>{p.title}</Text>
-                              </Td>
-                              <Td px={2}>
-                                <Badge borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize" colorScheme={p.status === 'available' ? 'green' : p.status === 'locked' ? 'orange' : 'gray'}>
-                                  {p.status}
-                                </Badge>
-                              </Td>
-                              <Td px={2}>
-                                <Text fontSize="sm" noOfLines={1}>{p.seller_name || `User #${p.seller_id}`}</Text>
-                              </Td>
-                              <Td px={2} fontSize="sm" color={mutedTextColor}>{p.created_at ? new Date(p.created_at).toLocaleDateString() : '-'}</Td>
-                            </Tr>
-                          ))}
-                        </Tbody>
-                      </ChakraTable>
-                    </Box>
-                  )}
-
-                  {overviewProductsTotalPages > 1 && (
-                    <Flex mt={3} justify="flex-end">
-                      <HStack spacing={2}>
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => fetchOverviewProductsPage(Math.max(1, overviewProductsPage - 1))}
-                          isDisabled={overviewDataLoading || overviewProductsPage <= 1}
-                        >
-                          Prev
-                        </Button>
-                        <Text fontSize="xs" color={mutedTextColor}>
-                          Page {overviewProductsPage} of {overviewProductsTotalPages}
-                        </Text>
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => fetchOverviewProductsPage(Math.min(overviewProductsTotalPages, overviewProductsPage + 1))}
-                          isDisabled={overviewDataLoading || overviewProductsPage >= overviewProductsTotalPages}
-                        >
-                          Next
-                        </Button>
+            {overviewDataLoading ? (
+              <Center py={8}><Spinner color="brand.500" /></Center>
+            ) : overviewExplorerSections.length === 0 ? (
+              <Box border="1px dashed" borderColor={borderColor} borderRadius="lg" p={6} textAlign="center">
+                <Text fontWeight="700" color={textColor}>No preview data yet</Text>
+                <Text fontSize="sm" color={mutedTextColor}>Choose datasets or filters, then preview before exporting.</Text>
+              </Box>
+            ) : (
+              <VStack align="stretch" spacing={6}>
+                {overviewExplorerSections.map(section => {
+                  const headers = Array.from(section.rows.reduce((set, row) => {
+                    Object.keys(row).forEach(key => set.add(key));
+                    return set;
+                  }, new Set<string>()));
+                  return (
+                    <Box key={section.key}>
+                      <HStack mb={2} justify="space-between">
+                        <Text fontWeight="700" fontSize="sm" color={textColor}>{section.label}</Text>
+                        <Text fontSize="xs" color={mutedTextColor}>{section.total.toLocaleString()} total</Text>
                       </HStack>
-                    </Flex>
-                  )}
-                </Box>
-              )}
-
-              {overviewDims.trades && (
-                <Box>
-                  <HStack mb={2} justify="space-between">
-                    <Text fontWeight="700" fontSize="sm" color={textColor}>Trades</Text>
-                    <Text fontSize="xs" color={mutedTextColor}>
-                      {overviewTradesTotal ? `${overviewTradesTotal.toLocaleString()} total` : `${overviewTradesData.length} rows`}
-                      {overviewTradesTotalPages > 1 ? ` • Page ${overviewTradesPage}/${overviewTradesTotalPages}` : ''}
-                    </Text>
-                  </HStack>
-                  {overviewTradesData.length === 0 ? (
-                    <Text fontSize="sm" color={mutedTextColor}>No trades found for the selected range.</Text>
-                  ) : (
-                    <Box overflowX="auto" w="full">
-                      <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '760px' }}>
-                        <Thead bg={headerBg}>
-                          <Tr>
-                            <Th w="64px" px={2} color={mutedTextColor}>#</Th>
-                            <Th w="120px" px={2} color={mutedTextColor}>Status</Th>
-                            <Th w="110px" px={2} color={mutedTextColor}>Option</Th>
-                            <Th px={2} color={mutedTextColor}>Product</Th>
-                            <Th w="180px" px={2} color={mutedTextColor}>Buyer</Th>
-                            <Th w="180px" px={2} color={mutedTextColor}>Seller</Th>
-                            <Th w="120px" px={2} color={mutedTextColor}>Created</Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          {overviewTradesData.map((t) => (
-                            <Tr key={t.id} _hover={{ bg: hoverBg }}>
-                              <Td px={2} fontSize="xs" color={mutedTextColor} fontWeight="700">#{t.id}</Td>
-                              <Td px={2}>
-                                <Badge borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize" colorScheme={t.status === 'completed' ? 'green' : t.status === 'active' ? 'blue' : t.status === 'pending' ? 'orange' : 'gray'}>
-                                  {t.status}
-                                </Badge>
-                              </Td>
-                              <Td px={2}>
-                                <Badge borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize" colorScheme={t.trade_option === 'delivery' ? 'purple' : 'teal'}>
-                                  {t.trade_option || 'meetup'}
-                                </Badge>
-                              </Td>
-                              <Td px={2}>
-                                <Text fontSize="sm" noOfLines={1}>{t.product_title || `Product #${t.target_product_id}`}</Text>
-                              </Td>
-                              <Td px={2}><Text fontSize="sm" noOfLines={1}>{t.buyer_name || `User #${t.buyer_id}`}</Text></Td>
-                              <Td px={2}><Text fontSize="sm" noOfLines={1}>{t.seller_name || `User #${t.seller_id}`}</Text></Td>
-                              <Td px={2} fontSize="sm" color={mutedTextColor}>{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</Td>
-                            </Tr>
-                          ))}
-                        </Tbody>
-                      </ChakraTable>
+                      {section.rows.length === 0 ? (
+                        <Text fontSize="sm" color={mutedTextColor}>No rows matched this section.</Text>
+                      ) : (
+                        <Box overflowX="auto" w="full">
+                          <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: `${Math.max(720, headers.length * 150)}px` }}>
+                            <Thead bg={headerBg}>
+                              <Tr>
+                                {headers.map(header => (
+                                  <Th key={header} px={2} color={mutedTextColor} textTransform="capitalize">{header.replace(/_/g, ' ')}</Th>
+                                ))}
+                              </Tr>
+                            </Thead>
+                            <Tbody>
+                              {section.rows.map((row, index) => (
+                                <Tr key={`${section.key}-${index}`} _hover={{ bg: hoverBg }}>
+                                  {headers.map(header => (
+                                    <Td key={header} px={2} fontSize="sm" color={header.includes('status') ? textColor : mutedTextColor}>
+                                      <Text noOfLines={2}>{String(row[header] ?? '-')}</Text>
+                                    </Td>
+                                  ))}
+                                </Tr>
+                              ))}
+                            </Tbody>
+                          </ChakraTable>
+                        </Box>
+                      )}
                     </Box>
-                  )}
-
-                  {overviewTradesTotalPages > 1 && (
-                    <Flex mt={3} justify="flex-end">
-                      <HStack spacing={2}>
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => fetchOverviewTradesPage(Math.max(1, overviewTradesPage - 1))}
-                          isDisabled={overviewDataLoading || overviewTradesPage <= 1}
-                        >
-                          Prev
-                        </Button>
-                        <Text fontSize="xs" color={mutedTextColor}>
-                          Page {overviewTradesPage} of {overviewTradesTotalPages}
-                        </Text>
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => fetchOverviewTradesPage(Math.min(overviewTradesTotalPages, overviewTradesPage + 1))}
-                          isDisabled={overviewDataLoading || overviewTradesPage >= overviewTradesTotalPages}
-                        >
-                          Next
-                        </Button>
-                      </HStack>
-                    </Flex>
-                  )}
-                </Box>
-              )}
-
-              {overviewDims.categories && (
-                <Box>
-                  <HStack mb={2} justify="space-between">
-                    <Text fontWeight="700" fontSize="sm" color={textColor}>Categories</Text>
-                    <Text fontSize="xs" color={mutedTextColor}>{overviewCategoriesData.length} rows</Text>
-                  </HStack>
-                  {overviewCategoriesData.length === 0 ? (
-                    <Text fontSize="sm" color={mutedTextColor}>No categories found for the selected range.</Text>
-                  ) : (
-                    <Box overflowX="auto" w="full">
-                      <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '640px' }}>
-                        <Thead bg={headerBg}>
-                          <Tr>
-                            <Th px={2} color={mutedTextColor}>Category</Th>
-                            <Th w="90px" px={2} color={mutedTextColor} isNumeric>Total</Th>
-                            <Th w="110px" px={2} color={mutedTextColor} isNumeric>Available</Th>
-                            <Th w="95px" px={2} color={mutedTextColor} isNumeric>Premium</Th>
-                            <Th w="130px" px={2} color={mutedTextColor}>Last</Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          {overviewCategoriesData.map((r) => (
-                            <Tr key={r.category} _hover={{ bg: hoverBg }}>
-                              <Td px={2}><Text fontSize="sm" fontWeight="600" noOfLines={1}>{r.category}</Text></Td>
-                              <Td px={2} isNumeric fontSize="sm">{(r.total || 0).toLocaleString()}</Td>
-                              <Td px={2} isNumeric fontSize="sm">{(r.available || 0).toLocaleString()}</Td>
-                              <Td px={2} isNumeric fontSize="sm">{(r.premium || 0).toLocaleString()}</Td>
-                              <Td px={2} fontSize="sm" color={mutedTextColor}>{r.last_created_at ? new Date(r.last_created_at).toLocaleDateString() : '-'}</Td>
-                            </Tr>
-                          ))}
-                        </Tbody>
-                      </ChakraTable>
-                    </Box>
-                  )}
-                </Box>
-              )}
-            </VStack>
-          )}
+                  );
+                })}
+              </VStack>
+            )}
+          </VStack>
         </CardBody>
       </Card>
 
@@ -3131,7 +2905,7 @@ const AdminDashboard: React.FC = () => {
                       <Td>
                         <VStack align="start" spacing={0}>
                           <Text fontSize="sm" textTransform="capitalize">{app.vehicle_type}</Text>
-                          <Text fontSize="xs" color={mutedTextColor}>{app.vehicle_plate || 'No plate'}</Text>
+                          <Text fontSize="xs" color={mutedTextColor}>{app.vehicle_plate || 'No plate'}{app.vehicle_color ? ` • ${app.vehicle_color}` : ''}</Text>
                         </VStack>
                       </Td>
                       <Td fontSize="sm">{app.contact_number || '-'}</Td>
@@ -3203,6 +2977,12 @@ const AdminDashboard: React.FC = () => {
                       <Text fontSize="xs" color="gray.500">Vehicle</Text>
                       <Text fontWeight="bold" textTransform="capitalize">{selectedRiderApp.vehicle_type} {selectedRiderApp.vehicle_plate ? `(${selectedRiderApp.vehicle_plate})` : ''}</Text>
                     </Box>
+                    {selectedRiderApp.vehicle_color && (
+                      <Box>
+                        <Text fontSize="xs" color="gray.500">Vehicle Color</Text>
+                        <Text fontWeight="bold">{selectedRiderApp.vehicle_color}</Text>
+                      </Box>
+                    )}
                     <Box>
                       <Text fontSize="xs" color="gray.500">Status</Text>
                       <Badge colorScheme={selectedRiderApp.status === 'approved' ? 'green' : selectedRiderApp.status === 'rejected' ? 'red' : selectedRiderApp.status === 'under_review' ? 'blue' : 'orange'}>
@@ -3230,13 +3010,29 @@ const AdminDashboard: React.FC = () => {
 
                   {selectedRiderApp.license_image_url && (
                     <Box>
+                      <Text fontSize="xs" color="gray.500" mb={1} fontWeight="600">Driver's License</Text>
                       <Image src={selectedRiderApp.license_image_url} alt="License" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                     </Box>
                   )}
 
                   {selectedRiderApp.selfie_image_url && (
                     <Box>
+                      <Text fontSize="xs" color="gray.500" mb={1} fontWeight="600">Selfie with ID</Text>
                       <Image src={selectedRiderApp.selfie_image_url} alt="Selfie" maxH="200px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
+                    </Box>
+                  )}
+
+                  {selectedRiderApp.orcr_image_url && (
+                    <Box>
+                      <Text fontSize="xs" color="gray.500" mb={1} fontWeight="600">OR/CR Document</Text>
+                      <Image src={selectedRiderApp.orcr_image_url} alt="OR/CR" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
+                    </Box>
+                  )}
+
+                  {selectedRiderApp.motor_owner_image_url && (
+                    <Box>
+                      <Text fontSize="xs" color="gray.500" mb={1} fontWeight="600">Owner with Vehicle</Text>
+                      <Image src={selectedRiderApp.motor_owner_image_url} alt="Owner with Motor" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                     </Box>
                   )}
                 </VStack>
@@ -3502,6 +3298,121 @@ const AdminDashboard: React.FC = () => {
   );
 
   // â"€â"€ SECTION: System â"€â"€
+
+  const PremiumSection = () => {
+    const updateSetting = (key: string, value: string) => setPremiumData((prev: any) => ({ ...prev, settings: { ...(prev.settings || {}), [key]: value } }));
+    const updatePlan = (index: number, key: string, value: any) => setPremiumData((prev: any) => ({ ...prev, plans: (prev.plans || []).map((p: any, i: number) => i === index ? { ...p, [key]: value } : p) }));
+    const updateCapability = (index: number, key: string, value: any) => setPremiumData((prev: any) => ({ ...prev, plans: (prev.plans || []).map((p: any, i: number) => i === index ? { ...p, capabilities: { ...(p.capabilities || {}), [key]: value } } : p) }));
+    const addPlan = () => setPremiumData((prev: any) => ({ ...prev, plans: [...(prev.plans || []), { plan_key: `custom_${Date.now()}`, name: 'Custom Plan', description: '', tier: 'promo', billing_type: 'promo', duration_days: 30, price: 0, badge_label: 'Promo', access_scope: 'basic', capabilities: { listing_limit: 10, active_trade_limit: 5, monthly_boost_limit: 0, free_boost_enabled: false, premium_badge_enabled: false, featured_listing_enabled: false, wider_visibility_enabled: false, analytics_enabled: false, priority_support_enabled: false, advanced_trade_tools_enabled: false }, is_active: true, sort_order: (prev.plans || []).length * 10 } ] }));
+    const duplicatePlan = (plan: any) => setPremiumData((prev: any) => ({ ...prev, plans: [...(prev.plans || []), { ...plan, id: undefined, plan_key: `${plan.plan_key}_copy_${Date.now()}`, name: `${plan.name} Copy`, sort_order: (prev.plans || []).length * 10 }] }));
+    const updateFeature = (index: number, key: string, value: any) => setPremiumData((prev: any) => ({ ...prev, features: (prev.features || []).map((f: any, i: number) => i === index ? { ...f, [key]: value } : f) }));
+    const updatePromo = (index: number, key: string, value: any) => setPremiumData((prev: any) => ({ ...prev, promotions: (prev.promotions || []).map((p: any, i: number) => i === index ? { ...p, [key]: value } : p) }));
+    const updatePromoCapability = (index: number, key: string, value: any) => setPremiumData((prev: any) => ({ ...prev, promotions: (prev.promotions || []).map((p: any, i: number) => i === index ? { ...p, capabilities: { ...(p.capabilities || {}), [key]: value } } : p) }));
+    const addPromo = () => setPremiumData((prev: any) => ({ ...prev, promotions: [{ title: 'New Premium Promo', plan_key: '', discounted_price: 49, start_at: '', end_at: '', capabilities: { monthly_boost_limit: 1, free_boost_enabled: true }, overrides_capabilities: false, is_active: true }, ...(prev.promotions || [])] }));
+
+    return (
+      <VStack spacing={6} pr={20} align="stretch" w="full">
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
+          <CardHeader>
+            <Flex justify="space-between" gap={3} wrap="wrap" align="center">
+              <HStack><Icon as={FiStar} color="purple.500" /><Heading size="sm" color={textColor}>Premium Management</Heading></HStack>
+              <HStack>
+                <Button size="sm" leftIcon={<FiRefreshCw />} variant="outline" onClick={fetchPremiumManagement} isLoading={premiumLoading}>Refresh</Button>
+                <Button size="sm" colorScheme="purple" onClick={savePremiumManagement} isLoading={premiumSaving}>Save Changes</Button>
+              </HStack>
+            </Flex>
+          </CardHeader>
+          <CardBody pt={0}>
+            <VStack align="stretch" spacing={6}>
+              <SimpleGrid columns={{ base: 1, md: 4 }} spacing={4}>
+                <Box><FormLabel fontSize="xs">Premium available</FormLabel><Switch colorScheme="purple" isChecked={(premiumData.settings?.premium_enabled ?? 'true') === 'true'} onChange={(e) => updateSetting('premium_enabled', e.target.checked ? 'true' : 'false')} /></Box>
+                <Box><FormLabel fontSize="xs">Monthly price</FormLabel><Input size="sm" type="number" value={premiumData.settings?.premium_monthly_price || ''} onChange={(e) => updateSetting('premium_monthly_price', e.target.value)} /></Box>
+                <Box><FormLabel fontSize="xs">Yearly price</FormLabel><Input size="sm" type="number" value={premiumData.settings?.premium_yearly_price || ''} onChange={(e) => updateSetting('premium_yearly_price', e.target.value)} /></Box>
+                <Box><FormLabel fontSize="xs">One-time promo price</FormLabel><Input size="sm" type="number" value={premiumData.settings?.premium_promo_price || ''} onChange={(e) => updateSetting('premium_promo_price', e.target.value)} /></Box>
+              </SimpleGrid>
+
+              <Divider /><Flex justify="space-between" align="center"><Heading size="sm">Premium Plans</Heading><Button size="sm" variant="outline" onClick={addPlan}>Create Plan</Button></Flex>
+              <SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4}>
+                {(premiumData.plans || []).map((plan: any, index: number) => (
+                  <Box key={plan.plan_key || index} p={4} border="1px solid" borderColor={borderColor} borderRadius="lg" bg={tableBg}>
+                    <Flex justify="space-between" mb={3} gap={2} align="center">
+                      <Badge colorScheme={plan.tier === 'pro' ? 'purple' : plan.tier === 'plus' ? 'blue' : plan.tier === 'free' ? 'gray' : 'green'}>{plan.badge_label || plan.tier}</Badge>
+                      <Button size="xs" variant="outline" onClick={() => duplicatePlan(plan)}>Duplicate</Button>
+                    </Flex>
+                    <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
+                      <Box><FormLabel fontSize="xs">Plan key</FormLabel><Input size="sm" value={plan.plan_key || ''} onChange={(e) => updatePlan(index, 'plan_key', e.target.value)} /></Box>
+                      <Box><FormLabel fontSize="xs">Plan name</FormLabel><Input size="sm" value={plan.name || ''} onChange={(e) => updatePlan(index, 'name', e.target.value)} /></Box>
+                      <Box><FormLabel fontSize="xs">Badge label</FormLabel><Input size="sm" value={plan.badge_label || ''} onChange={(e) => updatePlan(index, 'badge_label', e.target.value)} /></Box>
+                      <Box gridColumn={{ base: 'auto', md: 'span 3' }}><FormLabel fontSize="xs">Description</FormLabel><Input size="sm" value={plan.description || ''} onChange={(e) => updatePlan(index, 'description', e.target.value)} /></Box>
+                      <Box><FormLabel fontSize="xs">Price</FormLabel><Input size="sm" type="number" value={plan.price || 0} onChange={(e) => updatePlan(index, 'price', Number(e.target.value))} /></Box>
+                      <Box><FormLabel fontSize="xs">Duration days</FormLabel><Input size="sm" type="number" value={plan.duration_days || 30} onChange={(e) => updatePlan(index, 'duration_days', Number(e.target.value))} /></Box>
+                      <Box><FormLabel fontSize="xs">Tier</FormLabel><Select size="sm" value={plan.tier || 'plus'} onChange={(e) => updatePlan(index, 'tier', e.target.value)}><option value="free">Free</option><option value="plus">Plus</option><option value="pro">Pro</option><option value="promo">Promo</option></Select></Box>
+                      <Box><FormLabel fontSize="xs">Billing</FormLabel><Select size="sm" value={plan.billing_type || 'monthly'} onChange={(e) => updatePlan(index, 'billing_type', e.target.value)}><option value="free">Free</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option><option value="promo">Promo</option></Select></Box>
+                      <Box><FormLabel fontSize="xs">Access scope</FormLabel><Select size="sm" value={plan.access_scope || 'basic'} onChange={(e) => updatePlan(index, 'access_scope', e.target.value)}><option value="basic">Basic</option><option value="enhanced">Enhanced</option><option value="broad">Broad</option><option value="seasonal">Seasonal</option></Select></Box>
+                      <Box><FormLabel fontSize="xs">Active</FormLabel><Switch colorScheme="purple" isChecked={!!plan.is_active} onChange={(e) => updatePlan(index, 'is_active', e.target.checked)} /></Box>
+                    </SimpleGrid>
+                    <Divider my={4} />
+                    <Text fontWeight="800" fontSize="xs" color={mutedTextColor} mb={3}>Limits</Text>
+                    <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
+                      <Box><FormLabel fontSize="xs">Listing limit</FormLabel><Input size="sm" type="number" value={plan.capabilities?.listing_limit ?? 10} onChange={(e) => updateCapability(index, 'listing_limit', Number(e.target.value))} /></Box>
+                      <Box><FormLabel fontSize="xs">Active trade limit</FormLabel><Input size="sm" type="number" value={plan.capabilities?.active_trade_limit ?? 5} onChange={(e) => updateCapability(index, 'active_trade_limit', Number(e.target.value))} /></Box>
+                      <Box><FormLabel fontSize="xs">Monthly boost limit</FormLabel><Input size="sm" type="number" value={plan.capabilities?.monthly_boost_limit ?? 0} onChange={(e) => updateCapability(index, 'monthly_boost_limit', Number(e.target.value))} /></Box>
+                    </SimpleGrid>
+                    <Text fontWeight="800" fontSize="xs" color={mutedTextColor} mt={4} mb={3}>Capabilities</Text>
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={2}>
+                      {[
+                        ['free_boost_enabled', 'Free boosts enabled'],
+                        ['priority_listing_visibility', 'Priority listing visibility'],
+                        ['featured_listing_enabled', 'Featured placement'],
+                        ['premium_badge_enabled', 'Premium badge'],
+                        ['premium_profile_styling_enabled', 'Premium profile styling'],
+                        ['advanced_trade_tools_enabled', 'Advanced trade tools'],
+                        ['analytics_enabled', 'Analytics'],
+                        ['premium_filters_enabled', 'Premium-only filters'],
+                        ['priority_support_enabled', 'Priority support'],
+                        ['wider_visibility_enabled', 'Wider trading scope'],
+                      ].map(([key, label]) => <HStack key={key} justify="space-between" p={2} bg={cardBg} borderRadius="md"><Text fontSize="xs" fontWeight="700">{label}</Text><Switch size="sm" colorScheme="purple" isChecked={!!plan.capabilities?.[key]} onChange={(e) => updateCapability(index, key, e.target.checked)} /></HStack>)}
+                    </SimpleGrid>
+                  </Box>
+                ))}
+              </SimpleGrid>
+
+              <Divider /><Heading size="sm">Features</Heading>
+              <VStack align="stretch" spacing={3}>{(premiumData.features || []).map((feature: any, index: number) => <Flex key={feature.feature_key || index} gap={3} wrap="wrap" align="center" p={3} border="1px solid" borderColor={borderColor} borderRadius="lg"><Switch colorScheme="purple" isChecked={!!feature.enabled} onChange={(e) => updateFeature(index, 'enabled', e.target.checked)} /><Input size="sm" maxW="260px" value={feature.label || ''} onChange={(e) => updateFeature(index, 'label', e.target.value)} /><Input size="sm" flex={1} minW="260px" value={feature.description || ''} onChange={(e) => updateFeature(index, 'description', e.target.value)} /></Flex>)}</VStack>
+
+              <Divider /><Flex justify="space-between" align="center"><Box><Heading size="sm">Promotions</Heading><Text fontSize="xs" color={mutedTextColor}>Promos can discount a plan, add temporary perks, or fully override plan capabilities during active dates.</Text></Box><Button size="sm" variant="outline" onClick={addPromo}>Add Promo</Button></Flex>
+              <VStack align="stretch" spacing={3}>{(premiumData.promotions || []).map((promo: any, index: number) => (
+                <Box key={promo.id || index} p={4} border="1px solid" borderColor={borderColor} borderRadius="lg">
+                  <SimpleGrid columns={{ base: 1, lg: 6 }} spacing={3}>
+                    <Box><FormLabel fontSize="xs">Promo title</FormLabel><Input size="sm" value={promo.title || ''} onChange={(e) => updatePromo(index, 'title', e.target.value)} placeholder="Promo title" /></Box>
+                    <Box><FormLabel fontSize="xs">Applies to</FormLabel><Select size="sm" value={promo.plan_key || ''} onChange={(e) => updatePromo(index, 'plan_key', e.target.value)}><option value="">All plans</option>{(premiumData.plans || []).map((p: any) => <option key={p.plan_key} value={p.plan_key}>{p.name}</option>)}</Select></Box>
+                    <Box><FormLabel fontSize="xs">Promo price</FormLabel><Input size="sm" type="number" value={promo.discounted_price || 0} onChange={(e) => updatePromo(index, 'discounted_price', Number(e.target.value))} /></Box>
+                    <Box><FormLabel fontSize="xs">Starts</FormLabel><Input size="sm" type="datetime-local" value={promo.start_at || ''} onChange={(e) => updatePromo(index, 'start_at', e.target.value)} /></Box>
+                    <Box><FormLabel fontSize="xs">Ends</FormLabel><Input size="sm" type="datetime-local" value={promo.end_at || ''} onChange={(e) => updatePromo(index, 'end_at', e.target.value)} /></Box>
+                    <Box><FormLabel fontSize="xs">Active</FormLabel><Switch colorScheme="purple" isChecked={!!promo.is_active} onChange={(e) => updatePromo(index, 'is_active', e.target.checked)} /></Box>
+                  </SimpleGrid>
+                  <Divider my={3} />
+                  <SimpleGrid columns={{ base: 1, md: 4 }} spacing={3} alignItems="end">
+                    <Box><FormLabel fontSize="xs">Override base plan</FormLabel><Switch colorScheme="purple" isChecked={!!promo.overrides_capabilities} onChange={(e) => updatePromo(index, 'overrides_capabilities', e.target.checked)} /></Box>
+                    <Box><FormLabel fontSize="xs">Listing limit</FormLabel><Input size="sm" type="number" value={promo.capabilities?.listing_limit ?? ''} onChange={(e) => updatePromoCapability(index, 'listing_limit', e.target.value === '' ? '' : Number(e.target.value))} placeholder="No change" /></Box>
+                    <Box><FormLabel fontSize="xs">Active trades</FormLabel><Input size="sm" type="number" value={promo.capabilities?.active_trade_limit ?? ''} onChange={(e) => updatePromoCapability(index, 'active_trade_limit', e.target.value === '' ? '' : Number(e.target.value))} placeholder="No change" /></Box>
+                    <Box><FormLabel fontSize="xs">Monthly boosts</FormLabel><Input size="sm" type="number" value={promo.capabilities?.monthly_boost_limit ?? ''} onChange={(e) => updatePromoCapability(index, 'monthly_boost_limit', e.target.value === '' ? '' : Number(e.target.value))} placeholder="No change" /></Box>
+                  </SimpleGrid>
+                  <SimpleGrid columns={{ base: 1, md: 3 }} spacing={2} mt={3}>
+                    {[['free_boost_enabled', 'Free boosts'], ['featured_listing_enabled', 'Featured placement'], ['wider_visibility_enabled', 'Wider visibility']].map(([key, label]) => <HStack key={key} justify="space-between" p={2} bg={cardBg} borderRadius="md"><Text fontSize="xs" fontWeight="700">{label}</Text><Switch size="sm" colorScheme="purple" isChecked={!!promo.capabilities?.[key]} onChange={(e) => updatePromoCapability(index, key, e.target.checked)} /></HStack>)}
+                  </SimpleGrid>
+                </Box>
+              ))}</VStack>
+
+              <Divider /><Heading size="sm">Premium Users</Heading>
+              <Flex gap={3} wrap="wrap" align="flex-end"><Box><FormLabel fontSize="xs">User ID</FormLabel><Input size="sm" value={premiumUserTargetId} onChange={(e) => setPremiumUserTargetId(e.target.value)} placeholder="User ID" /></Box><Box><FormLabel fontSize="xs">Tier</FormLabel><Select size="sm" value={premiumUserTier} onChange={(e) => setPremiumUserTier(e.target.value)}><option value="free">Free</option><option value="plus">Plus</option><option value="pro">Pro</option><option value="promo">Promo</option></Select></Box><Box><FormLabel fontSize="xs">Days</FormLabel><Input size="sm" type="number" value={premiumUserDays} onChange={(e) => setPremiumUserDays(Number(e.target.value))} /></Box><Button size="sm" colorScheme="purple" onClick={() => updatePremiumUser(premiumUserTargetId, 'activate')} isLoading={premiumSaving}>Activate</Button><Button size="sm" variant="outline" onClick={() => updatePremiumUser(premiumUserTargetId, 'extend')} isLoading={premiumSaving}>Extend</Button><Button size="sm" colorScheme="red" variant="outline" onClick={() => updatePremiumUser(premiumUserTargetId, 'cancel')} isLoading={premiumSaving}>Cancel</Button></Flex>
+              <Box overflowX="auto"><ChakraTable size="sm" minW="760px"><Thead bg={headerBg}><Tr><Th>User</Th><Th>Email</Th><Th>Plan</Th><Th>Status</Th><Th>Started</Th><Th>Expires</Th><Th>Actions</Th></Tr></Thead><Tbody>{(premiumData.users || []).map((u: any) => <Tr key={u.id}><Td>{u.name} <Text as="span" color={mutedTextColor}>#{u.id}</Text></Td><Td>{u.email}</Td><Td>{u.plan}</Td><Td>{u.active ? 'active' : 'expired/cancelled'}</Td><Td>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}</Td><Td>{u.premium_expires_at ? new Date(u.premium_expires_at).toLocaleDateString() : '-'}</Td><Td><Button size="xs" colorScheme="red" variant="outline" onClick={() => updatePremiumUser(u.id, 'cancel')}>Cancel</Button></Td></Tr>)}</Tbody></ChakraTable></Box>
+            </VStack>
+          </CardBody>
+        </Card>
+      </VStack>
+    );
+  };
   const SystemSection = () => (
     <VStack spacing={8} pr={20} align="stretch" w="full">
       <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
@@ -3640,6 +3551,7 @@ const AdminDashboard: React.FC = () => {
     overview: 'Overview',
     moderation: 'Moderation Queue',
     management: 'Management',
+    premium: 'Premium Management',
     system: 'System',
   };
 
@@ -3721,6 +3633,7 @@ const AdminDashboard: React.FC = () => {
             {activeSection === 'overview' && <OverviewSection />}
             {activeSection === 'moderation' && <ModerationSection />}
             {activeSection === 'management' && <ManagementSection />}
+            {activeSection === 'premium' && <PremiumSection />}
             {activeSection === 'system' && <SystemSection />}
           </Box>
         </Box>
@@ -3835,3 +3748,4 @@ const AdminDashboard: React.FC = () => {
 };
 
 export default AdminDashboard;
+

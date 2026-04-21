@@ -12,8 +12,8 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
-	"github.com/xashathebest/clovia/utils"
 	"github.com/xashathebest/clovia/services"
+	"github.com/xashathebest/clovia/utils"
 )
 
 type ChatHandler struct{}
@@ -47,7 +47,6 @@ func (h *ChatHandler) Stream(c *fiber.Ctx) error {
 				"error":   "Missing authentication token",
 			})
 		}
-
 
 		// Validate the JWT token directly to avoid calling middleware handler inline
 		claims, err := utils.ValidateJWT(token)
@@ -133,8 +132,12 @@ func publishToUser(userID int, evt sseEvent) {
 }
 
 // Helper to publish notification event
-func publishNotification(userID int, message string) {
-	publishToUser(userID, sseEvent{Type: "notification", Data: fiber.Map{"message": message}})
+func publishNotification(userID int, message string, notificationType ...string) {
+	data := fiber.Map{"message": message}
+	if len(notificationType) > 0 && notificationType[0] != "" {
+		data["notification_type"] = notificationType[0]
+	}
+	publishToUser(userID, sseEvent{Type: "notification", Data: data})
 }
 
 // EnsureConversation creates or returns an existing conversation

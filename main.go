@@ -491,6 +491,7 @@ func main() {
 	organizations.Post("/:slug/trade-posts", middleware.AuthMiddleware(), organizationHandler.PostProductForTrade)
 	organizations.Get("/:slug/trade-feed", middleware.AuthMiddleware(), organizationHandler.GetTradeFeed)
 	organizations.Get("/:slug/debug-trade-feed", organizationHandler.DebugGetTradeFeed) // Debug endpoint - no auth
+	organizations.Post("/:slug/transfer-ownership", middleware.AuthMiddleware(), organizationHandler.TransferOwnership)
 	organizations.Delete("/:slug", middleware.AuthMiddleware(), organizationHandler.DeleteOrganization)
 
 	// Generic :slug route LAST
@@ -641,6 +642,7 @@ func main() {
 	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
 	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
 	payments.Get("/subscription", middleware.AuthMiddleware(), paymentHandler.GetUserSubscription)
+	payments.Get("/premium-config", middleware.AuthMiddleware(), paymentHandler.GetPremiumConfig)
 	payments.All("/subscription/sync", middleware.AuthMiddleware(), paymentHandler.SyncUserPremiumPayment)
 	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
 	payments.Post("/webhook/xendit", paymentHandler.XenditWebhook) // Public webhook endpoint
@@ -682,6 +684,11 @@ func main() {
 	admin.Get("/trades", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminTrades)
 	// Admin category aggregates
 	admin.Get("/categories", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminCategories)
+	admin.Get("/data-explorer", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetDataExplorer)
+	admin.Get("/data-explorer/export", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.ExportDataExplorer)
+	admin.Get("/premium", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetPremiumManagement)
+	admin.Put("/premium", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.UpdatePremiumManagement)
+	admin.Post("/premium/users/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.UpdatePremiumUser)
 	// Admin reports management
 	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
 	admin.Get("/reports/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReportByID)

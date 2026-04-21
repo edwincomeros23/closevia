@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import React, { useState, useEffect, useMemo } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Box,
   VStack,
@@ -8,6 +8,7 @@ import {
   Heading,
   Text,
   Button,
+  IconButton,
   Card,
   CardBody,
   Badge,
@@ -32,6 +33,8 @@ import {
   Th,
   Td,
   TableContainer,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react'
 import {
   FaCrown, FaLink, FaArrowRight, FaCheck, FaRocket,
@@ -39,7 +42,8 @@ import {
   FaInfinity, FaChevronDown, FaChevronUp,
   FaChartLine, FaTruck, FaHandshake, FaPercentage,
   FaEye, FaStar, FaStore, FaHeadset, FaBoxes,
-  FaRedoAlt, FaSearch, FaUserShield, FaImage
+  FaRedoAlt, FaSearch, FaUserShield, FaImage,
+  FaArrowLeft,
 } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
@@ -54,6 +58,14 @@ const Premium: React.FC = () => {
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1)
+    } else {
+      navigate('/home')
+    }
+  }
 
   const [loops, setLoops] = useState<TradeLoop[]>([])
   const [loading, setLoading] = useState(false)
@@ -65,6 +77,8 @@ const Premium: React.FC = () => {
   const [productsLoading, setProductsLoading] = useState(false)
   const [boostingProduct, setBoostingProduct] = useState<number | null>(null)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true)
+  const [premiumConfig, setPremiumConfig] = useState<any>({ enabled: true, plans: [], features: [] })
 
   const pageBg = useColorModeValue('#FFFDF1', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -73,20 +87,34 @@ const Premium: React.FC = () => {
   const subtleBg = useColorModeValue('gray.50', 'gray.900')
   const mutedText = useColorModeValue('gray.500', 'gray.400')
 
-  // Use actual premium status from user context
-  const isPremiumUser = user?.is_premium ?? false
-  const currentTier = (user?.premium_tier || 'free') as 'free' | 'plus' | 'pro'
   const isWmsuUser = (user?.email || '').toLowerCase().endsWith('@wmsu.edu.ph')
 
+  // Derive current tier: prefer live subscriptionData over potentially stale user cache
+  const currentTier = useMemo(() => {
+    const subTier = subscriptionData?.tier as 'free' | 'plus' | 'pro' | undefined
+    const userTier = user?.premium_tier as 'free' | 'plus' | 'pro' | undefined
+    // If subscription says paid but user cache says free, trust the subscription
+    if (subTier && subTier !== 'free') return subTier
+    return userTier || 'free'
+  }, [subscriptionData, user?.premium_tier])
+
+  const isPremiumUser = currentTier !== 'free'
+
   useEffect(() => {
+    // Always refresh user on page mount to bust stale localStorage cache
+    refreshUser()
+    fetchPremiumConfig()
     fetchLoops()
     fetchSubscriptionData()
-    if (isPremiumUser) {
-      fetchUserProducts()
-    }
     const interval = setInterval(fetchLoops, 30000)
     return () => clearInterval(interval)
-  }, [refreshUser, isPremiumUser])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Fetch products once we know the user is premium
+  useEffect(() => {
+    if (isPremiumUser) fetchUserProducts()
+  }, [isPremiumUser])
 
   useEffect(() => {
     const xenditExternalID = searchParams.get('xendit_external_id')
@@ -178,13 +206,35 @@ const Premium: React.FC = () => {
 
   const fetchSubscriptionData = async () => {
     try {
+      setSubscriptionLoading(true)
       const response = await api.get('/api/payments/subscription')
       if (response.data?.data) {
         setSubscriptionData(response.data.data)
       }
     } catch (error: any) {
       // Silently fail - subscription data is optional
+    } finally {
+      setSubscriptionLoading(false)
     }
+  }
+
+  const fetchPremiumConfig = async () => {
+    try {
+      const response = await api.get('/api/payments/premium-config')
+      if (response.data?.data) setPremiumConfig(response.data.data)
+    } catch (_) {
+      // Keep default pricing if the config endpoint is temporarily unavailable.
+    }
+  }
+
+  const getPlan = (tier: 'plus' | 'pro', billingType: 'monthly' | 'yearly') => {
+    return (premiumConfig?.plans || []).find((p: any) => p.tier === tier && p.billing_type === billingType)
+  }
+
+  const formatPlanPrice = (tier: 'plus' | 'pro', billingType: 'monthly' | 'yearly', fallback: number) => {
+    const plan = getPlan(tier, billingType)
+    const price = plan?.promo_price || plan?.price || fallback
+    return `₱${Number(price).toLocaleString('en-PH')}`
   }
 
   const fetchUserProducts = async () => {
@@ -210,7 +260,7 @@ const Premium: React.FC = () => {
       const product = userProducts.find(p => p.id === productId)
       const productName = product?.title || 'Product'
       
-      const response = await api.post(`/api/products/${productId}/boost`)
+      const response = await api.post(`/api/products/boost/${productId}`)
       
       if (response.data?.success) {
         toast({
@@ -241,6 +291,10 @@ const Premium: React.FC = () => {
   }
 
   const handleUpgrade = async (tier: 'plus' | 'pro') => {
+    if (!premiumConfig?.enabled) {
+      toast({ id: 'premium-disabled', title: 'Premium unavailable', description: 'Premium subscriptions are temporarily disabled.', status: 'info', duration: 4000, isClosable: true })
+      return
+    }
     try {
       setUpgrading(tier)
       const plan = isYearly ? 'yearly' : 'monthly'
@@ -334,6 +388,9 @@ const Premium: React.FC = () => {
     insights: [
       { text: 'See total profile views only', icon: FaEye },
     ],
+    profile: [
+      { text: 'Create 1 organization', icon: FaStore },
+    ],
   }
 
   const plusFeatures = {
@@ -342,8 +399,7 @@ const Premium: React.FC = () => {
       { text: '3 boosted listings — pinned higher in the feed', icon: FaRocket, bold: true },
     ],
     trading: [
-      { text: '10% off all delivery fees', icon: FaPercentage, bold: true },
-      { text: 'Priority matches — good trades reach you first', icon: FaBolt, bold: true },
+      { text: '10% delivery discount', icon: FaPercentage, bold: true },
       { text: 'Trade dispute reviewed first', icon: FaShieldAlt, bold: true },
     ],
     insights: [
@@ -351,6 +407,7 @@ const Premium: React.FC = () => {
       { text: 'AI price confidence — see what data backs the estimate', icon: FaStar, bold: true },
     ],
     profile: [
+      { text: 'Create up to 3 organizations', icon: FaStore, bold: true },
       { text: 'Plus badge on profile and listings', icon: FaUserShield, bold: true },
     ],
   }
@@ -362,7 +419,7 @@ const Premium: React.FC = () => {
     ],
     trading: [
       { text: 'Express delivery access', icon: FaTruck, bold: true },
-      { text: '20% off all delivery fees', icon: FaPercentage, bold: true },
+      { text: '20% delivery discount', icon: FaPercentage, bold: true },
       { text: 'Trade dispute reviewed first', icon: FaShieldAlt, bold: true },
     ],
     insights: [
@@ -370,6 +427,7 @@ const Premium: React.FC = () => {
       { text: 'AI price confidence + market data', icon: FaStar, bold: true },
     ],
     profile: [
+      { text: 'Create up to 3 organizations', icon: FaStore, bold: true },
       { text: 'Verified Pro badge on all listings', icon: FaUserShield, bold: true },
       { text: 'Priority support', icon: FaHeadset, bold: true },
     ],
@@ -380,7 +438,7 @@ const Premium: React.FC = () => {
     { feature: 'Boosted Listings', free: '—', plus: '3', pro: '10 always pinned' },
     { feature: 'Express Delivery', free: '—', plus: '✓', pro: '✓' },
     { feature: 'Delivery Fee Discount', free: '—', plus: '10%', pro: '20%' },
-    { feature: 'Priority Matches', free: '—', plus: '✓', pro: 'Top of queue' },
+    { feature: 'Organizations', free: '1', plus: 'Up to 3', pro: 'Up to 3' },
     { feature: 'Trade Dispute Priority', free: '—', plus: '✓', pro: '✓' },
     { feature: 'AI Price Confidence', free: 'Range only', plus: 'Data-backed', pro: '+ market data' },
     { feature: 'Badge', free: '—', plus: 'Plus badge', pro: 'Verified Pro' },
@@ -657,34 +715,19 @@ const Premium: React.FC = () => {
                       </Box>
                       
                       {/* Boost Button */}
-                      {currentTier !== 'free' && (
-                        <Button
-                          size="sm"
-                          colorScheme={product.boosted_at ? 'orange' : 'brand'}
-                          variant={product.boosted_at ? 'solid' : 'outline'}
-                          w="full"
-                          leftIcon={<FaRocket />}
-                          isLoading={boostingProduct === product.id}
-                          isDisabled={product.status !== 'available' || boostingProduct === product.id}
-                          onClick={() => handleBoostProduct(product.id)}
-                          title={product.boosted_at ? 'Product is currently boosted' : 'Boost for 3 hours to top of feed'}
-                        >
-                          {product.boosted_at ? '⭐ Boosted Now' : '🚀 Boost for 3h'}
-                        </Button>
-                      )}
-                      {currentTier === 'free' && (
-                        <Button
-                          size="sm"
-                          colorScheme="gray"
-                          variant="outline"
-                          w="full"
-                          leftIcon={<FaRocket />}
-                          isDisabled
-                          opacity={0.5}
-                        >
-                          Upgrade to Boost
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        colorScheme={product.boosted_at ? 'orange' : 'brand'}
+                        variant={product.boosted_at ? 'solid' : 'outline'}
+                        w="full"
+                        leftIcon={<FaRocket />}
+                        isLoading={boostingProduct === product.id}
+                        isDisabled={product.status !== 'available' || boostingProduct === product.id}
+                        onClick={() => handleBoostProduct(product.id)}
+                        title={product.boosted_at ? 'Product is currently boosted' : 'Boost for 3 hours to top of feed'}
+                      >
+                        {product.boosted_at ? '⭐ Boosted Now' : '🚀 Boost for 3h'}
+                      </Button>
                     </VStack>
                   </CardBody>
                 </Card>
@@ -701,6 +744,32 @@ const Premium: React.FC = () => {
   const renderLockedContent = () => (
     <VStack spacing={10} align="stretch">
       {/* 3-Tier Pricing Cards */}
+      {!premiumConfig?.enabled && (
+        <Alert status="info" borderRadius="xl">
+          <AlertIcon />
+          Premium subscriptions are temporarily unavailable. Existing premium access remains unchanged.
+        </Alert>
+      )}
+      {(premiumConfig?.features || []).filter((feature: any) => feature.enabled).length > 0 && (
+        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} borderRadius="2xl">
+          <CardBody>
+            <VStack align="stretch" spacing={3}>
+              <Heading size="sm">Premium benefits included</Heading>
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={3}>
+                {(premiumConfig.features || []).filter((feature: any) => feature.enabled).map((feature: any) => (
+                  <HStack key={feature.feature_key} align="start" spacing={2}>
+                    <Icon as={FaCheckCircle} color="green.400" mt={1} />
+                    <Box>
+                      <Text fontWeight="700" fontSize="sm">{feature.label}</Text>
+                      {feature.description && <Text fontSize="xs" color={mutedText}>{feature.description}</Text>}
+                    </Box>
+                  </HStack>
+                ))}
+              </SimpleGrid>
+            </VStack>
+          </CardBody>
+        </Card>
+      )}
       <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} alignItems="stretch">
         {/* ── Free Tier ── */}
         <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} borderRadius="3xl" overflow="hidden" opacity={0.8} h="100%" shadow="sm" transition="all 0.3s" _hover={{ opacity: 1, shadow: 'md' }}>
@@ -760,7 +829,7 @@ const Premium: React.FC = () => {
               <VStack align="start" spacing={0}>
                 <HStack align="baseline" spacing={1}>
                   <Text fontSize="5xl" fontWeight="900" color="blue.600" letterSpacing="tighter">
-                    {isYearly ? '₱699' : '₱79'}
+                    {isYearly ? formatPlanPrice('plus', 'yearly', 699) : formatPlanPrice('plus', 'monthly', 79)}
                   </Text>
                   <Text color={mutedText} fontWeight="600">/ {isYearly ? 'year' : 'month'}</Text>
                 </HStack>
@@ -771,7 +840,7 @@ const Premium: React.FC = () => {
                   </HStack>
                 ) : (
                   <Text fontSize="sm" color={mutedText} fontWeight="600" pt={1}>
-                    or ₱699/year{' '}
+                    or {formatPlanPrice('plus', 'yearly', 699)}/year{' '}
                     <Text as="span" color="green.500" fontWeight="800">save 26%</Text>
                   </Text>
                 )}
@@ -786,7 +855,7 @@ const Premium: React.FC = () => {
                 <Button
                   colorScheme="blue" size="lg" leftIcon={<FaStar />}
                   isLoading={upgrading === 'plus'} onClick={() => handleUpgrade('plus')}
-                  isDisabled={currentTier !== 'free'}
+                  isDisabled={currentTier !== 'free' || !premiumConfig?.enabled || !getPlan('plus', isYearly ? 'yearly' : 'monthly')}
                   w="full"
                   borderRadius="2xl"
                   fontWeight="800"
@@ -828,7 +897,7 @@ const Premium: React.FC = () => {
               <VStack align="start" spacing={0}>
                 <HStack align="baseline" spacing={1}>
                   <Text fontSize="5xl" fontWeight="900" color="purple.600" letterSpacing="tighter">
-                    {isYearly ? '₱1,099' : '₱129'}
+                    {isYearly ? formatPlanPrice('pro', 'yearly', 1099) : formatPlanPrice('pro', 'monthly', 129)}
                   </Text>
                   <Text color={mutedText} fontWeight="600">/ {isYearly ? 'year' : 'month'}</Text>
                 </HStack>
@@ -839,7 +908,7 @@ const Premium: React.FC = () => {
                   </HStack>
                 ) : (
                   <Text fontSize="sm" color={mutedText} fontWeight="600" pt={1}>
-                    or ₱1,099/year{' '}
+                    or {formatPlanPrice('pro', 'yearly', 1099)}/year{' '}
                     <Text as="span" color="green.500" fontWeight="800">save 24%</Text>
                   </Text>
                 )}
@@ -854,7 +923,7 @@ const Premium: React.FC = () => {
                 <Button
                   colorScheme="purple" size="lg" leftIcon={<FaCrown />}
                   isLoading={upgrading === 'pro'} onClick={() => handleUpgrade('pro')}
-                  isDisabled={currentTier === 'pro'}
+                  isDisabled={currentTier === 'pro' || !premiumConfig?.enabled || !getPlan('pro', isYearly ? 'yearly' : 'monthly')}
                   w="full"
                   borderRadius="2xl"
                   fontWeight="800"
@@ -958,6 +1027,15 @@ const Premium: React.FC = () => {
   return (
     <Box minH="100vh" bg={pageBg}>
       <Container maxW="container.xl" py={12}>
+        <IconButton
+          aria-label="Go back"
+          icon={<Icon as={FaArrowLeft} />}
+          onClick={handleBack}
+          variant="ghost"
+          size="lg"
+          mb={2}
+          alignSelf="flex-start"
+        />
         <VStack spacing={12} align="stretch">
           {currentTier === 'free' && (
             <VStack spacing={4} textAlign="center">
@@ -987,8 +1065,14 @@ const Premium: React.FC = () => {
             </VStack>
           )}
 
-          {isPremiumUser ? renderPremiumActive() : renderLockedContent()}
-          {isPremiumUser && renderLockedContent()}
+          {subscriptionLoading ? (
+            <Center py={20}>
+              <VStack spacing={4}>
+                <Spinner size="xl" color="purple.500" thickness="3px" />
+                <Text color={mutedText} fontSize="sm">Loading your plan...</Text>
+              </VStack>
+            </Center>
+          ) : isPremiumUser ? renderPremiumActive() : renderLockedContent()}
         </VStack>
       </Container>
 
@@ -1000,3 +1084,4 @@ const Premium: React.FC = () => {
 }
 
 export default Premium
+

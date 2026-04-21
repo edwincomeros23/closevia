@@ -335,10 +335,12 @@ const Offers: React.FC = () => {
   // statuses that should be treated as "history"
   const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed', 'awaiting_other_party']
   const archiveStatuses = ['expired']
+  const ongoingStatuses: Trade['status'][] = ['accepted', 'active', 'ongoing', 'awaiting_confirmation', 'multiway_active']
+  const isOngoingTrade = (trade: Trade) => ongoingStatuses.includes(trade.status)
 
   // visible lists for the two main tabs (exclude history and active/accepted items)
-  const offersReceivedVisible = incomingSorted.filter(t => !historyStatuses.includes(t.status) && !archiveStatuses.includes(t.status) && t.status !== 'accepted' && t.status !== 'active' && t.status !== 'pending_multiway')
-  const offersSentVisible = outgoingSorted.filter(t => !historyStatuses.includes(t.status) && !archiveStatuses.includes(t.status) && t.status !== 'accepted' && t.status !== 'active')
+  const offersReceivedVisible = incomingSorted.filter(t => !historyStatuses.includes(t.status) && !archiveStatuses.includes(t.status) && !isOngoingTrade(t) && t.status !== 'pending_multiway')
+  const offersSentVisible = outgoingSorted.filter(t => !historyStatuses.includes(t.status) && !archiveStatuses.includes(t.status) && !isOngoingTrade(t))
 
   // Priority ranking: countered first, then pending, then others
   const statusRank = (s?: string) => {
@@ -387,6 +389,22 @@ const Offers: React.FC = () => {
     ...incomingSorted.filter(t => archiveStatuses.includes(t.status)).map(t => ({ ...t, source: 'Offers Received' as const })),
     ...outgoingSorted.filter(t => archiveStatuses.includes(t.status)).map(t => ({ ...t, source: 'Offers Sent' as const })),
   ]
+  const ongoingItems = incomingSorted.concat(outgoingSorted).filter(isOngoingTrade)
+
+  const needsCurrentUserAcceptance = (trade: Trade) => {
+    if (!currentUserId) return false
+    return (
+      trade.status === 'accepted_by_one' &&
+      ((trade.buyer_id === currentUserId && !trade.buyer_accepted) ||
+        (trade.seller_id === currentUserId && !trade.seller_accepted))
+    )
+  }
+
+  const canActOnOffer = (trade: Trade) => (
+    trade.status === 'pending' ||
+    trade.status === 'pending_multiway' ||
+    needsCurrentUserAcceptance(trade)
+  )
 
   // Resolve image for an item coming from /api/trades (robust to various shapes)
   const resolveItemImage = (it: any): string | undefined => {
@@ -794,7 +812,7 @@ const Offers: React.FC = () => {
                     onClick={onAction}
                     fontSize="11px"
                     h="28px"
-                    isDisabled={trade.status !== 'pending'}
+                    isDisabled={type === 'progress' ? false : !canActOnOffer(trade)}
                   >
                     {type === 'progress' ? 'Done' : 'Accept'}
                   </Button>
@@ -819,7 +837,7 @@ const Offers: React.FC = () => {
                     variant="outline"
                     fontSize="11px"
                     onClick={onSecondaryAction}
-                    isDisabled={trade.status !== 'pending'}
+                    isDisabled={!canActOnOffer(trade)}
                     h="28px"
                   >
                     Decline
@@ -963,7 +981,7 @@ const Offers: React.FC = () => {
             >
               In Progress
               <Badge ml={2} colorScheme="orange" variant="subtle" fontSize="xs">
-                {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').length}
+                {ongoingItems.length}
               </Badge>
             </Tab>
             <Tab 
@@ -1166,7 +1184,7 @@ const Offers: React.FC = () => {
                                 variant="solid"
                                 flex={1}
                                 onClick={() => updateTrade(t.id, { action: 'accept' })} 
-                                isDisabled={t.status !== 'pending' || isProcessing}
+                                isDisabled={!canActOnOffer(t) || isProcessing}
                                 isLoading={isProcessing}
                                 fontSize="10px"
                                 h="24px"
@@ -1179,7 +1197,7 @@ const Offers: React.FC = () => {
                                 variant="outline" 
                                 flex={1}
                                 onClick={() => handleDeclineTradeClick(t)} 
-                                isDisabled={t.status !== 'pending'}
+                                isDisabled={!canActOnOffer(t)}
                                 fontSize="10px"
                                 h="24px"
                               >
@@ -1286,7 +1304,7 @@ const Offers: React.FC = () => {
                               variant="solid"
                               flex={1}
                               onClick={() => updateTrade(t.id, { action: 'accept' })} 
-                              isDisabled={t.status !== 'pending' || isProcessing}
+                              isDisabled={!canActOnOffer(t) || isProcessing}
                               isLoading={isProcessing}
                               fontSize="10px"
                               h="24px"
@@ -1299,7 +1317,7 @@ const Offers: React.FC = () => {
                               variant="outline" 
                               flex={1}
                               onClick={() => handleDeclineTradeClick(t)} 
-                              isDisabled={t.status !== 'pending'}
+                              isDisabled={!canActOnOffer(t)}
                               fontSize="10px"
                               h="24px"
                             >
@@ -1438,11 +1456,11 @@ const Offers: React.FC = () => {
             )}
           </TabPanel>
           <TabPanel p={0}>
-            {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').length === 0 ? (
+            {ongoingItems.length === 0 ? (
               <Text color="gray.500" textAlign="center" py={8}>No trades in progress.</Text>
             ) : viewMode === 'grid' ? (
               <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={3}>
-                {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').map((t) => (
+                {ongoingItems.map((t) => (
                   <OfferGridCard
                     key={t.id}
                     trade={t}
@@ -1454,7 +1472,7 @@ const Offers: React.FC = () => {
               </SimpleGrid>
             ) : (
               <VStack spacing={3} align="stretch">
-                {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').map((t) => {
+                {ongoingItems.map((t) => {
                   const pickupInfo = getPickupScheduleInfo(t)
                   return (
                   <ScaleFade in={true} key={t.id}>
@@ -1645,8 +1663,8 @@ const Offers: React.FC = () => {
           trade={selectedTrade}
           isOpen={detailsOpen}
           onClose={() => setDetailsOpen(false)}
-          onAccepted={fetchAll}
-          onDeclined={fetchAll}
+          onAccepted={() => { fetchAll() }}
+          onDeclined={() => { fetchAll() }}
         />
 
         <TradeCompletionModal

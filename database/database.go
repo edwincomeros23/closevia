@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -251,6 +252,18 @@ func CreateTables() error {
 		DB.Exec("ALTER TABLE users ADD COLUMN name_changed_at TIMESTAMP NULL")
 	}
 
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'display_name_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing display_name_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN display_name_changed_at TIMESTAMP NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'email_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing email_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN email_changed_at TIMESTAMP NULL")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_changed_at'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing phone_changed_at column to users table...")
@@ -299,11 +312,85 @@ func CreateTables() error {
 		}
 	}
 
+	// Multi-way review columns
+	loopParticipantCols := map[string]string{
+		"rating":      "INT DEFAULT 0",
+		"feedback":    "TEXT NULL",
+		"proof_url":   "VARCHAR(512) NULL",
+		"is_reviewed": "BOOLEAN DEFAULT FALSE",
+		"reviewed_at": "TIMESTAMP NULL",
+	}
+	for col, def := range loopParticipantCols {
+		_, err := DB.Exec(fmt.Sprintf("ALTER TABLE trade_like_loop_participants ADD COLUMN %s %s", col, def))
+		if err != nil {
+			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number == 1060 {
+				continue
+			}
+		} else {
+			log.Printf("Migration: Added column %s to trade_like_loop_participants table", col)
+		}
+	}
+	_, _ = DB.Exec(`ALTER TABLE trade_like_loops MODIFY COLUMN status ENUM('pending','partially_accepted','accepted','confirmed','ongoing','completed','history','rejected','cancelled','cancelled_due_to_conflict','broken','expired') DEFAULT 'pending'`)
+	_, _ = DB.Exec(`ALTER TABLE trade_like_loop_participants MODIFY COLUMN status ENUM('pending','confirmed','accepted','declined','rejected','cancelled','cancelled_due_to_conflict','expired') DEFAULT 'pending'`)
+
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS app_settings (
 			setting_key VARCHAR(100) PRIMARY KEY,
 			setting_value VARCHAR(255) NOT NULL,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS premium_plans (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			plan_key VARCHAR(50) NOT NULL UNIQUE,
+			name VARCHAR(120) NOT NULL,
+			description TEXT NULL,
+			tier VARCHAR(20) NOT NULL DEFAULT 'plus',
+			billing_type VARCHAR(20) NOT NULL DEFAULT 'monthly',
+			duration_days INT NOT NULL DEFAULT 30,
+			price DECIMAL(10,2) NOT NULL DEFAULT 0,
+			badge_label VARCHAR(80) NULL,
+			access_scope VARCHAR(40) NOT NULL DEFAULT 'basic',
+			capabilities JSON NULL,
+			is_active BOOLEAN NOT NULL DEFAULT TRUE,
+			sort_order INT NOT NULL DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS premium_features (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			feature_key VARCHAR(80) NOT NULL UNIQUE,
+			label VARCHAR(255) NOT NULL,
+			description TEXT NULL,
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			sort_order INT NOT NULL DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS premium_promotions (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			title VARCHAR(160) NOT NULL,
+			plan_key VARCHAR(50) NULL,
+			discounted_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+			capabilities JSON NULL,
+			overrides_capabilities BOOLEAN NOT NULL DEFAULT FALSE,
+			start_at TIMESTAMP NULL,
+			end_at TIMESTAMP NULL,
+			is_active BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_premium_promos_dates (start_at, end_at),
+			INDEX idx_premium_promos_plan (plan_key)
+		)`,
+		`CREATE TABLE IF NOT EXISTS premium_feature_usage (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			feature_key VARCHAR(80) NOT NULL,
+			usage_month CHAR(7) NOT NULL,
+			usage_count INT NOT NULL DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_premium_feature_usage (user_id, feature_key, usage_month),
+			INDEX idx_premium_usage_user_feature (user_id, feature_key),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS users (
 			id INT AUTO_INCREMENT PRIMARY KEY,
@@ -316,7 +403,9 @@ func CreateTables() error {
 			phone_otp_expires TIMESTAMP NULL,
 			password_hash VARCHAR(255) NOT NULL,
 			password_changed_at TIMESTAMP NULL,
+			display_name_changed_at TIMESTAMP NULL,
 			name_changed_at TIMESTAMP NULL,
+			email_changed_at TIMESTAMP NULL,
 			phone_changed_at TIMESTAMP NULL,
 			role VARCHAR(10) NOT NULL DEFAULT 'user',
 			is_organization TINYINT(1) NOT NULL DEFAULT 0,
@@ -338,9 +427,12 @@ func CreateTables() error {
 			language_preference VARCHAR(10) NULL DEFAULT 'en',
 			email_notifications_enabled BOOLEAN DEFAULT TRUE,
 			push_notifications_enabled BOOLEAN DEFAULT TRUE,
+			notification_preferences JSON NULL,
 			verification_status VARCHAR(50) DEFAULT 'not_verified',
 			school_name VARCHAR(255) NULL,
 			school_email VARCHAR(255) NULL,
+			academic_program VARCHAR(255) NULL,
+			year_level VARCHAR(80) NULL,
 			school_email_verified_at TIMESTAMP NULL,
 			school_id_image_path VARCHAR(512) NULL,
 			verification_rejection_reason TEXT NULL,
@@ -365,7 +457,7 @@ func CreateTables() error {
 			image_url VARCHAR(500),
 			seller_id INT NOT NULL,
 			premium BOOLEAN DEFAULT FALSE,
-			status ENUM('available', 'sold', 'traded', 'locked') DEFAULT 'available',
+			status ENUM('available', 'sold', 'traded', 'locked', 'suspended', 'deleted') DEFAULT 'available',
 			allow_buying BOOLEAN DEFAULT TRUE,
 			barter_only BOOLEAN DEFAULT FALSE,
 			max_items_per_offer INT DEFAULT 0,
@@ -561,6 +653,8 @@ func CreateTables() error {
 			author_user_id INT NOT NULL,
 			content TEXT NOT NULL,
 			category_tag VARCHAR(120) NOT NULL,
+			image_urls JSON NULL,
+			is_looking_for BOOLEAN NULL DEFAULT FALSE,
 			is_visible_in_org_feed BOOLEAN NOT NULL DEFAULT TRUE,
 			hidden_reason ENUM('member_removed','org_deleted','admin_action') NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -631,7 +725,7 @@ func CreateTables() error {
 		`CREATE TABLE IF NOT EXISTS trade_like_loops (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			loop_key VARCHAR(255) NOT NULL,
-			status ENUM('pending', 'confirmed', 'cancelled') DEFAULT 'pending',
+			status ENUM('pending', 'partially_accepted', 'accepted', 'confirmed', 'ongoing', 'completed', 'history', 'rejected', 'cancelled', 'cancelled_due_to_conflict', 'broken', 'expired') DEFAULT 'pending',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			confirmed_at TIMESTAMP NULL,
@@ -645,8 +739,13 @@ func CreateTables() error {
 			offered_product_id INT NOT NULL,
 			wanted_product_id INT NOT NULL,
 			position_in_loop INT NOT NULL,
-			status ENUM('pending', 'confirmed', 'declined') DEFAULT 'pending',
+			status ENUM('pending', 'confirmed', 'accepted', 'declined', 'rejected', 'cancelled', 'cancelled_due_to_conflict', 'expired') DEFAULT 'pending',
 			confirmed_at TIMESTAMP NULL,
+			rating INT DEFAULT 0,
+			feedback TEXT NULL,
+			proof_url VARCHAR(512) NULL,
+			is_reviewed BOOLEAN DEFAULT FALSE,
+			reviewed_at TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (loop_id) REFERENCES trade_like_loops(id) ON DELETE CASCADE,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1324,9 +1423,51 @@ func ensureDisputeColumns() {
 
 func ensureAppSettingsDefaults() {
 	// Ensure rider free slots default is present. This powers Task 19/20.
-	_, err := DB.Exec(`INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES ('rider_free_slots_default', '3')`)
+	_, err := DB.Exec(`INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES
+		('rider_free_slots_default', '3'),
+		('premium_enabled', 'true'),
+		('premium_monthly_price', '79'),
+		('premium_yearly_price', '699'),
+		('premium_promo_price', '')`)
 	if err != nil {
 		log.Printf("Warning: failed to seed app_settings defaults: %v", err)
+	}
+	_, err = DB.Exec(`
+		ALTER TABLE premium_plans
+			ADD COLUMN description TEXT NULL,
+			ADD COLUMN badge_label VARCHAR(80) NULL,
+			ADD COLUMN access_scope VARCHAR(40) NOT NULL DEFAULT 'basic',
+			ADD COLUMN capabilities JSON NULL
+	`)
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+		log.Printf("Warning: failed to ensure premium plan capability columns: %v", err)
+	}
+	_, err = DB.Exec(`
+		INSERT IGNORE INTO premium_plans (plan_key, name, description, tier, billing_type, duration_days, price, badge_label, access_scope, capabilities, is_active, sort_order) VALUES
+		('free', 'Free Plan', 'Baseline marketplace access for all users.', 'free', 'free', 0, 0, 'Free', 'basic', '{"listing_limit":10,"active_trade_limit":5,"monthly_boost_limit":0,"free_boost_enabled":false,"priority_listing_visibility":false,"featured_listing_enabled":false,"premium_badge_enabled":false,"premium_profile_styling_enabled":false,"advanced_trade_tools_enabled":false,"analytics_enabled":false,"premium_filters_enabled":false,"priority_support_enabled":false,"wider_visibility_enabled":false,"discovery_priority":1}', true, 0),
+		('plus_monthly', 'Premium Monthly', 'Monthly Plus access.', 'plus', 'monthly', 30, 79, 'Plus', 'enhanced', '{"listing_limit":30,"active_trade_limit":25,"monthly_boost_limit":3,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":false,"wider_visibility_enabled":true,"discovery_priority":2}', true, 10),
+		('plus_yearly', 'Premium Yearly', 'Yearly Plus access.', 'plus', 'yearly', 365, 699, 'Plus', 'enhanced', '{"listing_limit":30,"active_trade_limit":25,"monthly_boost_limit":3,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":false,"wider_visibility_enabled":true,"discovery_priority":2}', true, 20),
+		('pro_monthly', 'Pro Monthly', 'Monthly Pro access with broader visibility.', 'pro', 'monthly', 30, 129, 'Pro', 'broad', '{"listing_limit":999999,"active_trade_limit":999999,"monthly_boost_limit":10,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":true,"wider_visibility_enabled":true,"discovery_priority":3}', true, 30),
+		('pro_yearly', 'Pro Yearly', 'Yearly Pro access with broader visibility.', 'pro', 'yearly', 365, 1099, 'Pro', 'broad', '{"listing_limit":999999,"active_trade_limit":999999,"monthly_boost_limit":10,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":true,"wider_visibility_enabled":true,"discovery_priority":3}', true, 40),
+		('student_promo', 'Student Promo Premium', 'Limited student promo access.', 'plus', 'promo', 30, 49, 'Student Promo', 'enhanced', '{"listing_limit":30,"active_trade_limit":25,"monthly_boost_limit":5,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":false,"wider_visibility_enabled":true,"discovery_priority":2}', false, 50)
+	`)
+	if err != nil {
+		log.Printf("Warning: failed to seed premium plans: %v", err)
+	}
+	_, err = DB.Exec(`ALTER TABLE premium_promotions ADD COLUMN capabilities JSON NULL, ADD COLUMN overrides_capabilities BOOLEAN NOT NULL DEFAULT FALSE`)
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+		log.Printf("Warning: failed to ensure premium promotion capability columns: %v", err)
+	}
+	_, err = DB.Exec(`
+		INSERT IGNORE INTO premium_features (feature_key, label, description, enabled, sort_order) VALUES
+		('boosted_listings', 'Boosted listings', 'Premium listings can be boosted for higher marketplace placement.', true, 10),
+		('more_uploads', 'More product uploads', 'Premium members can keep more active listings.', true, 20),
+		('priority_trade_visibility', 'Priority trade visibility', 'Premium members receive stronger trade discovery placement.', true, 30),
+		('premium_badge', 'Premium badge', 'Show premium badges on profiles and listings.', true, 40),
+		('featured_placement', 'Featured placement', 'Eligible listings can appear in featured inventory positions.', true, 50)
+	`)
+	if err != nil {
+		log.Printf("Warning: failed to seed premium features: %v", err)
 	}
 }
 
@@ -1353,12 +1494,15 @@ func ensureUserColumns() {
 		{"department", "VARCHAR(255) NULL"},
 		{"bio", "TEXT NULL"},
 		{"badges", "JSON NULL"},
+		{"notification_preferences", "JSON NULL"},
 		{"latitude", "DECIMAL(10,8) NULL"},
 		{"longitude", "DECIMAL(11,8) NULL"},
 		// School ID verification columns
 		{"verification_status", "ENUM('not_verified','pending','verified','rejected') NOT NULL DEFAULT 'not_verified'"},
 		{"school_name", "VARCHAR(255) NULL"},
 		{"school_email", "VARCHAR(255) NULL"},
+		{"academic_program", "VARCHAR(255) NULL"},
+		{"year_level", "VARCHAR(80) NULL"},
 		{"school_email_verified_at", "TIMESTAMP NULL"},
 		{"school_id_image_path", "VARCHAR(512) NULL"},
 		{"verification_rejection_reason", "TEXT NULL"},
@@ -1369,6 +1513,9 @@ func ensureUserColumns() {
 		{"phone_otp_hash", "VARCHAR(255) NULL"},
 		{"phone_otp_expires", "TIMESTAMP NULL"},
 		{"password_changed_at", "TIMESTAMP NULL"},
+		{"display_name_changed_at", "TIMESTAMP NULL"},
+		{"name_changed_at", "TIMESTAMP NULL"},
+		{"email_changed_at", "TIMESTAMP NULL"},
 		{"school_id_document_type", "VARCHAR(20) NULL"},
 		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"last_login", "TIMESTAMP NULL"},
@@ -1500,13 +1647,13 @@ func updateProductStatusEnum() {
 		return
 	}
 
-	// If status doesn't include all required values, update it
-	if !contains(columnType, "'traded'") || !contains(columnType, "'locked'") {
-		query := `ALTER TABLE products MODIFY COLUMN status ENUM('available','sold','traded','locked') DEFAULT 'available'`
+	// If status doesn't include all required values, update it.
+	if !contains(columnType, "'traded'") || !contains(columnType, "'locked'") || !contains(columnType, "'suspended'") || !contains(columnType, "'deleted'") {
+		query := `ALTER TABLE products MODIFY COLUMN status ENUM('available','sold','traded','locked','suspended','deleted') DEFAULT 'available'`
 		if _, err := DB.Exec(query); err != nil {
 			log.Printf("Warning: failed to update status enum: %v", err)
 		} else {
-			log.Println("Updated products status enum to include 'traded' and 'locked'")
+			log.Println("Updated products status enum to include 'traded', 'locked', 'suspended', and 'deleted'")
 		}
 	}
 }
@@ -1517,6 +1664,9 @@ func ensureTradeColumns() {
 		name       string
 		definition string
 	}{
+		{"buyer_accepted", "BOOLEAN DEFAULT FALSE"},
+		{"seller_accepted", "BOOLEAN DEFAULT FALSE"},
+		{"parent_trade_id", "INT NULL"},
 		{"trade_option", "VARCHAR(20) NULL DEFAULT 'meetup'"},
 		{"delivery_address", "TEXT NULL"},
 		{"buyer_rating", "INT NULL"},
@@ -1588,17 +1738,34 @@ func ensureTradeColumns() {
 		}
 	}
 
-	// Ensure trades status ENUM includes auto_completed, awaiting_confirmation, expired, pending_multiway, multiway_active
+	// Ensure trades status ENUM includes richer lifecycle/conflict states used by the trading flow.
 	var tradeStatusType string
 	if err := DB.QueryRow(`
 		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trades' AND COLUMN_NAME = 'status'
 	`).Scan(&tradeStatusType); err == nil {
-		if !contains(tradeStatusType, "'pending_multiway'") || !contains(tradeStatusType, "'multiway_active'") {
-			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','declined','countered','active','awaiting_confirmation','completed','cancelled','auto_completed','expired','pending_multiway','multiway_active') DEFAULT 'pending'`); err != nil {
+		requiredTradeStatuses := []string{
+			"'accepted_by_one'",
+			"'accepted_by_both'",
+			"'ongoing'",
+			"'cancelled_due_to_conflict'",
+			"'broken'",
+			"'history'",
+			"'pending_multiway'",
+			"'multiway_active'",
+		}
+		needsTradeStatusUpdate := false
+		for _, required := range requiredTradeStatuses {
+			if !contains(tradeStatusType, required) {
+				needsTradeStatusUpdate = true
+				break
+			}
+		}
+		if needsTradeStatusUpdate {
+			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','accepted_by_one','accepted_by_both','declined','countered','active','ongoing','awaiting_confirmation','completed','cancelled','cancelled_due_to_conflict','auto_completed','expired','broken','history','pending_multiway','multiway_active') DEFAULT 'pending'`); err != nil {
 				log.Printf("Warning: failed to update trades status enum: %v", err)
 			} else {
-				log.Println("Updated trades status enum to include 'pending_multiway' and 'multiway_active'")
+				log.Println("Updated trades status enum with lifecycle/conflict states")
 			}
 		}
 	}
@@ -1633,20 +1800,34 @@ func ensureTradeColumns() {
 		INDEX idx_multiway_expires (expires_at)
 	)`)
 
-	// Ensure multiway_trades status enum includes pending_initiator_upgrade on existing databases.
+	// Ensure multiway_trades status enum includes lifecycle/conflict states on existing databases.
 	var multiwayStatusType string
 	if err := DB.QueryRow(`
 		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'status'
 	`).Scan(&multiwayStatusType); err == nil {
-		if !contains(multiwayStatusType, "'pending_initiator_upgrade'") {
+		requiredMultiwayStatuses := []string{
+			"'pending_initiator_upgrade'",
+			"'waiting_acceptance'",
+			"'broken'",
+			"'expired'",
+			"'history'",
+		}
+		needsMultiwayStatusUpdate := false
+		for _, required := range requiredMultiwayStatuses {
+			if !contains(multiwayStatusType, required) {
+				needsMultiwayStatusUpdate = true
+				break
+			}
+		}
+		if needsMultiwayStatusUpdate {
 			if _, err := DB.Exec(`
 				ALTER TABLE multiway_trades
-				MODIFY COLUMN status ENUM('searching','pending_user3','pending_initiator_upgrade','user3_accepted','user3_declined','active','completed','cancelled','fully_declined') DEFAULT 'searching'
+				MODIFY COLUMN status ENUM('searching','pending_user3','pending_initiator_upgrade','waiting_acceptance','user3_accepted','user3_declined','active','completed','cancelled','expired','broken','history','fully_declined') DEFAULT 'searching'
 			`); err != nil {
 				log.Printf("Warning: failed to update multiway_trades status enum: %v", err)
 			} else {
-				log.Println("Updated multiway_trades status enum to include 'pending_initiator_upgrade'")
+				log.Println("Updated multiway_trades status enum with lifecycle/conflict states")
 			}
 		}
 	}
@@ -1781,6 +1962,27 @@ func ensureMultiwayColumns() {
 			log.Println("Added user2_product_id to multiway_trades")
 		}
 	}
+
+	// Ensure organization_posts has image_urls and is_looking_for (added after initial schema)
+	var orgPostImageURLsExists int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'organization_posts' AND COLUMN_NAME = 'image_urls'").Scan(&orgPostImageURLsExists)
+	if orgPostImageURLsExists == 0 {
+		if _, err := DB.Exec("ALTER TABLE organization_posts ADD COLUMN image_urls JSON NULL"); err != nil {
+			log.Printf("Warning: could not add image_urls to organization_posts: %v", err)
+		} else {
+			log.Println("Added image_urls to organization_posts")
+		}
+	}
+
+	var orgPostLookingForExists int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'organization_posts' AND COLUMN_NAME = 'is_looking_for'").Scan(&orgPostLookingForExists)
+	if orgPostLookingForExists == 0 {
+		if _, err := DB.Exec("ALTER TABLE organization_posts ADD COLUMN is_looking_for BOOLEAN NULL DEFAULT FALSE"); err != nil {
+			log.Printf("Warning: could not add is_looking_for to organization_posts: %v", err)
+		} else {
+			log.Println("Added is_looking_for to organization_posts")
+		}
+	}
 }
 
 // ensureRiderColumns adds missing columns to the riders table for the application flow
@@ -1792,6 +1994,9 @@ func ensureRiderColumns() {
 		{"status", "ENUM('pending','under_review','approved','rejected') NOT NULL DEFAULT 'pending'"},
 		{"license_image_url", "VARCHAR(512) NULL"},
 		{"selfie_image_url", "VARCHAR(512) NULL"},
+		{"orcr_image_url", "VARCHAR(512) NULL"},
+		{"motor_owner_image_url", "VARCHAR(512) NULL"},
+		{"vehicle_color", "VARCHAR(50) NULL"},
 		{"contact_number", "VARCHAR(20) NULL"},
 		{"full_name", "VARCHAR(255) NULL"},
 		{"rejection_reason", "TEXT NULL"},

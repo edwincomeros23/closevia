@@ -51,15 +51,7 @@ func generatePhoneOTP() (string, string, time.Time, error) {
 }
 
 func isValidPhone(phone string) bool {
-	if phone == "" {
-		return false
-	}
-	for _, ch := range phone {
-		if ch < '0' || ch > '9' {
-			return false
-		}
-	}
-	return len(phone) >= 10 && len(phone) <= 15
+	return len(phone) == 11 && strings.HasPrefix(phone, "09")
 }
 
 // StartVerification sets school + email and sends a verification code to the school email.
@@ -377,7 +369,26 @@ func (h *VerificationHandler) StartPhoneVerification(c *fiber.Ctx) error {
 	}
 
 	if !isValidPhone(phoneToUse) {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Phone number must be 10 to 15 digits"})
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Use a valid Philippine mobile number in 11-digit format, like 09XXXXXXXXX."})
+	}
+
+	phoneChanged := strings.TrimSpace(currentPhone.String) != "" && phoneToUse != strings.TrimSpace(currentPhone.String)
+	if phoneChanged {
+		var phoneChangedAt sql.NullTime
+		if err := h.db.QueryRow("SELECT phone_changed_at FROM users WHERE id = ?", userID).Scan(&phoneChangedAt); err == nil && phoneChangedAt.Valid {
+			canChangeAt := phoneChangedAt.Time.AddDate(0, 3, 0)
+			if time.Now().Before(canChangeAt) {
+				return c.Status(429).JSON(models.APIResponse{
+					Success: false,
+					Error:   "You recently changed your phone number. Please wait before updating it again.",
+					Data: fiber.Map{
+						"field":           "phone",
+						"last_changed_at": phoneChangedAt.Time,
+						"can_change_at":   canChangeAt,
+					},
+				})
+			}
+		}
 	}
 
 	// Cooldown: block resend if previous OTP was sent less than 60 seconds ago
@@ -397,9 +408,10 @@ func (h *VerificationHandler) StartPhoneVerification(c *fiber.Ctx) error {
 		UPDATE users
 		SET phone = ?, phone_verified = FALSE,
 		    phone_otp_hash = ?, phone_otp_expires = ?,
+		    phone_changed_at = CASE WHEN phone <> ? OR phone IS NULL THEN CURRENT_TIMESTAMP ELSE phone_changed_at END,
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
-		phoneToUse, otpHash, otpExpiry, userID,
+		phoneToUse, otpHash, otpExpiry, phoneToUse, userID,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start phone verification"})
@@ -491,7 +503,7 @@ func (h *VerificationHandler) ResendPhoneCode(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load phone state"})
 	}
 	if !phone.Valid || !isValidPhone(strings.TrimSpace(phone.String)) {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Please add a valid phone number first"})
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Please add a valid Philippine mobile number first"})
 	}
 
 	// Cooldown: block resend if previous OTP was sent less than 60 seconds ago

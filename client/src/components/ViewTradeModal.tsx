@@ -410,7 +410,8 @@ interface DeliveryTabProps {
   distance: number
   isUserSeller: boolean
   isUserBuyer: boolean
-  setIsReviewModalOpen: (open: boolean) => void
+  handleInstantComplete: () => Promise<void>
+  completingTrade: boolean
   handleConfirmPayment: () => Promise<void>
   handleConfirmDelivery: () => Promise<void>
   saveDeliveryState: (updates: Partial<DeliveryState>) => Promise<void>
@@ -435,7 +436,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   handleConfirmDelivery,
   saveDeliveryState,
   confirmDeliveryType,
-  setIsReviewModalOpen,
+  handleInstantComplete,
+  completingTrade,
   confirmingPayment,
   confirmingDeliveryType,
   syncingOnlinePayment,
@@ -666,13 +668,15 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               <Button
                 colorScheme="green"
                 size="lg"
-                onClick={() => setIsReviewModalOpen(true)}
-                leftIcon={<FaStar />}
+                onClick={handleInstantComplete}
+                isLoading={completingTrade}
+                loadingText="Completing..."
+                leftIcon={<FaCheckCircle />}
                 w="full"
                 transition="all 0.2s"
                 _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
               >
-                Review & Complete Trade
+                Leave a Review and Complete Trade
               </Button>
             )}
           </VStack>
@@ -808,15 +812,14 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
         feedback: feedback.trim(),
-        // Backend expects these keys
-        transaction_proof_url: uploadedProofUrl || undefined,
-        is_camera_photo: true,
+        transaction_proof_url: uploadedProofUrl || '',
+        is_camera_photo: !!uploadedProofUrl,
       })
 
       toast({
         id: "viewtrademodal-review-submitted",
         title: 'Review submitted',
-        description: 'Your review has been submitted successfully.',
+        description: 'Your review has been submitted ✅',
         status: 'success',
       })
 
@@ -828,7 +831,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
       // Refresh completion status by fetching updated trade data
       try {
-        const response = await api.get(`/api/trades/${trade.id}`)
+        const response = await api.get(`/api/trades/${trade.id}/completion-status`)
         const tradeData = response.data?.data
         setCompletionStatus({
           buyer_completed: !!tradeData?.buyer_completed,
@@ -1069,12 +1072,11 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
                   size="md"
                   onClick={submitReview}
                   isLoading={submitting}
-                  isDisabled={!rating || !feedback.trim() || (proofRequired && !proofFile)}
                   w="full"
                   transition="all 0.2s"
                   _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
                 >
-                  Submit Review
+                  Leave a Review and Complete Trade
                 </Button>
               </VStack>
             </Box>
@@ -1085,7 +1087,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
             <Box p={3} bg="green.50" borderRadius="md" borderWidth="2px" borderColor="green.300" textAlign="center">
               <Icon as={FiCheck} boxSize={6} color="green.500" mb={2} mx="auto" display="block" />
               <Text fontWeight="bold" color="green.700" mb={1} fontSize="sm">
-                Trade Completed Successfully! =���
+                Trade Completed Successfully! 🎉
               </Text>
               <Text fontSize="xs" color="green.600">
                 Both parties have submitted their reviews. Thank you for using Clovia!
@@ -1098,7 +1100,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
             <Box p={4} bg="blue.50" borderRadius="lg" borderWidth="2px" borderColor="blue.300" textAlign="center">
               <Icon as={FaCheckCircle} boxSize={6} color="blue.500" mb={2} mx="auto" display="block" />
               <Text fontWeight="semibold" color="blue.700" mb={1}>
-                Your review has been submitted G��
+                Your review has been submitted ✅
               </Text>
               <Text fontSize="sm" color="blue.600">
                 Waiting for the other party to complete their review...
@@ -1160,6 +1162,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false) // New: cancel trade confirmation
   const [cancelingTrade, setCancelingTrade] = useState(false) // New: cancel trade loading state
+  const [completingTrade, setCompletingTrade] = useState(false) // Instant complete loading state
   const cancelDialogRef = useRef<HTMLButtonElement>(null) // New: for AlertDialog focus
 
   // ============ Meetup Dispute & Agreement System ============
@@ -1240,6 +1243,36 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const isMeetupActive = meetupAgreed && trade?.status === 'active'
   const bothMetConfirmed = buyerMetConfirmed && sellerMetConfirmed
   const userMetConfirmed = (isUserBuyer && buyerMetConfirmed) || (isUserSeller && sellerMetConfirmed)
+
+  // Pickup trade: location is locked to the seller's pickup_address.
+  // The target product's pickup address is surfaced at the trade level
+  // (target_product_pickup_address). Fall back to a seller trade_item only
+  // if older payloads still carry it there.
+  const isPickupTrade = trade?.meeting_type === 'pickup'
+  const pickupAddress =
+    trade?.target_product_pickup_address ||
+    (trade?.items || []).find((it) => it.offered_by === 'seller')?.product_pickup_address ||
+    ''
+  const pickupAddressRevealed = !!trade && !['pending', 'pending_multiway', 'countered'].includes(trade.status)
+  const maskToNeighborhood = (addr: string): string => {
+    if (!addr) return ''
+    const parts = addr.split(',').map((s) => s.trim()).filter(Boolean)
+    if (parts.length <= 1) return "Seller's neighborhood"
+    return parts.slice(1).join(', ')
+  }
+  const pickupDisplayAddress = pickupAddressRevealed ? pickupAddress : maskToNeighborhood(pickupAddress)
+
+  // Auto-select the pickup address for pickup trades so the existing
+  // date/time confirm flow still works without the meetup location picker.
+  // If the seller hasn't set a pickup_address and has no home_address,
+  // use a descriptive placeholder so the Confirm button can still enable —
+  // the parties will coordinate the exact spot via chat.
+  const effectivePickupLocation = pickupAddress || "Seller's pickup location (coordinate via chat)"
+  useEffect(() => {
+    if (isPickupTrade && selectedLocation !== effectivePickupLocation) {
+      setSelectedLocation(effectivePickupLocation)
+    }
+  }, [isPickupTrade, effectivePickupLocation, selectedLocation])
 
   // Auto-sync online payment status in dev/localhost where webhooks may not arrive.
   useEffect(() => {
@@ -1334,13 +1367,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     standard: {
       time: distance < 10 ? '2-3 business days' : distance < 25 ? '3-4 business days' : '4-6 business days',
       fee: calculateDeliveryFee(distance, 'standard'),
-      icon: '=���',
+      icon: '🚚',
       description: `${distance < 5 ? 'Local area' : distance < 15 ? 'Within city' : 'Inter-city'} delivery`
     },
     express: {
       time: distance < 10 ? 'Same day' : distance < 25 ? '1-2 business days' : '2-3 business days',
       fee: calculateDeliveryFee(distance, 'express'),
-      icon: 'G��',
+      icon: '⚡',
       description: `Fast ${distance < 5 ? 'local' : distance < 15 ? 'city-wide' : 'regional'} delivery`
     }
   }), [distance])
@@ -2481,6 +2514,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
   // ============ END: Cancel trade functionality ============
 
+  // ============ Review and complete ============
+  const handleInstantComplete = async () => {
+    if (!trade || completingTrade) return
+    setIsReviewModalOpen(true)
+  }
+  // ============ END: Review and complete ============
+
 
   if (!trade) return null
 
@@ -2803,13 +2843,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               </VStack>
                             </HStack>
                             <Badge
-                              colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
+                              colorScheme={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange' : 'blue') : 'green'}
                               variant="solid"
                               fontSize="sm"
                               px={3}
                               py={1}
                             >
-                              {trade.trade_option === 'meetup' ? '🤝 Pickup' : '🚚 Delivery'}
+                              {trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? '📍 Pickup' : '🤝 Meetup') : '🚚 Delivery'}
                             </Badge>
                           </HStack>
                           {(trade.status === 'accepted' || trade.status === 'active') && (
@@ -3371,7 +3411,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       handleConfirmDelivery={handleConfirmDelivery}
                       saveDeliveryState={saveDeliveryState}
                       confirmDeliveryType={confirmDeliveryType}
-                      setIsReviewModalOpen={setIsReviewModalOpen}
+                      handleInstantComplete={handleInstantComplete}
+                      completingTrade={completingTrade}
                       confirmingPayment={confirmingPayment}
                       confirmingDeliveryType={confirmingDeliveryType}
                       syncingOnlinePayment={syncingOnlinePayment}
@@ -3447,7 +3488,41 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       )}
 
                       {/* Meetup Location Selection */}
-                      {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
+                      {isPickupTrade ? (
+                        // Pickup trade: location is locked to the seller's pickup_address.
+                        // Before the trade is accepted we mask to the neighborhood only; the
+                        // full address reveals once the trade moves to active.
+                        <Card variant="outline" borderColor="orange.300" bg="orange.50">
+                          <CardBody p={4}>
+                            <VStack align="stretch" spacing={3}>
+                              <HStack spacing={2}>
+                                <Icon as={FaMapMarkerAlt} color="orange.500" boxSize={5} />
+                                <Text fontWeight="700" color="orange.800">Pickup Location</Text>
+                                <Badge colorScheme="orange" variant="subtle">Locked</Badge>
+                              </HStack>
+                              {pickupAddress ? (
+                                <>
+                                  <Text fontSize="md" fontWeight="600" color="orange.900">
+                                    {pickupDisplayAddress}
+                                  </Text>
+                                  {!pickupAddressRevealed && (
+                                    <Text fontSize="xs" color="orange.700" fontStyle="italic">
+                                      🔒 Exact address is revealed to the buyer once the seller accepts the offer.
+                                    </Text>
+                                  )}
+                                  <Text fontSize="xs" color="gray.600">
+                                    This is the seller's set pickup location. The buyer comes to the seller — the location can't be changed. Pick a date and time below to continue.
+                                  </Text>
+                                </>
+                              ) : (
+                                <Text fontSize="sm" color="red.600">
+                                  The seller hasn't set a pickup address on this product. Please message them to coordinate.
+                                </Text>
+                              )}
+                            </VStack>
+                          </CardBody>
+                        </Card>
+                      ) : (isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
                         // Locked location - just show summary in the date/time display
                         null
                       ) : (
@@ -3739,10 +3814,16 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         <HStack justify="space-between" mb={2}>
                           <VStack align="start" spacing={0}>
                             <Text fontWeight="semibold" fontSize="md">
-                              Schedule a Meetup
+                              {isPickupTrade
+                                ? (isUserBuyer ? 'Propose Pickup Time' : "Review Buyer's Pickup Proposal")
+                                : 'Schedule a Meetup'}
                             </Text>
                             <Text fontSize="sm" color="gray.600">
-                              Pick a date within the next 7 days and a time that works for both of you.
+                              {isPickupTrade
+                                ? (isUserBuyer
+                                  ? 'You set the pickup date and time. The seller can accept or propose a reschedule.'
+                                  : 'The buyer picks a date and time. You can accept it or propose a reschedule.')
+                                : 'Pick a date within the next 7 days and a time that works for both of you.'}
                             </Text>
                           </VStack>
                           {(selectedDate || selectedTime) && (
@@ -3761,7 +3842,26 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           )}
                         </HStack>
 
-                        {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
+                        {isPickupTrade && isUserSeller && !buyerMeetupConfirmed && !sellerMeetupConfirmed ? (
+                          // Pickup trade: seller must wait for the buyer to propose a
+                          // date/time before they can respond.
+                          <Box
+                            p={4}
+                            bg="blue.50"
+                            borderRadius="md"
+                            borderWidth="1px"
+                            borderColor="blue.200"
+                          >
+                            <VStack spacing={1} align="start">
+                              <Text fontWeight="semibold" color="blue.800">
+                                ⏳ Waiting for the buyer to propose a pickup time
+                              </Text>
+                              <Text fontSize="sm" color="blue.700">
+                                The buyer chooses when to come by. You'll be able to accept their proposal or suggest a different time once it's submitted.
+                              </Text>
+                            </VStack>
+                          </Box>
+                        ) : (isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
                           // LOCKED STATE - Compact Display
                           <Box
                             p={4}
@@ -3772,7 +3872,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           >
                             <VStack spacing={3} align="stretch">
                               <Text fontWeight="semibold" fontSize="md" color="green.700">
-                                G�� Your Selection Locked
+                                ✅ Your Selection Locked
                               </Text>
 
                               <VStack spacing={2} align="start" fontSize="sm">
@@ -4121,13 +4221,15 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     <Button
                                       colorScheme="green"
                                       size={["sm", "md"]}
-                                      onClick={() => setIsReviewModalOpen(true)}
-                                      leftIcon={<FaStar />}
+                                      onClick={handleInstantComplete}
+                                      isLoading={completingTrade}
+                                      loadingText="Completing..."
+                                      leftIcon={<FaCheckCircle />}
                                       w="full"
                                       transition="all 0.2s"
                                       _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
                                     >
-                                      Leave Review & Complete Trade
+                                      Leave a Review and Complete Trade
                                     </Button>
                                   )}
                                 </VStack>
@@ -4195,7 +4297,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   textAlign="center"
                                 >
                                   <Text fontWeight="medium" color="blue.700" fontSize={["xs", "sm"]}>
-                                    GŦ Waiting for Agreement
+                                    ⏳ Waiting for Agreement
                                   </Text>
                                   <Text fontSize="xs" color="blue.600" mt={0.5}>
                                     {buyerMeetupConfirmed && !sellerMeetupConfirmed
@@ -4260,18 +4362,20 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         Suggest Different
                                       </Button>
                                     </HStack>
-                                    {/* Leave Review Button - Available but disabled until agree */}
+                                    {/* Review and complete once both parties agree */}
                                     <Button
                                       colorScheme={meetupAgreed ? "green" : "gray"}
                                       variant={meetupAgreed ? "solid" : "outline"}
                                       size={["sm", "md"]}
-                                      onClick={() => setIsReviewModalOpen(true)}
+                                      onClick={handleInstantComplete}
                                       leftIcon={<FaStar />}
                                       w="full"
-                                      isDisabled={!meetupAgreed}
+                                      isDisabled={!meetupAgreed || completingTrade}
+                                      isLoading={completingTrade}
+                                      loadingText="Completing..."
                                       _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
                                     >
-                                      {meetupAgreed ? 'Leave Review & Complete Trade' : 'GŦ Review (after agreement)'}
+                                      {meetupAgreed ? 'Leave a Review and Complete Trade' : 'Review after agreement'}
                                     </Button>
                                   </VStack>
                                 ) : (
@@ -4279,18 +4383,20 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     <Text fontSize="xs" color="gray.600" textAlign="center">
                                       Waiting for {isUserBuyer ? trade.seller_name : trade.buyer_name} to respond.
                                     </Text>
-                                    {/* Leave Review Button - Available but disabled until agree */}
+                                    {/* Review and complete once both parties agree */}
                                     <Button
                                       colorScheme={meetupAgreed ? "green" : "gray"}
                                       variant={meetupAgreed ? "solid" : "outline"}
                                       size={["sm", "md"]}
-                                      onClick={() => setIsReviewModalOpen(true)}
+                                      onClick={handleInstantComplete}
                                       leftIcon={<FaStar />}
                                       w="full"
-                                      isDisabled={!meetupAgreed}
+                                      isDisabled={!meetupAgreed || completingTrade}
+                                      isLoading={completingTrade}
+                                      loadingText="Completing..."
                                       _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
                                     >
-                                      {meetupAgreed ? 'Leave Review & Complete Trade' : 'GŦ Review (after agreement)'}
+                                      {meetupAgreed ? 'Leave a Review and Complete Trade' : 'Review after agreement'}
                                     </Button>
                                   </VStack>
                                 )}
@@ -4423,4 +4529,3 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 }
 
 export default ViewTradeModal
-

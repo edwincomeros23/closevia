@@ -45,6 +45,167 @@ func almostEqualMoney(a, b float64) bool {
 	return math.Abs(a-b) < 0.009
 }
 
+type paymentPremiumPlan struct {
+	PlanKey      string                 `json:"plan_key"`
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description"`
+	Tier         string                 `json:"tier"`
+	BillingType  string                 `json:"billing_type"`
+	DurationDays int                    `json:"duration_days"`
+	Price        float64                `json:"price"`
+	BadgeLabel   string                 `json:"badge_label"`
+	AccessScope  string                 `json:"access_scope"`
+	Capabilities map[string]interface{} `json:"capabilities"`
+	IsActive     bool                   `json:"is_active"`
+	PromoTitle   string                 `json:"promo_title,omitempty"`
+	PromoPrice   *float64               `json:"promo_price,omitempty"`
+}
+
+func loadPaymentPremiumConfig(db *sql.DB) (bool, []paymentPremiumPlan, []fiber.Map, error) {
+	enabled := true
+	var enabledRaw string
+	if err := db.QueryRow("SELECT setting_value FROM app_settings WHERE setting_key = 'premium_enabled'").Scan(&enabledRaw); err == nil {
+		enabled = strings.EqualFold(strings.TrimSpace(enabledRaw), "true") || strings.TrimSpace(enabledRaw) == "1"
+	}
+
+	rows, err := db.Query(`
+		SELECT
+			p.plan_key, p.name, COALESCE(p.description, ''), p.tier, p.billing_type, p.duration_days, p.price,
+			COALESCE(p.badge_label, ''), COALESCE(p.access_scope, 'basic'), COALESCE(CAST(p.capabilities AS CHAR), '{}'), p.is_active,
+			COALESCE(pr.title, '') AS promo_title,
+			pr.discounted_price,
+			COALESCE(CAST(pr.capabilities AS CHAR), '') AS promo_capabilities,
+			COALESCE(pr.overrides_capabilities, false) AS promo_overrides_capabilities
+		FROM premium_plans p
+		LEFT JOIN premium_promotions pr
+		  ON pr.is_active = true
+		 AND (pr.plan_key IS NULL OR pr.plan_key = '' OR pr.plan_key = p.plan_key)
+		 AND (pr.start_at IS NULL OR pr.start_at <= NOW())
+		 AND (pr.end_at IS NULL OR pr.end_at >= NOW())
+		ORDER BY p.sort_order, p.price
+	`)
+	if err != nil {
+		return enabled, nil, nil, err
+	}
+	defer rows.Close()
+	plans := []paymentPremiumPlan{}
+	for rows.Next() {
+		var p paymentPremiumPlan
+		var promoPrice sql.NullFloat64
+		var capsRaw, promoCapsRaw string
+		var promoOverrides bool
+		if rows.Scan(&p.PlanKey, &p.Name, &p.Description, &p.Tier, &p.BillingType, &p.DurationDays, &p.Price, &p.BadgeLabel, &p.AccessScope, &capsRaw, &p.IsActive, &p.PromoTitle, &promoPrice, &promoCapsRaw, &promoOverrides) == nil {
+			p.Capabilities = map[string]interface{}{}
+			_ = json.Unmarshal([]byte(capsRaw), &p.Capabilities)
+			if strings.TrimSpace(promoCapsRaw) != "" {
+				promoCaps := map[string]interface{}{}
+				if json.Unmarshal([]byte(promoCapsRaw), &promoCaps) == nil && len(promoCaps) > 0 {
+					if promoOverrides {
+						p.Capabilities = promoCaps
+					} else {
+						for key, value := range promoCaps {
+							p.Capabilities[key] = value
+						}
+					}
+				}
+			}
+			if promoPrice.Valid {
+				v := promoPrice.Float64
+				p.PromoPrice = &v
+			}
+			plans = append(plans, p)
+		}
+	}
+
+	featureRows, err := db.Query(`SELECT feature_key, label, COALESCE(description, ''), enabled FROM premium_features ORDER BY sort_order, label`)
+	if err != nil {
+		return enabled, plans, nil, err
+	}
+	defer featureRows.Close()
+	features := []fiber.Map{}
+	for featureRows.Next() {
+		var key, label, description string
+		var featureEnabled bool
+		if featureRows.Scan(&key, &label, &description, &featureEnabled) == nil {
+			features = append(features, fiber.Map{"feature_key": key, "label": label, "description": description, "enabled": featureEnabled})
+		}
+	}
+	return enabled, plans, features, nil
+}
+
+func getPremiumPlanDurationDays(db *sql.DB, tier string, billingType string) int {
+	var days int
+	if err := db.QueryRow("SELECT duration_days FROM premium_plans WHERE tier = ? AND billing_type = ? AND is_active = true ORDER BY sort_order LIMIT 1", tier, billingType).Scan(&days); err == nil && days > 0 {
+		return days
+	}
+	if strings.ToLower(billingType) == "yearly" {
+		return 365
+	}
+	return 30
+}
+
+func getCapInt(caps map[string]interface{}, key string, def int) int {
+	if caps == nil {
+		return def
+	}
+	switch v := caps[key].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return parsed
+		}
+	}
+	return def
+}
+
+func getCapBool(caps map[string]interface{}, key string, def bool) bool {
+	if caps == nil {
+		return def
+	}
+	switch v := caps[key].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true") || v == "1"
+	case float64:
+		return v != 0
+	}
+	return def
+}
+
+func getUserPlanCapabilities(db *sql.DB, userID int) (paymentPremiumPlan, error) {
+	var tier string
+	var isPremium bool
+	if err := db.QueryRow("SELECT COALESCE(premium_tier, 'free'), COALESCE(is_premium, false) FROM users WHERE id = ?", userID).Scan(&tier, &isPremium); err != nil {
+		return paymentPremiumPlan{}, err
+	}
+	if !isPremium || tier == "" {
+		tier = "free"
+	}
+	_, plans, _, err := loadPaymentPremiumConfig(db)
+	if err != nil {
+		return paymentPremiumPlan{}, err
+	}
+	var fallback *paymentPremiumPlan
+	for i := range plans {
+		if plans[i].Tier == tier && plans[i].IsActive {
+			if plans[i].BillingType == "free" || plans[i].BillingType == "monthly" || plans[i].PlanKey == tier {
+				return plans[i], nil
+			}
+			if fallback == nil {
+				fallback = &plans[i]
+			}
+		}
+	}
+	if fallback != nil {
+		return *fallback, nil
+	}
+	return paymentPremiumPlan{Tier: "free", Name: "Free", Capabilities: map[string]interface{}{"listing_limit": 10, "active_trade_limit": 5, "monthly_boost_limit": 0}}, nil
+}
+
 func parseRemittanceExternalID(externalID string) (paymentID int, riderID int, ok bool) {
 	// Expected: remittance_<paymentID>_<riderID>_<unix>
 	parts := strings.Split(externalID, "_")
@@ -657,24 +818,28 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("You are already a %s member", payload.Tier)})
 	}
 
-	// Pricing: Plus ₱79/mo or ₱699/yr, Pro ₱129/mo or ₱1,099/yr
-	amount := 79.0
-	description := "Clovia Plus Subscription (Monthly)"
-
-	if payload.Tier == "pro" {
-		if payload.Plan == "yearly" {
-			amount = 1099.0
-			description = "Clovia Pro Subscription (Yearly)"
-		} else {
-			amount = 129.0
-			description = "Clovia Pro Subscription (Monthly)"
-		}
-	} else {
-		if payload.Plan == "yearly" {
-			amount = 699.0
-			description = "Clovia Plus Subscription (Yearly)"
+	enabled, plans, _, err := loadPaymentPremiumConfig(h.db)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load premium plans"})
+	}
+	if !enabled {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Premium subscriptions are temporarily unavailable"})
+	}
+	var selected *paymentPremiumPlan
+	for i := range plans {
+		if plans[i].Tier == payload.Tier && plans[i].BillingType == payload.Plan && plans[i].IsActive {
+			selected = &plans[i]
+			break
 		}
 	}
+	if selected == nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Selected premium plan is unavailable"})
+	}
+	amount := selected.Price
+	if selected.PromoPrice != nil && *selected.PromoPrice > 0 {
+		amount = *selected.PromoPrice
+	}
+	description := fmt.Sprintf("Clovia %s Subscription", selected.Name)
 
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	xenditClient := xendit.NewClient(apiKey)
@@ -904,11 +1069,7 @@ func (h *PaymentHandler) SyncUserPremiumPayment(c *fiber.Ctx) error {
 	if currentExpiry.Valid && currentExpiry.Time.After(start) {
 		start = currentExpiry.Time
 	}
-	monthsToAdd := 1
-	if strings.ToLower(plan) == "yearly" {
-		monthsToAdd = 12
-	}
-	newExpiry := start.AddDate(0, monthsToAdd, 0)
+	newExpiry := start.AddDate(0, 0, getPremiumPlanDurationDays(h.db, tier, plan))
 
 	_, err = h.db.Exec("UPDATE users SET is_premium = true, premium_tier = ?, verified = true, premium_expires_at = ? WHERE id = ?", tier, newExpiry, userID)
 	if err != nil {
@@ -1232,11 +1393,7 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 			if currentExpiry.Valid && currentExpiry.Time.After(start) {
 				start = currentExpiry.Time
 			}
-			monthsToAdd := 1
-			if strings.ToLower(plan) == "yearly" {
-				monthsToAdd = 12
-			}
-			newExpiry := start.AddDate(0, monthsToAdd, 0)
+			newExpiry := start.AddDate(0, 0, getPremiumPlanDurationDays(h.db, tier, plan))
 
 			// Update user status
 			log.Printf("💎 Webhook: Granting %s premium to user %d (Amount: %.2f)", tier, userID, amount)
@@ -1287,5 +1444,23 @@ func (h *PaymentHandler) GetUserSubscription(c *fiber.Ctx) error {
 		"tier":       tier,
 		"is_premium": isPremium,
 		"end_date":   endDateStr,
+	}})
+}
+
+func (h *PaymentHandler) GetPremiumConfig(c *fiber.Ctx) error {
+	enabled, plans, features, err := loadPaymentPremiumConfig(h.db)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load premium configuration"})
+	}
+	activePlans := make([]paymentPremiumPlan, 0, len(plans))
+	for _, plan := range plans {
+		if plan.IsActive {
+			activePlans = append(activePlans, plan)
+		}
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"enabled":  enabled,
+		"plans":    activePlans,
+		"features": features,
 	}})
 }

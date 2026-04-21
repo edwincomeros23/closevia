@@ -120,6 +120,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
   const isComplete = loopLength >= 3
 
   const participantTitle = viewMode === 'initiator' ? 'Initiator View' : 'Participant View'
+  const detailStatuses = ['active', 'user3_accepted', 'confirmed', 'ongoing', 'multiway_active']
   const statusColor = (status?: string) => {
     if (status === 'joined') return 'green'
     if (status === 'declined') return 'red'
@@ -176,7 +177,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                 {loopLength} participants ready to trade
               </Text>
               {loopStatus && (
-                <Badge colorScheme={loopStatus === 'active' || loopStatus === 'user3_accepted' ? 'green' : 'yellow'} fontSize="10px">
+                <Badge colorScheme={loopStatus && detailStatuses.includes(loopStatus) ? 'green' : 'yellow'} fontSize="10px">
                   {loopStatus}
                 </Badge>
               )}
@@ -295,9 +296,9 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
               loadingText={viewMode === 'initiator' ? 'Opening...' : 'Joining...'}
               w="full"
               fontWeight="bold"
-              isDisabled={viewMode === 'initiator' ? false : (!canJoin && loopStatus !== 'active' && loopStatus !== 'user3_accepted' && loopStatus !== 'confirmed')}
+              isDisabled={viewMode === 'initiator' ? false : (!canJoin && !detailStatuses.includes(loopStatus || ''))}
             >
-              {viewMode === 'initiator' ? 'View Loop Details' : (loopStatus === 'user3_accepted' || loopStatus === 'active' || loopStatus === 'confirmed' ? 'View Loop Details' : 'Hop In')}
+              {viewMode === 'initiator' ? 'View Loop Details' : (detailStatuses.includes(loopStatus || '') ? 'View Loop Details' : 'Hop In')}
             </Button>
 
             {viewMode === 'participant' && loopType === 'detected_loop' && !canCreate && (
@@ -459,7 +460,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
             <Button
               colorScheme="green"
               onClick={() => {
-                if (viewMode === 'participant' && loopStatus !== 'user3_accepted' && loopStatus !== 'active') {
+                if (viewMode === 'participant' && !detailStatuses.includes(loopStatus || '')) {
                   onJoinTrade?.()
                 } else {
                   onViewDetails?.()
@@ -470,7 +471,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
               loadingText={viewMode === 'initiator' ? 'Opening...' : 'Joining...'}
               w={{ base: 'full', md: 'auto' }}
             >
-              {viewMode === 'initiator' || loopStatus === 'user3_accepted' || loopStatus === 'active' ? 'Open Details' : 'Confirm & Hop In'}
+              {viewMode === 'initiator' || detailStatuses.includes(loopStatus || '') ? 'Open Details' : 'Confirm & Hop In'}
             </Button>
           </ModalFooter>
         </ModalContent>

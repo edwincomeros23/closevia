@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -805,7 +806,7 @@ func (h *OrganizationHandler) CreatePost(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization slug is required"})
 	}
 
-	orgID, _, orgCategory, isDeleted, err := h.resolveOrg(slug)
+	orgID, _, _, isDeleted, err := h.resolveOrg(slug)
 	if err != nil || isDeleted {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Organization not found"})
 	}
@@ -831,10 +832,7 @@ func (h *OrganizationHandler) CreatePost(c *fiber.Ctx) error {
 		}
 	}
 
-	// Category tag is optional - only validate if provided
-	if categoryTag != "" && !strings.EqualFold(categoryTag, orgCategory) {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Post category tag must match organization category"})
-	}
+	// Category tag is freeform
 
 	// Handle image uploads
 	var imageURLs []string
@@ -874,13 +872,32 @@ func (h *OrganizationHandler) CreatePost(c *fiber.Ctx) error {
 		imageURLsJSON = string(jsonBytes)
 	}
 
-	// Insert post with images
+	// Try full insert (with image_urls + is_looking_for). If the columns don't exist yet on
+	// this database, fall back to a basic insert so the post still gets saved.
 	res, err := h.db.Exec(`
 		INSERT INTO organization_posts (organization_id, author_user_id, content, category_tag, image_urls, is_looking_for, is_visible_in_org_feed)
 		VALUES (?, ?, ?, ?, ?, ?, TRUE)
 	`, orgID, userID, content, categoryTag, imageURLsJSON, isLookingFor)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create organization post"})
+		log.Printf("[CreatePost] full INSERT failed (%v) — retrying without extended columns", err)
+		// Attempt to add missing columns, then retry
+		_, _ = h.db.Exec("ALTER TABLE organization_posts ADD COLUMN image_urls LONGTEXT NULL")
+		_, _ = h.db.Exec("ALTER TABLE organization_posts ADD COLUMN is_looking_for TINYINT(1) NULL DEFAULT 0")
+		res, err = h.db.Exec(`
+			INSERT INTO organization_posts (organization_id, author_user_id, content, category_tag, image_urls, is_looking_for, is_visible_in_org_feed)
+			VALUES (?, ?, ?, ?, ?, ?, TRUE)
+		`, orgID, userID, content, categoryTag, imageURLsJSON, isLookingFor)
+		if err != nil {
+			log.Printf("[CreatePost] retry INSERT failed (%v) — falling back to basic insert", err)
+			res, err = h.db.Exec(`
+				INSERT INTO organization_posts (organization_id, author_user_id, content, category_tag, is_visible_in_org_feed)
+				VALUES (?, ?, ?, ?, TRUE)
+			`, orgID, userID, content, categoryTag)
+			if err != nil {
+				log.Printf("[CreatePost] basic INSERT failed: %v", err)
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create organization post"})
+			}
+		}
 	}
 	postID, _ := res.LastInsertId()
 
@@ -916,7 +933,22 @@ func (h *OrganizationHandler) GetFeed(c *fiber.Ctx) error {
 		LIMIT 100
 	`, orgID)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load organization feed"})
+		log.Printf("[GetFeed] full query failed (%v) — adding missing columns and retrying", err)
+		_, _ = h.db.Exec("ALTER TABLE organization_posts ADD COLUMN image_urls LONGTEXT NULL")
+		_, _ = h.db.Exec("ALTER TABLE organization_posts ADD COLUMN is_looking_for TINYINT(1) NULL DEFAULT 0")
+		rows, err = h.db.Query(`
+			SELECT p.id, p.author_user_id, COALESCE(u.slug, ''), COALESCE(u.name, ''), COALESCE(u.profile_picture, ''),
+			       COALESCE(p.content, ''), COALESCE(p.category_tag, ''), COALESCE(p.image_urls, '[]'), COALESCE(p.is_looking_for, FALSE), p.created_at
+			FROM organization_posts p
+			JOIN users u ON u.id = p.author_user_id
+			WHERE p.organization_id = ? AND p.is_visible_in_org_feed = TRUE
+			ORDER BY p.created_at DESC
+			LIMIT 100
+		`, orgID)
+		if err != nil {
+			log.Printf("[GetFeed] retry query also failed: %v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load organization feed"})
+		}
 	}
 	defer rows.Close()
 
@@ -1052,6 +1084,69 @@ func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Organization deleted"})
+}
+
+// TransferOwnership transfers creator_user_id to an approved member.
+func (h *OrganizationHandler) TransferOwnership(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	slug := normalizeOrgSlug(c.Params("slug"))
+
+	orgID, creatorID, _, isDeleted, err := h.resolveOrg(slug)
+	if err != nil || isDeleted {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Organization not found"})
+	}
+	if userID != creatorID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Only the owner can transfer ownership"})
+	}
+
+	var payload struct {
+		NewOwnerUserID int `json:"new_owner_user_id"`
+	}
+	if err := c.BodyParser(&payload); err != nil || payload.NewOwnerUserID == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "new_owner_user_id is required"})
+	}
+	if payload.NewOwnerUserID == userID {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You are already the owner"})
+	}
+
+	var memberStatus string
+	err = h.db.QueryRow(
+		"SELECT status FROM organization_memberships WHERE organization_id = ? AND user_id = ?",
+		orgID, payload.NewOwnerUserID,
+	).Scan(&memberStatus)
+	if err == sql.ErrNoRows {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Target user is not a member of this organization"})
+	}
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify member status"})
+	}
+	if memberStatus != "approved" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Target user must be an approved member"})
+	}
+
+	var orgName string
+	_ = h.db.QueryRow("SELECT name FROM organizations WHERE id = ?", orgID).Scan(&orgName)
+
+	if _, err := h.db.Exec(
+		"UPDATE organizations SET creator_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		payload.NewOwnerUserID, orgID,
+	); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to transfer ownership"})
+	}
+
+	newOwnerMsg := fmt.Sprintf("You are now the owner of the organization '%s'.", orgName)
+	oldOwnerMsg := fmt.Sprintf("You have transferred ownership of '%s' to another member.", orgName)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'organization', ?, FALSE)", payload.NewOwnerUserID, newOwnerMsg)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'organization', ?, FALSE)", userID, oldOwnerMsg)
+	publishNotification(payload.NewOwnerUserID, newOwnerMsg)
+	publishNotification(userID, oldOwnerMsg)
+
+	log.Printf("[TransferOwnership] Org %d ('%s') transferred from user %d to user %d", orgID, orgName, userID, payload.NewOwnerUserID)
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Ownership transferred successfully"})
 }
 
 // GetProfilePosts returns organization posts for public profile rendering.

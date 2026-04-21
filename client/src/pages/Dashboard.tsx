@@ -88,6 +88,7 @@ import {
   useSentOffers,
   useReceivedOffers,
   useOngoingTrades,
+  useMultiWayLoops,
   useArchivedTrades,
   useTradeHistory,
   usePrefetchDashboard,
@@ -106,16 +107,23 @@ const Dashboard: React.FC = () => {
   const actualUserProducts = Array.isArray(userProducts) ? userProducts : []
   const { data: orders = [], isFetched: ordersFetched } = useDashboardOrders()
   const { data: counts = { unread_notifications: 0, pending_offers: 0 }, isFetched: countsFetched } = useDashboardCounts()
-  const { data: sentOffersData = [], isFetched: sentFetched } = useSentOffers()
-  const { data: receivedOffersData = [], isFetched: receivedFetched } = useReceivedOffers()
-  const { data: ongoingTradesData = [], isFetched: ongoingFetched } = useOngoingTrades()
+  const { data: sentOffersData = [], isFetched: sentFetched, isLoading: sentOffersLoading } = useSentOffers()
+  const { data: receivedOffersData = [], isFetched: receivedFetched, isLoading: receivedOffersLoading } = useReceivedOffers()
+  const { data: ongoingTradesData = [], isFetched: ongoingFetched, isLoading: ongoingTradesLoading } = useOngoingTrades()
+  const {
+    data: multiWayLoopsData = [],
+    isLoading: multiWayLoopsInitialLoading,
+    isFetched: multiWayLoopsFetched,
+    isFetching: multiWayLoopsFetching,
+    refetch: refetchMultiWayLoops,
+  } = useMultiWayLoops(user?.id)
   const { data: archivedTradesData = [] } = useArchivedTrades()
   const { data: tradeHistoryData = [], isFetched: historyFetched } = useTradeHistory()
 
   // Unified initial loading: true until all critical queries have fetched at least once
   // Once set to false, stays false (via ref) so background refetches never re-trigger loading
   const hasInitiallyLoaded = useRef(false)
-  const allFetched = productsFetched && countsFetched && sentFetched && receivedFetched && ongoingFetched
+  const allFetched = productsFetched && countsFetched && sentFetched && receivedFetched && ongoingFetched && multiWayLoopsFetched
   if (allFetched) hasInitiallyLoaded.current = true
   const initialLoading = !hasInitiallyLoaded.current && !allFetched
 
@@ -124,7 +132,7 @@ const Dashboard: React.FC = () => {
 
   // Derived state from cached data
   const inventoryProducts = useMemo(
-    () => actualUserProducts.filter(p => p.status !== 'traded' && p.status !== 'sold'),
+    () => actualUserProducts.filter(p => p.status !== 'traded' && p.status !== 'sold' && p.status !== 'deleted'),
     [actualUserProducts]
   )
   const hasListedProducts = actualUserProducts.length > 0
@@ -139,7 +147,7 @@ const Dashboard: React.FC = () => {
   }, [receivedOffersData])
 
   // Combined loading states
-  const offersLoading = !sentOffersData && !receivedOffersData && !ongoingTradesData
+  const offersLoading = sentOffersLoading && receivedOffersLoading && ongoingTradesLoading
 
   // Initialize from URL ?tab= param immediately so the correct tab is active on first render
   const [activeTab, setActiveTab] = useState(() => {
@@ -181,9 +189,9 @@ const Dashboard: React.FC = () => {
   const tradeHistory = tradeHistoryData
 
   // Loading states from React Query
-  const sentLoading = false // React Query handles this internally
-  const receivedLoading = false
-  const ongoingLoading = false
+  const sentLoading = sentOffersLoading
+  const receivedLoading = receivedOffersLoading
+  const ongoingLoading = ongoingTradesLoading || multiWayLoopsInitialLoading
   const tradeHistoryLoading = false
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
   const [offersSubTab, setOffersSubTab] = useState(2) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing, 4: Archive
@@ -219,7 +227,6 @@ const Dashboard: React.FC = () => {
 
   // Multi-way trade state
   const [multiWayTrades, setMultiWayTrades] = useState<any[]>([])
-  const [multiWayTradesLoading, setMultiWayTradesLoading] = useState(false)
   const [discoverableLoops, setDiscoverableLoops] = useState<any[]>([])
   const [discoverableLoading, setDiscoverableLoading] = useState(false)
   const [hoppingInto, setHoppingInto] = useState<string | null>(null)
@@ -229,6 +236,8 @@ const Dashboard: React.FC = () => {
   const [multiWayManagerOpen, setMultiWayManagerOpen] = useState(false)
   const [multiWayManagerLoading, setMultiWayManagerLoading] = useState(false)
   const [loopQuota, setLoopQuota] = useState<null | { unlimited: boolean; period: string; used: number; limit: number }>(null)
+  const selectedMultiWayTradeRef = useRef<any>(null)
+  const multiWayManagerOpenRef = useRef(false)
   const prevMultiWayLoopIds = useRef<Set<string>>(new Set())
   const multiWayTradeDetailsCache = useRef<Map<string, { data: any; fetchedAt: number }>>(new Map())
   const preloadingPromises = useRef<Map<string, Promise<any>>>(new Map())
@@ -309,11 +318,18 @@ const Dashboard: React.FC = () => {
     navigate('/login', { replace: true })
   }, [isAuthenticated, loading, navigate, restoreAuthentication])
 
-  // Fetch multi-way trades when tab is selected
+  // Keep legacy multiway local state synchronized with the dashboard query.
   useEffect(() => {
-    if (user && (activeTab === 1 || activeTab === 2 || activeTab === 3)) {
-      fetchMultiWayTrades()
-      if (activeTab === 3) fetchDiscoverableLoops()
+    setMultiWayTrades(Array.isArray(multiWayLoopsData) ? multiWayLoopsData : [])
+  }, [multiWayLoopsData])
+
+  const multiWayTradesLoading = multiWayLoopsInitialLoading || (multiWayLoopsFetching && multiWayTrades.length === 0)
+
+  // Load tab-specific discoverable loops only when needed. Multiway loops used
+  // by Ongoing Trades are fetched immediately by useMultiWayLoops above.
+  useEffect(() => {
+    if (user && activeTab === 3) {
+      fetchDiscoverableLoops()
     }
   }, [user, activeTab])
 
@@ -450,14 +466,14 @@ const Dashboard: React.FC = () => {
 
   const currentTier = (user?.premium_tier || 'free') as 'free' | 'plus' | 'pro'
   const planMeta = {
-    free: { label: 'Free', color: 'gray', listingLimit: 10, boosts: 0, deliveryDiscount: '0%', matchPriority: 'Standard' },
-    plus: { label: 'Plus', color: 'blue', listingLimit: 30, boosts: 3, deliveryDiscount: '10%', matchPriority: 'Priority' },
-    pro: { label: 'Pro', color: 'purple', listingLimit: Infinity, boosts: 10, deliveryDiscount: '20%', matchPriority: 'Top queue' },
+    free: { label: 'Free', color: 'gray', listingLimit: 10, boosts: 0, deliveryDiscount: '0%', organizations: '1' },
+    plus: { label: 'Plus', color: 'blue', listingLimit: 30, boosts: 3, deliveryDiscount: '10%', organizations: '3' },
+    pro: { label: 'Pro', color: 'purple', listingLimit: Infinity, boosts: 10, deliveryDiscount: '20%', organizations: '3' },
   }
   const planBenefits = {
-    free: ['10 active listings', 'Standard delivery', 'Standard matches'],
-    plus: ['30 active listings', '3 boosts', '10% delivery discount', 'Priority matches'],
-    pro: ['Unlimited listings', '10 boosts', '20% delivery discount', 'Top match priority'],
+    free: ['10 active listings', 'Standard delivery', '1 organization'],
+    plus: ['30 active listings', '3 boosts', '3 organizations'],
+    pro: ['Unlimited listings', '10 boosts', '3 organizations'],
   }
   const activePlan = planMeta[currentTier] || planMeta.free
   const activeBenefits = planBenefits[currentTier] || planBenefits.free
@@ -796,6 +812,85 @@ const Dashboard: React.FC = () => {
     return chainSizeCache.current.get(key) || 0
   }, [])
 
+  const acceptedParticipantStatuses = useMemo(
+    () => new Set(['confirmed', 'accepted', 'ongoing', 'active', 'multiway_active', 'user3_accepted']),
+    []
+  )
+  const pendingParticipantStatuses = useMemo(() => new Set(['', 'pending']), [])
+  const rejectedParticipantStatuses = useMemo(() => new Set(['declined', 'rejected', 'cancelled', 'expired']), [])
+  const decisionLoopStatuses = useMemo(() => new Set(['pending', 'partially_accepted', 'accepted', 'accepted_by_one']), [])
+  const closedLoopStatuses = useMemo(() => new Set(['completed', 'history', 'rejected', 'cancelled', 'cancelled_due_to_conflict', 'broken', 'expired']), [])
+
+  const getParticipantStatus = useCallback((participant: any) => {
+    return String(participant?.status || participant?.trade_status || '').toLowerCase()
+  }, [])
+
+  const getCurrentLoopParticipant = useCallback((trade: any) => {
+    const currentUserID = Number(user?.id || 0)
+    if (!currentUserID) return null
+    const participants = Array.isArray(trade?.participants) ? trade.participants : []
+    return participants.find((p: any) => Number(p?.user_id ?? p?.id) === currentUserID) || null
+  }, [user?.id])
+
+  const getLoopAcceptanceState = useCallback((trade: any) => {
+    const participants = Array.isArray(trade?.participants) ? trade.participants : []
+    const acceptedCount = Number(trade?.accepted_count ?? participants.filter((p: any) =>
+      acceptedParticipantStatuses.has(getParticipantStatus(p))
+    ).length)
+    const participantCount = Number(trade?.participant_count ?? participants.length)
+    const currentParticipant = getCurrentLoopParticipant(trade)
+    const currentStatus = getParticipantStatus(currentParticipant)
+    const rawStatus = String(trade?.status || '').toLowerCase()
+    const loopStatus = rawStatus === 'pending' && acceptedCount > 0 && acceptedCount < participantCount
+      ? 'partially_accepted'
+      : rawStatus
+
+    const currentUserPending = !!currentParticipant && pendingParticipantStatuses.has(currentStatus)
+    const currentUserAccepted = !!currentParticipant && acceptedParticipantStatuses.has(currentStatus)
+    const currentUserRejected = !!currentParticipant && rejectedParticipantStatuses.has(currentStatus)
+    const allParticipantsAccepted = participantCount > 0 && acceptedCount >= participantCount
+    const canAccept = !currentUserRejected && currentUserPending && decisionLoopStatuses.has(loopStatus)
+    const canDecline = canAccept && trade?.can_decline !== false
+
+    return {
+      acceptedCount,
+      participantCount,
+      currentParticipant,
+      currentStatus,
+      loopStatus,
+      currentUserPending,
+      currentUserAccepted,
+      currentUserRejected,
+      allParticipantsAccepted,
+      canAccept,
+      canDecline,
+    }
+  }, [
+    acceptedParticipantStatuses,
+    decisionLoopStatuses,
+    getCurrentLoopParticipant,
+    getParticipantStatus,
+    pendingParticipantStatuses,
+    rejectedParticipantStatuses,
+  ])
+
+  const getLoopReviewState = useCallback((trade: any) => {
+    const participants = Array.isArray(trade?.participants) ? trade.participants : []
+    const participantCount = Number(trade?.participant_count ?? participants.length)
+    const reviewedCount = participants.filter((p: any) => Boolean(p?.is_reviewed)).length
+    const currentParticipant = getCurrentLoopParticipant(trade)
+    const currentUserReviewed = Boolean(currentParticipant?.is_reviewed)
+    const allParticipantsReviewed = participantCount > 0 && reviewedCount >= participantCount
+
+    return {
+      participantCount,
+      reviewedCount,
+      currentParticipant,
+      currentUserReviewed,
+      allParticipantsReviewed,
+    }
+  }, [getCurrentLoopParticipant])
+
   const filteredMultiWayTrades = useMemo(() => {
     return (multiWayTrades || []).filter((trade: any) => {
       const size = getChainSize(trade)
@@ -812,70 +907,88 @@ const Dashboard: React.FC = () => {
     const needsAction: any[] = []
     const waitingOnOthers: any[] = []
     const autoSearchResults: any[] = []
-    
+    const completed: any[] = []
     for (const trade of filteredMultiWayTrades) {
-      // Determine if user needs to take action
-      const status = trade?.status || ''
-      const canJoin = trade?.can_join === true
-      const canDecline = trade?.can_decline === true
+      // Confirmed loops have moved to the Ongoing Trades tab — keep this tab focused
+      // on loops that still need a decision.
+      const state = getLoopAcceptanceState(trade)
 
-      if (status === 'pending' && (canJoin || canDecline)) {
+      if (state.canAccept) {
         needsAction.push(trade)
-      } else if (status === 'pending' && !canJoin && !canDecline) {
+      } else if (decisionLoopStatuses.has(state.loopStatus) && state.currentUserAccepted && !state.allParticipantsAccepted) {
         waitingOnOthers.push(trade)
-      } else if (status === 'confirmed') {
-        continue
+      } else if (!closedLoopStatuses.has(state.loopStatus) && decisionLoopStatuses.has(state.loopStatus)) {
+        waitingOnOthers.push(trade)
       }
     }
-    
-    return { needsAction, waitingOnOthers, autoSearchResults }
-  }, [filteredMultiWayTrades])
+
+    return { needsAction, waitingOnOthers, autoSearchResults, completed }
+  }, [closedLoopStatuses, decisionLoopStatuses, filteredMultiWayTrades, getLoopAcceptanceState])
 
   const groupedTradeMatchTrades = useMemo(() => {
     const needsAction: any[] = []
     const waitingOnOthers: any[] = []
     const autoSearchResults: any[] = []
-
+    const completed: any[] = []
     for (const trade of tradeMatchTrades) {
-      const status = trade?.status || ''
-      const canJoin = trade?.can_join === true
-      const canDecline = trade?.can_decline === true
+      // Confirmed matches move to Ongoing Trades; this tab only tracks pending review.
+      const state = getLoopAcceptanceState(trade)
 
-      if (status === 'pending' && (canJoin || canDecline)) {
+      // Skip loops the current user has already confirmed — those now live in
+      // Ongoing Trades (see ongoingMultiWayTrades) so they don't show twice.
+      if (decisionLoopStatuses.has(state.loopStatus)) {
+        if (state.currentUserAccepted && !state.allParticipantsAccepted) {
+          waitingOnOthers.push(trade)
+          continue
+        }
+      }
+
+      if (state.canAccept) {
         needsAction.push(trade)
-      } else if (status === 'pending' && !canJoin && !canDecline) {
+      } else if (decisionLoopStatuses.has(state.loopStatus) && state.currentUserAccepted && !state.allParticipantsAccepted) {
         waitingOnOthers.push(trade)
-      } else if (status === 'confirmed') {
-        continue
+      } else if (!closedLoopStatuses.has(state.loopStatus) && decisionLoopStatuses.has(state.loopStatus)) {
+        waitingOnOthers.push(trade)
       }
     }
 
-    return { needsAction, waitingOnOthers, autoSearchResults }
-  }, [tradeMatchTrades])
+    return { needsAction, waitingOnOthers, autoSearchResults, completed }
+  }, [closedLoopStatuses, decisionLoopStatuses, getLoopAcceptanceState, tradeMatchTrades])
 
   const multiWayIndicatorCount = groupedMultiWayTrades.needsAction.length + groupedMultiWayTrades.waitingOnOthers.length
   const tradeMatchIndicatorCount = groupedTradeMatchTrades.needsAction.length + groupedTradeMatchTrades.waitingOnOthers.length
+  const visibleTradeMatchCount = tradeMatchIndicatorCount
+
+  useEffect(() => {
+    selectedMultiWayTradeRef.current = selectedMultiWayTrade
+  }, [selectedMultiWayTrade])
+
+  useEffect(() => {
+    multiWayManagerOpenRef.current = multiWayManagerOpen
+  }, [multiWayManagerOpen])
 
   // Get loop details from cache or fetch
-  const getOrFetchMultiWayLoopDetails = useCallback(async (loopId: string, cardData?: any) => {
+  const getOrFetchMultiWayLoopDetails = useCallback(async (loopId: string, cardData?: any, forceRefresh = false) => {
     const cache = multiWayTradeDetailsCache.current
     const cacheKey = String(loopId)
     
     // Check if already cached and current
-    if (cache.has(cacheKey)) {
+    if (!forceRefresh && cache.has(cacheKey)) {
       const cached = cache.get(cacheKey)!
       const cacheAge = Date.now() - cached.fetchedAt
       const cardStatus = cardData?.status
       const cachedStatus = cached.data?.status
       
-      // Use cache if less than 5 minutes old OR status hasn't changed
-      if (cacheAge < 300000 || cardStatus === cachedStatus) {
+      // Use cached details only while they still match the card status.
+      // A first acceptance changes pending -> partially_accepted, and stale
+      // modal data can make a valid Trade Match look like it vanished.
+      if (cacheAge < 300000 && (!cardStatus || cardStatus === cachedStatus)) {
         return cached.data
       }
     }
     
     // If already fetching, return the existing promise
-    if (preloadingPromises.current.has(cacheKey)) {
+    if (!forceRefresh && preloadingPromises.current.has(cacheKey)) {
       return preloadingPromises.current.get(cacheKey)
     }
     
@@ -905,7 +1018,7 @@ const Dashboard: React.FC = () => {
       setMultiWayManagerOpen(true)
     } catch (e) {
       console.error('Failed to load loop details:', e)
-      toast({
+       toast({
         id: 'error-load-loop-details',
         title: 'Error',
         description: 'Failed to load trade loop details.',
@@ -916,14 +1029,28 @@ const Dashboard: React.FC = () => {
     }
   }, [getOrFetchMultiWayLoopDetails, toast])
 
-  const fetchMultiWayTrades = async () => {
+  const refreshOpenMultiWayTradeDetails = useCallback(async () => {
+    if (!multiWayManagerOpenRef.current || !selectedMultiWayTradeRef.current) return
+
+    const current = selectedMultiWayTradeRef.current
+    const loopId = String(current?.chain_id || current?.loop_id || current?.id || '')
+    if (!loopId) return
+
     try {
-      setMultiWayTradesLoading(true)
-      const response = await api.get('/api/trades/loops', {
-        params: { user_id: user?.id }
-      })
-      const newTrades = response.data?.data || []
+      const details = await getOrFetchMultiWayLoopDetails(loopId, current, true)
+      selectedMultiWayTradeRef.current = details
+      setSelectedMultiWayTrade(details)
+    } catch (error) {
+      console.error('Failed to refresh open trade loop details:', error)
+    }
+  }, [getOrFetchMultiWayLoopDetails])
+
+  const fetchMultiWayTrades = async (_showLoading = true) => {
+    try {
+      const result = await refetchMultiWayLoops()
+      const newTrades = Array.isArray(result.data) ? result.data : []
       setMultiWayTrades(newTrades)
+      void refreshOpenMultiWayTradeDetails()
       
       // Preload details for all trades in background
       preloadMultiWayLoopDetails(newTrades)
@@ -943,8 +1070,6 @@ const Dashboard: React.FC = () => {
       const msg = error?.response?.data?.error || 'Failed to load multi-way trades'
       toast({ id: 'error-load-multi-way-trades', title: 'Error', description: msg, status: 'error' })
       setMultiWayTrades([])
-    } finally {
-      setMultiWayTradesLoading(false)
     }
   }
 
@@ -1032,9 +1157,11 @@ const Dashboard: React.FC = () => {
     })
     setRefreshCallback('ongoingTrades', () => {
       invalidateOffers()
+      void refreshOpenMultiWayTradeDetails()
     })
     setRefreshCallback('multiway', () => {
       fetchMultiWayTrades()
+      void refreshOpenMultiWayTradeDetails()
       fetchDiscoverableLoops()
       invalidateOffers()
     })
@@ -1065,7 +1192,7 @@ const Dashboard: React.FC = () => {
         })
       }, 1500)
     })
-  }, [setRefreshCallback, invalidateProducts, invalidateOffers, invalidateDashboard, toast])
+  }, [setRefreshCallback, invalidateProducts, invalidateOffers, invalidateDashboard, toast, refreshOpenMultiWayTradeDetails])
 
   const handleHopIntoDiscoverable = async (trade: any) => {
     const chainId = String(trade?.chain_id || '')
@@ -1117,28 +1244,44 @@ const Dashboard: React.FC = () => {
         throw new Error('Invalid loop ID. Please refresh and try again.')
       }
 
-      await api.post(`/api/trades/loops/${tradeIdString}/accept`, {
+      const response = await api.post(`/api/trades/loops/${tradeIdString}/accept`, {
         user_id: user?.id,
       })
+      const nextStatus = response.data?.data?.status || (trade?.status === 'pending' ? 'partially_accepted' : trade?.status)
       
       toast({
         id: 'success-joined-trade-loop',
         title: 'Success',
-        description: 'You joined the trade loop!',
+        description: nextStatus === 'ongoing' ? 'Trade moved to Ongoing Trades.' : 'Accepted. Waiting for the other user.',
         status: 'success',
         duration: 3000,
       })
       setSelectedMultiWayTrade(null)
       // Optimistically update the trade in-place, then refresh in background
       const joinedId = tradeIdString
+      multiWayTradeDetailsCache.current.delete(joinedId)
+      preloadingPromises.current.delete(joinedId)
       setMultiWayTrades(prev => prev.map(t => {
         const id = String(t?.chain_id || t?.loop_id || t?.id || '')
-        if (id === joinedId) return { ...t, can_join: false, can_decline: false }
+        if (id === joinedId) {
+          const participants = Array.isArray(t?.participants) ? t.participants.map((p: any) => {
+            const pID = Number(p?.user_id ?? p?.id)
+            if (pID === Number(user?.id || 0)) {
+              return { ...p, status: 'confirmed', trade_status: 'confirmed' }
+            }
+            return p
+          }) : t?.participants
+          return { ...t, status: nextStatus, participants, can_join: false, can_decline: false }
+        }
         return t
       }))
       fetchMultiWayTrades()
       invalidateOffers()
       invalidateProducts()
+      if (nextStatus === 'ongoing') {
+        setActiveTab(1)
+        setOffersSubTab(3)
+      }
     } catch (error: any) {
       toast({
         id: 'error-join-trade',
@@ -1422,14 +1565,14 @@ const Dashboard: React.FC = () => {
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
     const buyout = (buyoutOffers || []).length
-    const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway').length
-    const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
+    const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'accepted_by_one' || t.status === 'countered').length
+    const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'accepted_by_one' || t.status === 'countered') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
     const ongoingMultiway = (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'pending_user3' || t?.status === 'user3_accepted' || t?.status === 'multiway_active'
+      t?.status === 'active' || t?.status === 'multiway_active' || t?.status === 'confirmed' || t?.status === 'ongoing'
     ).length
     
     // Deduplicate: status='multiway_active' trades are present in both ongoingTradesData and multiWayTrades
-    const standardActiveCount = (ongoingTradesData || []).filter(t => t.status !== 'multiway_active').length
+    const standardActiveCount = (ongoingTradesData || []).filter(t => t.status !== 'multiway_active' && t.status !== 'countered').length
     const ongoing = standardActiveCount + ongoingMultiway;
     return {
       buyout,
@@ -1481,7 +1624,7 @@ const Dashboard: React.FC = () => {
   }, [buyoutOffers, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const sentOffers = useMemo(() => {
-    const active = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
+    const active = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'accepted_by_one' || t.status === 'countered') // Include multiway matches and counter-offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1535,7 +1678,7 @@ const Dashboard: React.FC = () => {
   }, [updateTrade])
 
   const receivedOffers = useMemo(() => {
-    const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
+    const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway' || t.status === 'accepted_by_one' || t.status === 'countered') // Include multiway matches and counter-offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1602,11 +1745,10 @@ const Dashboard: React.FC = () => {
   }, [outgoing, incoming, multiWayTrades, sentOffers, receivedOffers, ongoingTradesData])
 
   const ongoingTrades = useMemo(() => {
-    // Filter out multiway_active trades AND any trade that also appears in multiWayTrades
-    // (trades with 'active' status can exist in both sources, causing duplication)
+    // Filter out trades that also appear in multiWayTrades to avoid duplicate cards.
     const multiWayIds = new Set((multiWayTrades || []).map((t: any) => t.id).filter(Boolean))
     const standardOnly = (ongoingTradesData || []).filter(t =>
-      t.status !== 'multiway_active' && !multiWayIds.has(t.id)
+      !multiWayIds.has(t.id)
     )
     const filtered = filterTrades(standardOnly, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
@@ -1620,14 +1762,33 @@ const Dashboard: React.FC = () => {
     return filtered
   }, [ongoingTradesData, multiWayTrades, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
-  // Accepted multiway trades that should appear in the ongoing trades section
-  // ONLY show trades when ALL participants have accepted (status='active' or 'multiway_active')
-  // Do NOT show 'user3_accepted' status - that means only User 3 has responded
+  // Accepted multiway trades that should appear in the ongoing trades section.
+  // Show trades once ALL participants have accepted:
+  //   - 'active' / 'multiway_active' — 3-way chain (multiway_trades table) fully agreed
+  //   - 'confirmed'                  — 3-5 participant like-loop (trade_like_loops table) fully agreed
+  // Do NOT show 'pending_user3' or 'user3_accepted' — those belong in the Multi-Way tab.
+  // For 2-way trade matches, also show the loop in Ongoing Trades once the current
+  // user has accepted their side (status='pending' at loop level, but the current
+  // user's participant row is 'confirmed') — so the accepter sees it immediately
+  // while waiting on the other party.
   const ongoingMultiWayTrades = useMemo(() => {
-    return (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'pending_user3' || t?.status === 'user3_accepted' || t?.status === 'active' || t?.status === 'multiway_active'
-    )
-  }, [multiWayTrades])
+    return (multiWayTrades || []).filter((t: any) => {
+      const state = getLoopAcceptanceState(t)
+      const reviewState = getLoopReviewState(t)
+      const loopStatus = String(t?.status || '').toLowerCase()
+
+      if (reviewState.currentUserReviewed) return false
+      if (reviewState.allParticipantsReviewed) return false
+      if (closedLoopStatuses.has(loopStatus) && loopStatus !== 'completed' && loopStatus !== 'history') return false
+
+      return loopStatus === 'active' ||
+        loopStatus === 'multiway_active' ||
+        loopStatus === 'confirmed' ||
+        loopStatus === 'ongoing' ||
+        ((loopStatus === 'completed' || loopStatus === 'history') && !reviewState.allParticipantsReviewed) ||
+        state.allParticipantsAccepted
+    })
+  }, [closedLoopStatuses, getLoopAcceptanceState, getLoopReviewState, multiWayTrades])
 
   // Unified search handler - clears tab-specific searches when unified search is used
   const handleUnifiedSearchChange = (value: string) => {
@@ -1686,6 +1847,12 @@ const Dashboard: React.FC = () => {
   }, [offersSubTab, buyoutOffersTab, sentOffers, receivedOffers, ongoingTrades])
   const offersPerPage = 9
   const totalPages = Math.ceil(currentTabTrades.length / offersPerPage)
+  useEffect(() => {
+    const safeTotalPages = Math.max(1, totalPages)
+    if (offersPage > safeTotalPages) {
+      setOffersPage(safeTotalPages)
+    }
+  }, [offersPage, totalPages])
   const paginatedTrades = useMemo(() => {
     const start = (offersPage - 1) * offersPerPage
     return currentTabTrades.slice(start, start + offersPerPage)
@@ -1703,8 +1870,10 @@ const Dashboard: React.FC = () => {
       'pending': { color: 'yellow', icon: '??' },
       'pending_multiway': { color: 'purple', icon: '??' },
       'accepted': { color: 'green', icon: '?' },
+      'accepted_by_one': { color: 'blue', icon: '?' },
       'declined': { color: 'red', icon: '?' },
       'cancelled': { color: 'gray', icon: '?' },
+      'cancelled_due_to_conflict': { color: 'gray', icon: '?' },
       'countered': { color: 'purple', icon: '??' },
       'expired': { color: 'gray', icon: '?' },
       'completed': { color: 'green', icon: '?' },
@@ -1717,6 +1886,8 @@ const Dashboard: React.FC = () => {
     const { color, icon } = badgeColor(status)
     let statusText = status.charAt(0).toUpperCase() + status.slice(1)
     if (status === 'pending_multiway') statusText = 'Multiway Match'
+    if (status === 'accepted_by_one') statusText = 'Waiting for other user'
+    if (status === 'cancelled_due_to_conflict') statusText = 'Cancelled due to conflict'
     return (
       <Badge
         colorScheme={color}
@@ -1834,25 +2005,6 @@ const Dashboard: React.FC = () => {
   }
 
   const handleBoostProductClick = async (product: Product) => {
-    // Check if user is premium
-    if (!user?.is_premium || user?.premium_tier === 'free') {
-      showPopup({
-        type: 'warning',
-        title: '⭐ Premium Feature',
-        message: 'Boost Listing is a Premium-only feature. Upgrade now to boost your listings to the top of the feed for 3 hours!',
-        confirmText: 'Upgrade to Premium',
-        cancelText: 'Cancel',
-        onConfirm: () => {
-          closePopup()
-          navigate('/premium')
-        },
-        onCancel: () => closePopup(),
-        icon: FaCrown,
-        confirmColorScheme: 'brand'
-      })
-      return
-    }
-
     // Show confirmation dialog with details
     showPopup({
       type: 'info',
@@ -2052,7 +2204,7 @@ const Dashboard: React.FC = () => {
       setPopupConfig({
         type: 'success',
         title: 'Product Deleted',
-        message: `"${product.title}" has been successfully deleted along with all associated offers.`,
+        message: `"${product.title}" has been removed from your listings. Existing offers and trade history were preserved.`,
         confirmText: 'OK',
         onConfirm: () => closePopup(),
         icon: CheckIcon,
@@ -2181,15 +2333,19 @@ const Dashboard: React.FC = () => {
     const offersCount = React.useMemo(() => getProductOffersCount(product.id), [product.id, getProductOffersCount])
 
 
-    const isStagnant = React.useMemo(() => {
-      const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-      return offersCount === 0 && daysOld > 3
-    }, [product.created_at, offersCount])
-
-    const isBoostable = React.useMemo(() => {
-      if (!product.boosted_at) return true
-      const hoursSinceBoost = (new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)
-      return hoursSinceBoost >= 24
+    const boostRemaining = React.useMemo(() => {
+      if (!product.boosted_at) return null;
+      const boostedAtRaw = String(product.boosted_at)
+      const normalizedBoostedAt = boostedAtRaw.includes('T') ? boostedAtRaw : boostedAtRaw.replace(' ', 'T')
+      const boostedTime = new Date(normalizedBoostedAt).getTime()
+      if (Number.isNaN(boostedTime)) return null
+      const expiresAt = boostedTime + 3 * 60 * 60 * 1000
+      const remaining = expiresAt - new Date().getTime()
+      if (remaining <= 0) return null
+      
+      const hours = Math.floor(remaining / (60 * 60 * 1000))
+      const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000))
+      return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
     }, [product.boosted_at])
 
     return (
@@ -2218,45 +2374,45 @@ const Dashboard: React.FC = () => {
               cursor="pointer"
               onClick={() => navigate(`/products/${product.id}`)}
             />
-            {/* Boost button overlay - top right */}
-            {isStagnant && isBoostable && shouldShowActions && (
-              <Tooltip label="Boost this listing" placement="left" hasArrow>
-                <Button
-                  position="absolute"
-                  top={2}
-                  right={2}
-                  size="xs"
-                  colorScheme="blue"
-                  variant="solid"
-                  fontSize="10px"
-                  px={2}
-                  py={1}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleBoostProductClick(product)
-                  }}
-                  fontWeight="bold"
-                  boxShadow="md"
-                  _hover={{ transform: 'scale(1.05)', boxShadow: 'lg' }}
-                  transition="all 0.2s"
-                  zIndex={2}
-                >
-                  Boost
-                </Button>
-              </Tooltip>
+            {/* Boost indicator overlay - top right */}
+            {boostRemaining && (
+              <Badge
+                position="absolute"
+                top={2}
+                right={2}
+                variant="solid"
+                borderRadius="full"
+                px={{ base: 1.5, md: 2.5 }}
+                py={{ base: 0.5, md: 1 }}
+                fontSize={{ base: '8px', md: '10px' }}
+                fontWeight="800"
+                bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')}
+                color={useColorModeValue('brand.600', 'brand.300')}
+                shadow="sm"
+                backdropFilter="blur(8px)"
+                display="inline-flex"
+                alignItems="center"
+                gap={1}
+                zIndex={2}
+                pointerEvents="none"
+              >
+                <StarIcon boxSize={{ base: 2, md: 2.5 }} />
+                Boosted • {boostRemaining}
+              </Badge>
             )}
           </Box>
           <CardHeader pb={2}>
             <Flex justify="space-between" align="start">
-              <Heading size="sm" noOfLines={2} flex={1} mr={2} wordBreak="break-word">
-                {product.title}
+              <Heading size="sm" noOfLines={2} flex={1} mr={2} wordBreak="break-word" display="flex" alignItems="center" gap={2}>
+                <Text as="span" isTruncated>{product.title}</Text>
+                <HStack spacing={1} fontSize="xs" color="gray.500" fontWeight="normal" flexShrink={0}>
+                  <Icon as={FaHandshake} boxSize={3} />
+                  <Text>{offersCount} offers</Text>
+                </HStack>
               </Heading>
               <HStack spacing={2} flexShrink={0}>
-                {product.premium && (
-                  <Badge colorScheme="yellow" variant="solid" fontSize="xs">
-                    Boosted
-                  </Badge>
-                )}
+
+
                 {shouldShowActions && (
                   <IconButton
                     as={RouterLink}
@@ -2302,16 +2458,18 @@ const Dashboard: React.FC = () => {
               </HStack>
               <HStack spacing={2} align="center" flexWrap="wrap" justify="space-between">
                 <HStack spacing={2}>
-                  <Badge
-                    colorScheme={isAvailable ? 'green' : normalizedStatus === 'sold' ? 'red' : isLocked ? 'orange' : 'blue'}
-                    variant="subtle"
-                    fontSize="2xs"
-                    px={1.5}
-                    py={0.5}
-                    borderRadius="sm"
-                  >
-                    {product.status}
-                  </Badge>
+                  {!isAvailable && (
+                    <Badge
+                      colorScheme={isAvailable ? 'green' : normalizedStatus === 'sold' ? 'red' : isLocked ? 'orange' : 'blue'}
+                      variant="subtle"
+                      fontSize="2xs"
+                      px={1.5}
+                      py={0.5}
+                      borderRadius="sm"
+                    >
+                      {product.status}
+                    </Badge>
+                  )}
                   {product.barter_only && (
                     <Badge
                       colorScheme="purple"
@@ -2324,10 +2482,6 @@ const Dashboard: React.FC = () => {
                       Barter Only
                     </Badge>
                   )}
-                </HStack>
-                <HStack spacing={1} fontSize="xs" color="gray.500">
-                  <Icon as={FaHandshake} boxSize={3} />
-                  <Text>{offersCount} offers</Text>
                 </HStack>
               </HStack>
               </VStack>
@@ -2401,6 +2555,22 @@ const Dashboard: React.FC = () => {
     const isAvailable = normalizedStatus === 'available'
     const isLocked = normalizedStatus === 'locked'
     const statusColor = isAvailable ? 'green' : isLocked ? 'orange' : normalizedStatus === 'sold' ? 'red' : 'blue'
+    
+    const boostRemaining = React.useMemo(() => {
+      if (!product.boosted_at) return null;
+      const boostedAtRaw = String(product.boosted_at)
+      const normalizedBoostedAt = boostedAtRaw.includes('T') ? boostedAtRaw : boostedAtRaw.replace(' ', 'T')
+      const boostedTime = new Date(normalizedBoostedAt).getTime()
+      if (Number.isNaN(boostedTime)) return null
+      const expiresAt = boostedTime + 3 * 60 * 60 * 1000
+      const remaining = expiresAt - new Date().getTime()
+      if (remaining <= 0) return null
+      
+      const hours = Math.floor(remaining / (60 * 60 * 1000))
+      const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000))
+      return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
+    }, [product.boosted_at])
+
     return (
       <Box
         p={3}
@@ -2422,6 +2592,7 @@ const Dashboard: React.FC = () => {
             />
           )}
           <Box
+            position="relative"
             w="60px"
             h="60px"
             flexShrink={0}
@@ -2437,47 +2608,53 @@ const Dashboard: React.FC = () => {
               objectFit="cover"
               fallbackSrc="/no-image.svg"
             />
+            {boostRemaining && (
+              <Badge
+                position="absolute"
+                top={1}
+                right={1}
+                variant="solid"
+                borderRadius="full"
+                px={1}
+                py={0.5}
+                fontSize="8px"
+                fontWeight="800"
+                bg={useColorModeValue('whiteAlpha.900', 'blackAlpha.800')}
+                color={useColorModeValue('brand.600', 'brand.300')}
+                shadow="sm"
+                backdropFilter="blur(8px)"
+                display="inline-flex"
+                alignItems="center"
+                gap={0.5}
+                pointerEvents="none"
+                zIndex={2}
+              >
+                <StarIcon boxSize="7px" />
+                {boostRemaining}
+              </Badge>
+            )}
           </Box>
           <VStack align="start" spacing={0} flex={1} minW={0}>
-            <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
-              {product.title}
-            </Text>
-            <HStack spacing={2} flexWrap="wrap" mt={1}>
-              <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
-                {product.status}
-              </Badge>
-              <HStack spacing={1} fontSize="xs" color="gray.500">
+            <HStack w="full" align="center" spacing={3}>
+              <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+                {product.title}
+              </Text>
+              <HStack spacing={1} fontSize="xs" color="gray.500" flexShrink={0}>
                 <Icon as={FaHandshake} boxSize={3} />
                 <Text>{offersCount} offers</Text>
               </HStack>
             </HStack>
+            {!isAvailable && (
+              <HStack spacing={2} flexWrap="wrap" mt={1}>
+                <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
+                  {product.status}
+                </Badge>
+              </HStack>
+            )}
           </VStack>
           {/* Desktop: show actions inline */}
           <HStack spacing={1} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
-            {(() => {
-              const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-              const isStag = offersCount === 0 && daysOld > 3
-              const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
-              const shouldAct = showActions && product.status !== 'traded' && product.status !== 'sold'
 
-              if (isStag && isBoost && shouldAct) {
-                return (
-                  <Button
-                    size="sm"
-                    colorScheme="blue"
-                    variant="ghost"
-                    leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
-                    onClick={() => handleBoostProductClick(product)}
-                    fontSize="sm"
-                    px={3}
-                    mr={1}
-                  >
-                    Boost
-                  </Button>
-                )
-              }
-              return null
-            })()}
             {showActions && (
               <>
                 {isAvailable && (
@@ -2528,28 +2705,7 @@ const Dashboard: React.FC = () => {
         {/* Mobile: show actions on a separate row below */}
         {showActions && (
           <HStack spacing={1} mt={2} display={{ base: 'flex', md: 'none' }} justify="flex-end" flexWrap="wrap">
-            {(() => {
-              const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-              const isStag = offersCount === 0 && daysOld > 3
-              const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
-              const shouldAct = product.status !== 'traded' && product.status !== 'sold'
 
-              if (isStag && isBoost && shouldAct) {
-                return (
-                  <Button
-                    size="xs"
-                    colorScheme="blue"
-                    variant="ghost"
-                    leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
-                    onClick={() => handleBoostProductClick(product)}
-                    fontSize="xs"
-                  >
-                    Boost
-                  </Button>
-                )
-              }
-              return null
-            })()}
             {isAvailable && (
               <Button
                 size="xs"
@@ -2668,7 +2824,7 @@ const Dashboard: React.FC = () => {
             >
               View
             </Button>
-            {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
+            {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway' || trade.status === 'accepted_by_one') && onAccept && onDecline && (
               <>
                 <Button
                   size="sm"
@@ -2692,7 +2848,7 @@ const Dashboard: React.FC = () => {
                 </Button>
               </>
             )}
-            {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
+            {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway' || trade.status === 'accepted_by_one') && onCancel && (
               <Button
                 size="sm"
                 colorScheme="red"
@@ -2717,7 +2873,7 @@ const Dashboard: React.FC = () => {
           >
             View
           </Button>
-          {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
+          {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway' || trade.status === 'accepted_by_one') && onAccept && onDecline && (
             <>
               <Button
                 size="xs"
@@ -2739,7 +2895,7 @@ const Dashboard: React.FC = () => {
               </Button>
             </>
           )}
-          {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
+          {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway' || trade.status === 'accepted_by_one') && onCancel && (
             <Button
               size="xs"
               colorScheme="red"
@@ -3061,7 +3217,7 @@ const Dashboard: React.FC = () => {
               >
                 View
               </Button>
-              {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
+              {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway' || trade.status === 'accepted_by_one') && onAccept && onDecline && (
                 <>
                   <Button
                     size="sm"
@@ -3090,7 +3246,7 @@ const Dashboard: React.FC = () => {
                   </Button>
                 </>
               )}
-              {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
+              {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway' || trade.status === 'accepted_by_one') && onCancel && (
                 <Button
                   size="sm"
                   colorScheme="red"
@@ -3325,6 +3481,14 @@ const Dashboard: React.FC = () => {
       ? offersSort
       : tradeHistorySort
 
+  const ongoingTradesCount = ongoingTrades.length + ongoingMultiWayTrades.length
+
+  const goToOngoingTrades = () => {
+    setActiveTab(1)
+    setOffersSubTab(3)
+    setOffersPage(1)
+  }
+
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
       <Container
@@ -3366,8 +3530,9 @@ const Dashboard: React.FC = () => {
 
                 {/* Center: Unified Search Bar */}
                 <InputGroup
-                  flex={{ base: '1 1 auto', sm: '0 0 64%', md: '1 1 350px' }}
-                  maxW={{ base: '65%', sm: '70%', md: '800px' }}
+                  flex={{ base: '1 1 0', md: '1 1 350px' }}
+                  minW={0}
+                  maxW={{ base: 'none', md: '800px' }}
                   position="relative"
                 >
                   <InputLeftElement pointerEvents="none" h="full">
@@ -3487,6 +3652,52 @@ const Dashboard: React.FC = () => {
                     </Box>
                   )}
                 </InputGroup>
+
+                <Tooltip
+                  label={ongoingTradesCount > 0 ? `${ongoingTradesCount} ongoing trade${ongoingTradesCount === 1 ? '' : 's'}` : 'No ongoing trades yet'}
+                  hasArrow
+                  placement="bottom"
+                >
+                  <Button
+                    size={{ base: 'sm', md: 'md' }}
+                    h="44px"
+                    px={{ base: 2.5, sm: 3, md: 4 }}
+                    borderRadius="2xl"
+                    colorScheme="green"
+                    variant={activeTab === 1 && offersSubTab === 3 ? 'solid' : 'outline'}
+                    bg={activeTab === 1 && offersSubTab === 3 ? 'green.500' : cardBg}
+                    borderColor={ongoingTradesCount > 0 ? 'green.400' : borderColor}
+                    boxShadow={ongoingTradesCount > 0 ? 'sm' : 'none'}
+                    leftIcon={<Icon as={FaClock} boxSize={{ base: 4, md: 4.5 }} />}
+                    onClick={goToOngoingTrades}
+                    flexShrink={0}
+                    whiteSpace="nowrap"
+                    _hover={{
+                      transform: 'translateY(-1px)',
+                      shadow: 'md',
+                      bg: activeTab === 1 && offersSubTab === 3 ? 'green.600' : 'green.50',
+                    }}
+                    transition="all 0.2s"
+                  >
+                    <Text display={{ base: 'none', lg: 'inline' }}>Ongoing Trades</Text>
+                    <Text display={{ base: 'none', sm: 'inline', lg: 'none' }}>Ongoing</Text>
+                    <Badge
+                      ml={{ base: 0, sm: 2 }}
+                      colorScheme={activeTab === 1 && offersSubTab === 3 ? 'whiteAlpha' : 'green'}
+                      bg={activeTab === 1 && offersSubTab === 3 ? 'whiteAlpha.300' : undefined}
+                      color={activeTab === 1 && offersSubTab === 3 ? 'white' : undefined}
+                      borderRadius="full"
+                      minW="22px"
+                      h="22px"
+                      display="inline-flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      fontSize="xs"
+                    >
+                      {ongoingTradesCount}
+                    </Badge>
+                  </Button>
+                </Tooltip>
 
                 {/* Right: Compact Stats Buttons (Row) 
              <HStack spacing={2} flexShrink={0}>
@@ -3710,7 +3921,9 @@ const Dashboard: React.FC = () => {
                     <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="wider">Active Plan</Text>
                     <HStack spacing={2} align="center">
                       <Text fontWeight="800" fontSize={{ base: 'md', md: 'lg' }} color="gray.800" letterSpacing="tight">{activePlan.label}</Text>
-                      <Badge colorScheme={activePlan.color} borderRadius="full" px={2} py={0.5} fontSize="10px" variant="solid" shadow="sm">PRO</Badge>
+                      {activePlan.label !== 'Free' && (
+                        <Badge colorScheme={activePlan.color} borderRadius="full" px={2} py={0.5} fontSize="10px" variant="solid" shadow="sm">PRO</Badge>
+                      )}
                     </HStack>
                   </Box>
                 </HStack>
@@ -3915,6 +4128,19 @@ const Dashboard: React.FC = () => {
                 {/* Products Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
+                    <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
+                      <VStack align="start" spacing={1}>
+                        <Text fontSize="xs" color="blue.800">
+                          Tip: Products shown here are available products. Use "Find Trades" to connect your product to other products.
+                        </Text>
+                        {!user?.is_premium && (
+                          <Text fontSize="xs" color="blue.900" fontWeight="semibold">
+                            Upgrade to Premium to be able to boost your products.
+                          </Text>
+                        )}
+                      </VStack>
+                    </Box>
+
 
                     {/* Products Grid or List - Apply Sort */}
                     {productsLoading && !hasInitiallyLoaded.current ? (
@@ -4107,6 +4333,7 @@ const Dashboard: React.FC = () => {
                           borderWidth="1px"
                           borderColor="orange.200"
                           bg="orange.50"
+                          onClick={() => { setOffersSubTab(0); setOffersPage(1) }}
                           _selected={{ bg: 'orange.100', borderColor: 'orange.400', color: 'orange.700' }}
                         >
                           <HStack spacing={1.5}>
@@ -4125,6 +4352,7 @@ const Dashboard: React.FC = () => {
                           borderWidth="1px"
                           borderColor="yellow.200"
                           bg="yellow.50"
+                          onClick={() => { setOffersSubTab(1); setOffersPage(1) }}
                           _selected={{ bg: 'yellow.100', borderColor: 'yellow.400', color: 'yellow.700' }}
                         >
                           <HStack spacing={1.5}>
@@ -4143,6 +4371,7 @@ const Dashboard: React.FC = () => {
                           borderWidth="1px"
                           borderColor="blue.200"
                           bg="blue.50"
+                          onClick={() => { setOffersSubTab(2); setOffersPage(1) }}
                           _selected={{ bg: 'blue.100', borderColor: 'blue.400', color: 'blue.700' }}
                         >
                           <HStack spacing={1.5}>
@@ -4164,6 +4393,7 @@ const Dashboard: React.FC = () => {
                           borderWidth="1px"
                           borderColor="green.200"
                           bg="green.50"
+                          onClick={() => { setOffersSubTab(3); setOffersPage(1) }}
                           _selected={{ bg: 'green.100', borderColor: 'green.400', color: 'green.700' }}
                         >
                           <HStack spacing={1.5}>
@@ -4185,6 +4415,7 @@ const Dashboard: React.FC = () => {
                           borderWidth="1px"
                           borderColor="gray.200"
                           bg="gray.50"
+                          onClick={() => { setOffersSubTab(4); setOffersPage(1) }}
                           _selected={{ bg: 'gray.100', borderColor: 'gray.400', color: 'gray.700' }}
                         >
                           <HStack spacing={1.5}>
@@ -4541,7 +4772,7 @@ const Dashboard: React.FC = () => {
 
                         {/* Ongoing Trades */}
                         <TabPanel px={0}>
-                          {offersLoading ? (
+                          {ongoingLoading ? (
                             <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />
@@ -4631,11 +4862,47 @@ const Dashboard: React.FC = () => {
                                         variant="outline"
                                         fontSize={{ base: 'xs', md: 'sm' }}
                                         px={{ base: 2, md: 3 }}
-                                        onClick={() => handleViewDetails(trade)}
+                                        onClick={() => handleViewOngoingTrade(trade)}
                                       >
                                         View
                                       </Button>
                                     </Flex>
+                                  )
+                                })}
+                                {ongoingMultiWayTrades.map((trade: any) => {
+                                  const participants = Array.isArray(trade?.participants) ? trade.participants : []
+                                  if (participants.length < 2) return null
+                                  const summary = getMultiWayTradeSummary(trade)
+                                  const loopId = String(trade.id || trade.loop_id || trade.chain_id)
+
+                                  return (
+                                    <Box
+                                      key={`ongoing-loop-list-${loopId}`}
+                                      p={3}
+                                      borderBottom="1px"
+                                      borderColor={borderColor}
+                                      bg="purple.50"
+                                    >
+                                      <MultiWayTradeUI
+                                        participants={participants.map((participant: any) => ({
+                                          id: Number(participant?.id ?? participant?.user_id),
+                                          user_name: participant?.user_name || 'Unknown User',
+                                          user_avatar: participant?.user_avatar,
+                                          product_id: Number(participant?.product_id || participant?.offered_product_id || 0),
+                                          product_title: participant?.product_title || 'Trade item',
+                                          product_image: resolveParticipantImage(participant) || undefined,
+                                          status: participant?.status || participant?.trade_status || 'confirmed',
+                                        }))}
+                                        viewMode="initiator"
+                                        loopStatus={trade?.status || 'ongoing'}
+                                        yourGive={summary.yourGive}
+                                        yourGet={summary.yourGet}
+                                        chainLabel={summary.chainLabel}
+                                        canJoin={false}
+                                        canDecline={false}
+                                        onViewDetails={() => handleViewMultiWayTradeDetails(trade)}
+                                      />
+                                    </Box>
                                   )
                                 })}
                               </Box>
@@ -4780,26 +5047,21 @@ const Dashboard: React.FC = () => {
                                             </HStack>
                                           </Box>
 
-                                          <HStack spacing={1} mt={1}>
-                                            {nextParticipant && (
-                                              <>
-                                                <Avatar
-                                                  name={nextParticipant.user_name || 'User'}
-                                                  size="sm"
-                                                  bg="purple.500"
-                                                  color="white"
-                                                />
-                                                <Box flex={1} minW={0}>
-                                                  <Text fontSize="sm" fontWeight="600" color="gray.800" noOfLines={1} letterSpacing="tight">
-                                                    {nextParticipant.user_name || 'Unknown User'}
+                                          <SimpleGrid columns={participants.length > 3 ? 2 : 1} spacing={2}>
+                                            {participants.map((participant: any) => (
+                                              <HStack key={`${trade.id || trade.loop_id || trade.chain_id}-${participant.user_id || participant.id}`} spacing={2} minW={0} p={2} bg="purple.50" borderRadius="md">
+                                                <Avatar name={participant.user_name || 'User'} size="xs" bg="purple.500" color="white" />
+                                                <Box minW={0}>
+                                                  <Text fontSize="xs" fontWeight="700" noOfLines={1}>
+                                                    {participant.user_name || 'Unknown User'}
                                                   </Text>
-                                                  <Text fontSize="10px" fontWeight="500" color="gray.400" textTransform="uppercase" letterSpacing="wider">
-                                                    {desiredItems}
+                                                  <Text fontSize="10px" color="gray.500" noOfLines={1}>
+                                                    {participant.product_title || 'Trade item'}
                                                   </Text>
                                                 </Box>
-                                              </>
-                                            )}
-                                          </HStack>
+                                              </HStack>
+                                            ))}
+                                          </SimpleGrid>
                                         </VStack>
                                       </CardHeader>
 
@@ -4921,7 +5183,7 @@ const Dashboard: React.FC = () => {
                       <Center py={12}>
                         <Spinner size="lg" color="brand.500" />
                       </Center>
-                    ) : tradeMatchTrades.length === 0 ? (
+                    ) : visibleTradeMatchCount === 0 ? (
                       <Box textAlign="center" py={12}>
                         <Icon as={FaHandshake} boxSize={16} color="blue.300" mb={4} />
                         <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
@@ -4943,6 +5205,7 @@ const Dashboard: React.FC = () => {
                                 const summary = getSummary(trade)
                                 const participants = trade.participants || []
                                 const firstParticipantImage = resolveParticipantImage(participants[0])
+                                const actionState = getLoopAcceptanceState(trade)
 
                                 return (
                                   <Card
@@ -4991,9 +5254,11 @@ const Dashboard: React.FC = () => {
                                         <Button size="sm" colorScheme="green" flex={1} onClick={(e) => { e.stopPropagation(); handleJoinMultiWayTrade(trade) }} isLoading={multiWayTradeJoining}>
                                           Accept
                                         </Button>
-                                        <Button size="sm" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
-                                          Decline
-                                        </Button>
+                                        {actionState.canDecline && (
+                                          <Button size="sm" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
+                                            Decline
+                                          </Button>
+                                        )}
                                       </HStack>
                                     </CardFooter>
                                   </Card>
@@ -5043,6 +5308,56 @@ const Dashboard: React.FC = () => {
 
                                     <CardFooter pt={0} pb={3}>
                                       <Button size="sm" colorScheme="orange" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
+                                        View Trade
+                                      </Button>
+                                    </CardFooter>
+                                  </Card>
+                                )
+                              })}
+                            </SimpleGrid>
+                          </Box>
+                        )}
+
+                        {groupedTradeMatchTrades.completed.length > 0 && (
+                          <Box>
+                            <Heading size="sm" mb={3} color="green.600">
+                              Confirmed
+                            </Heading>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+                              {groupedTradeMatchTrades.completed.map((trade) => {
+                                const summary = getSummary(trade)
+
+                                return (
+                                  <Card
+                                    key={trade.id || trade.loop_id || trade.chain_id}
+                                    variant="outline"
+                                    h="100%"
+                                    display="flex"
+                                    flexDirection="column"
+                                    _hover={{
+                                      shadow: 'lg',
+                                      transform: 'translateY(-4px)',
+                                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                      borderColor: 'green.500',
+                                    }}
+                                    transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                    borderLeftWidth="4px"
+                                    borderLeftColor="green.400"
+                                    borderColor="green.200"
+                                    cursor="pointer"
+                                    onClick={() => handleViewMultiWayTradeDetails(trade)}
+                                  >
+                                    <CardHeader pb={2} flex={1}>
+                                      <Badge colorScheme="green" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
+                                        Confirmed
+                                      </Badge>
+                                      <Heading size="sm" noOfLines={2}>
+                                        {summary.yourGive} → {summary.yourGet}
+                                      </Heading>
+                                    </CardHeader>
+
+                                    <CardFooter pt={0} pb={3}>
+                                      <Button size="sm" colorScheme="green" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
                                         View Trade
                                       </Button>
                                     </CardFooter>
@@ -5180,6 +5495,7 @@ const Dashboard: React.FC = () => {
                                         const summary = getSummary(trade)
                                         const participants = trade.participants || []
                                         const firstParticipantImage = resolveParticipantImage(participants[0])
+                                        const actionState = getLoopAcceptanceState(trade)
                                         
                                         return (
                                           <Card
@@ -5230,9 +5546,11 @@ const Dashboard: React.FC = () => {
                                                 <Button size="md" fontWeight="600" borderRadius="2xl" colorScheme="green" flex={1} onClick={(e) => { e.stopPropagation(); handleJoinMultiWayTrade(trade) }} isLoading={multiWayTradeJoining}>
                                                   Accept
                                                 </Button>
-                                                <Button size="md" fontWeight="600" borderRadius="2xl" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
-                                                  Decline
-                                                </Button>
+                                                {actionState.canDecline && (
+                                                  <Button size="md" fontWeight="600" borderRadius="2xl" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
+                                                    Decline
+                                                  </Button>
+                                                )}
                                               </HStack>
                                             </CardFooter>
                                           </Card>
@@ -5251,7 +5569,7 @@ const Dashboard: React.FC = () => {
                                       {groupedMultiWayTrades.waitingOnOthers.map((trade) => {
                                         const summary = getSummary(trade)
                                         const participants = trade.participants || []
-                                        
+
                                         return (
                                           <Card
                                             key={trade.id || trade.loop_id || trade.chain_id}
@@ -5285,6 +5603,58 @@ const Dashboard: React.FC = () => {
 
                                             <CardFooter pt={0} pb={4} px={4}>
                                               <Button size="md" fontWeight="600" borderRadius="2xl" colorScheme="orange" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
+                                                View Trade
+                                              </Button>
+                                            </CardFooter>
+                                          </Card>
+                                        )
+                                      })}
+                                    </SimpleGrid>
+                                  </Box>
+                                )}
+
+                                {groupedMultiWayTrades.completed.length > 0 && (
+                                  <Box>
+                                    <Heading size="sm" mb={3} color="green.600">
+                                      Confirmed
+                                    </Heading>
+                                    <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+                                      {groupedMultiWayTrades.completed.map((trade) => {
+                                        const summary = getSummary(trade)
+
+                                        return (
+                                          <Card
+                                            key={trade.id || trade.loop_id || trade.chain_id}
+                                            variant="outline"
+                                            h="100%"
+                                            display="flex"
+                                            flexDirection="column"
+                                            borderRadius="2xl"
+                                            overflow="hidden"
+                                            borderWidth="0"
+                                            borderLeftWidth="4px"
+                                            borderLeftColor="green.400"
+                                            shadow="sm"
+                                            _hover={{
+                                              shadow: 'md',
+                                              transform: 'translateY(-3px)',
+                                              transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+                                            }}
+                                            transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
+                                            cursor="pointer"
+                                            onClick={() => handleViewMultiWayTradeDetails(trade)}
+                                          >
+                                            <CardHeader pb={2} pt={4} flex={1}>
+                                              <Badge colorScheme="green" bg="green.100" color="green.700" variant="solid" fontSize="10px" px={3} py={1} borderRadius="md" fontWeight="700" letterSpacing="wider" textTransform="uppercase" mb={2}>
+                                                Confirmed
+                                              </Badge>
+                                              <Heading fontSize="md" fontWeight="700" color="gray.800" noOfLines={2} lineHeight="1.3">
+                                                {summary.yourGive} → {summary.yourGet}
+                                              </Heading>
+                                            </CardHeader>
+
+                                            <CardFooter pt={0} pb={4} px={4}>
+                                              <Button size="md" fontWeight="600" borderRadius="2xl" colorScheme="green" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
                                                 View Trade
                                               </Button>
                                             </CardFooter>
@@ -5724,20 +6094,28 @@ const Dashboard: React.FC = () => {
             trade={selectedTrade}
             isOpen={detailsOpen}
             onClose={() => setDetailsOpen(false)}
-            onAccepted={async () => {
+            onAccepted={async (action) => {
               invalidateOffers()
               invalidateDashboard()
+              
+              if (action === 'accept') {
+                setActiveTab(1)
+                setOffersSubTab(3)
 
-              // After accepting, show Trade Details (chat/meetup/delivery) for both parties
-              if (selectedTrade) {
-                try {
-                  const res = await api.get(`/api/trades/${selectedTrade.id}`)
-                  const freshTrade = res.data?.data
-                  if (freshTrade) setSelectedTrade(freshTrade)
-                } catch {
-                  // Non-fatal
+                // After accepting, show Trade Details (chat/meetup/delivery) for both parties
+                if (selectedTrade) {
+                  try {
+                    const res = await api.get(`/api/trades/${selectedTrade.id}`)
+                    const freshTrade = res.data?.data
+                    if (freshTrade) setSelectedTrade(freshTrade)
+                  } catch {
+                    // Non-fatal
+                  }
+                  setViewTradeModalOpen(true)
                 }
-                setViewTradeModalOpen(true)
+              } else if (action === 'counter') {
+                setActiveTab(1)
+                setOffersSubTab(1) // Show Sent Offers tab after countering
               }
             }}
             onDeclined={() => { invalidateOffers(); invalidateDashboard() }}
@@ -5747,7 +6125,12 @@ const Dashboard: React.FC = () => {
             trade={selectedTrade}
             isOpen={viewTradeModalOpen}
             onClose={() => setViewTradeModalOpen(false)}
-            onStatusUpdate={() => { invalidateOffers(); invalidateDashboard() }}
+            onStatusUpdate={() => { 
+              invalidateOffers()
+              invalidateDashboard()
+              // Switch to History tab if a trade was completed
+              setActiveTab(4)
+            }}
             onTradeUpdate={setSelectedTrade}
           />
 
@@ -5769,10 +6152,23 @@ const Dashboard: React.FC = () => {
               multiWayTrade={selectedMultiWayTrade}
               canManage={Boolean(user?.is_premium) && !selectedMultiWayTrade?.is_chain}
               currentUserId={user?.id}
+              onTradeUpdated={(status?: string) => {
+                void fetchMultiWayTrades()
+                invalidateOffers()
+                invalidateProducts()
+                invalidateDashboard()
+                if (status === 'ongoing') {
+                  setActiveTab(1)
+                  setOffersSubTab(3)
+                }
+              }}
               onTradeCompleted={() => {
                 void fetchMultiWayTrades()
                 invalidateOffers()
                 invalidateProducts()
+                invalidateDashboard()
+                // Switch to History tab
+                setActiveTab(4)
               }}
             />
           )}
@@ -5781,7 +6177,11 @@ const Dashboard: React.FC = () => {
             trade={selectedTrade}
             isOpen={completionModalOpen}
             onClose={() => setCompletionModalOpen(false)}
-            onCompleted={() => { invalidateOffers(); invalidateDashboard() }}
+            onCompleted={() => { 
+              invalidateOffers()
+              invalidateDashboard()
+              setActiveTab(4)
+            }}
             currentUserId={user?.id}
           />
 

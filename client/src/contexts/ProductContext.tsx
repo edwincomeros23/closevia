@@ -77,7 +77,20 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
   const [currentPage, setCurrentPage] = useState<number>(1)
   const [currentFilters, setCurrentFilters] = useState<SearchFilters | null>(null)
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; isHome?: boolean } | null>(() => {
+    // Priority 1: User's saved home address directly from profile
+    try {
+      const userCached = localStorage.getItem('clovia_user')
+      if (userCached) {
+        const user = JSON.parse(userCached)
+        if (user?.home_latitude != null && user?.home_longitude != null) {
+          console.log('[ProductContext] Initializing with User Home Profile Coords:', user.home_latitude, user.home_longitude)
+          return { lat: user.home_latitude, lng: user.home_longitude, isHome: true }
+        }
+      }
+    } catch { /* ignore */ }
+    return null
+  })
   const locationWatchId = useRef<number | null>(null)
 
   // Cache management refs
@@ -113,6 +126,10 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const distanceCacheRef = useRef<Map<string, { distanceKm: number; distance: string }>>(loadDistanceCacheFromStorage())
   const pendingRequestRef = useRef<Promise<void> | null>(null)
   const hasInitialized = useRef(false)
+  // Always reflects the latest userLocation synchronously (avoids stale closure in event handlers)
+  const latestUserLocationRef = useRef<{ lat: number; lng: number; isHome?: boolean } | null>(null)
+  // Tracks the last set of filters used — needed for re-fetching after home address change
+  const currentFiltersRef = useRef<SearchFilters>({})
 
   // Persist products to localStorage
   useEffect(() => {
@@ -125,36 +142,67 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }, [products])
 
-  // Get the viewer's location once; cached distances should not re-run on every move.
+  // Get the viewer's location — STRICTLY use saved home address from clovia_user
   useEffect(() => {
-    if ('geolocation' in navigator) {
-      const handlePosition = (position: GeolocationPosition) => {
-        setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude })
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        handlePosition,
-        (error) => {
-          console.warn('Geolocation error:', error.message)
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 300000,
+    // Priority 1: User's saved home address directly from profile
+    try {
+      const userCached = localStorage.getItem('clovia_user')
+      if (userCached) {
+        const user = JSON.parse(userCached)
+        if (user?.home_latitude != null && user?.home_longitude != null) {
+          return // already loaded in state initializer
         }
-      )
-    }
-    return () => {
-      if (locationWatchId.current !== null && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(locationWatchId.current)
-        locationWatchId.current = null
       }
-    }
+    } catch { /* ignore */ }
+
+    // Priority 2/3: The user specifically requested NOT to use navigator.geolocation
+    // because it is inaccurate on laptops. Since we are in a React Web App (not Expo),
+    // we cannot use expo-location. So if the home address is missing, we simply 
+    // leave userLocation as null and gracefully hide distance badges (Priority 3).
   }, [])
 
-  // Recalculate distances when user location becomes available
+  // Keep latestUserLocationRef in sync (synchronous — no re-render delay)
   useEffect(() => {
-    if (userLocation && products.length > 0) {
+    latestUserLocationRef.current = userLocation
+  }, [userLocation])
+
+  // Listen for home address updates from Settings page
+  useEffect(() => {
+    const handleHomeAddressChanged = (e: Event) => {
+      const evt = e as CustomEvent<{ lat: number; lng: number }>
+      if (evt.detail?.lat && evt.detail?.lng) {
+        const newLoc = { lat: evt.detail.lat, lng: evt.detail.lng, isHome: true }
+
+        // 1. Bust all caches so the new fetch goes to the API with fresh viewer coords
+        distanceCacheRef.current = new Map()
+        try { localStorage.removeItem('clovia_product_distance_cache') } catch { /* ignore */ }
+        try { localStorage.removeItem('clovia_home_products') } catch { /* ignore */ }
+        cacheRef.current = null          // <-- bust API response cache
+        pendingRequestRef.current = null // <-- allow a new in-flight request
+
+        // 2. Update the synchronous ref first so searchProducts uses the new coords immediately
+        latestUserLocationRef.current = newLoc
+
+        // 3. Update React state (triggers re-renders elsewhere)
+        setUserLocation(newLoc)
+
+        // 4. Re-fetch products with the new home as viewer coords
+        //    Use a short delay so React state settles before the next page call
+        setTimeout(() => {
+          const filters = currentFiltersRef.current || {}
+          searchProductsWithLocation(filters, newLoc)
+        }, 50)
+      }
+    }
+    window.addEventListener('homeAddressChanged', handleHomeAddressChanged)
+    return () => window.removeEventListener('homeAddressChanged', handleHomeAddressChanged)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Recalculate distances when user location becomes available for the first time (GPS fallback)
+  useEffect(() => {
+    if (userLocation && !userLocation.isHome && products.length > 0) {
+      // Only apply client-side recalc for GPS fallback (not for home address — backend handles that)
       const productsWithDistance = addDistanceToProducts(products)
       setProducts(productsWithDistance)
     }
@@ -271,26 +319,26 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         }
       }
       
-      // Priority 1: Calculate from stored coordinates if available AND userLocation is known
-      if (userLocation && product.latitude && product.longitude) {
+      // Priority 1: Use backend-computed distance string (SQL Haversine — always accurate)
+      // The backend receives viewer_lat/viewer_lng from the home address and computes distance in MySQL.
+      // We never recalculate on the frontend to avoid inaccurate browser GPS.
+      if (product.distance) {
+        dist = parseDistanceString(product.distance)
+      }
+      // Priority 2: If backend sent no distance string but we have coords + home location,
+      // compute client-side as a fallback (e.g. for products loaded before home address was set)
+      else if (userLocation?.isHome && product.latitude && product.longitude) {
         dist = calculateDistance(
           userLocation.lat,
           userLocation.lng,
           product.latitude,
           product.longitude
         )
-      } 
-      // Priority 2: Parse backend distance string (always available, even without userLocation)
-      else if (product.distance) {
-        dist = parseDistanceString(product.distance)
       }
 
-      // If we couldn't compute a per-product distance on the client, keep
-      // whatever the backend already returned (may be empty) instead of
-      // stamping every card with 'Nearby' — that was making every card in
-      // the feed look identical.
+      // Preserve backend distance label exactly (it uses the correct "58M AWAY" / "2.2KM AWAY" format)
       const nextDistance =
-        dist === Infinity ? (product.distance || '') : formatDistance(dist)
+        dist === Infinity ? (product.distance || '') : (product.distance || formatDistance(dist))
 
       // Cache boost status on product to avoid recomputing during sort
       const boostStatus = getBoostStatus(product)
@@ -387,12 +435,24 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     return headers
   }
 
-  const searchProducts = async (filters: SearchFilters) => {
-    try {
-      console.log('Searching products with filters:', filters)
-      const filterKey = JSON.stringify(filters)
+  const searchProducts = async (filters: SearchFilters) =>
+    searchProductsWithLocation(filters, latestUserLocationRef.current)
 
-      // Return cached data if available and identical filters
+  // Core fetch — accepts an explicit location override so we can call it from
+  // event handlers without stale React closures
+  const searchProductsWithLocation = async (
+    filters: SearchFilters,
+    location: { lat: number; lng: number; isHome?: boolean } | null = null
+  ) => {
+    const activeLoc = location ?? latestUserLocationRef.current
+    try {
+      console.log('Searching products with filters:', filters, 'viewer:', activeLoc)
+      const filterKey = JSON.stringify(filters) + (activeLoc ? `@${activeLoc.lat},${activeLoc.lng}` : '')
+
+      // Keep currentFiltersRef in sync for re-fetch on home change
+      currentFiltersRef.current = filters
+
+      // Return cached data if available and identical filters + location
       if (cacheRef.current && cacheRef.current.filters === filterKey) {
         console.log('Using cached products for filters:', filters)
         safeSetProducts(cacheRef.current.products)
@@ -424,9 +484,29 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
         if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
         // Pass viewer coordinates for server-side distance calculation
-        if (userLocation) {
-          params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', userLocation.lat.toString())
-          params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', userLocation.lng.toString())
+        // First priority — User's saved home address directly from profile
+        let viewerLat: number | null = null
+        let viewerLng: number | null = null
+
+        try {
+          const userCached = localStorage.getItem('clovia_user')
+          if (userCached) {
+            const userProfile = JSON.parse(userCached)
+            if (userProfile?.home_latitude != null && userProfile?.home_longitude != null) {
+              viewerLat = userProfile.home_latitude
+              viewerLng = userProfile.home_longitude
+            }
+          }
+        } catch (e) {
+          console.warn('[API_REQUEST] Error parsing clovia_user for location:', e)
+        }
+
+        if (viewerLat !== null && viewerLng !== null) {
+          console.log(`[API_REQUEST] Attaching viewer coords to /listings API: lat=${viewerLat}, lng=${viewerLng}`)
+          params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', viewerLat.toString())
+          params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', viewerLng.toString())
+        } else {
+          console.log(`[API_REQUEST] No viewer coords available. Distance badge will hide/be NULL properly.`)
         }
         params.append('page', (filters.page || 1).toString())
         params.append('limit', (filters.limit || 10).toString())
@@ -521,9 +601,23 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
       if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
       // Pass viewer coordinates for server-side distance calculation
-      if (userLocation) {
-        params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', userLocation.lat.toString())
-        params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', userLocation.lng.toString())
+      let viewerLat: number | null = null
+      let viewerLng: number | null = null
+
+      try {
+        const userCached = localStorage.getItem('clovia_user')
+        if (userCached) {
+          const userProfile = JSON.parse(userCached)
+          if (userProfile?.home_latitude != null && userProfile?.home_longitude != null) {
+            viewerLat = userProfile.home_latitude
+            viewerLng = userProfile.home_longitude
+          }
+        }
+      } catch { /* ignore */ }
+
+      if (viewerLat !== null && viewerLng !== null) {
+        params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', viewerLat.toString())
+        params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', viewerLng.toString())
       }
       params.append('page', nextPage.toString())
       params.append('limit', (filters.limit || 10).toString())

@@ -265,8 +265,11 @@ type nominatimSearchResult struct {
 }
 
 func searchPlacesNominatim(query string) ([]PlaceSuggestion, error) {
+	// viewbox biases (but doesn't strictly bound) results toward Zamboanga;
+	// filterToZamboanga() drops anything >50km from center post-fetch, so we
+	// can afford a broader net here to surface barangay-level matches.
 	reqURL := fmt.Sprintf(
-		"https://nominatim.openstreetmap.org/search?q=%s&format=json&limit=8&countrycodes=ph&addressdetails=0&bounded=1&viewbox=%f,%f,%f,%f",
+		"https://nominatim.openstreetmap.org/search?q=%s+Zamboanga&format=json&limit=15&countrycodes=ph&addressdetails=1&viewbox=%f,%f,%f,%f",
 		url.QueryEscape(query),
 		zamboMinLng, zamboMaxLat, zamboMaxLng, zamboMinLat,
 	)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Box,
   Container,
@@ -15,8 +15,10 @@ import {
   Input,
   InputGroup,
   InputRightElement,
+  SimpleGrid,
   Switch,
   Select,
+  Textarea,
   Divider,
   useToast,
   useColorMode,
@@ -45,14 +47,25 @@ import {
   Tooltip,
   Tabs,
   TabList,
-  TabPanels,
-  TabPanel,
   Tab,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
 } from '@chakra-ui/react'
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { getImageUrl } from '../utils/imageUtils'
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  NotificationPreferenceKey,
+  NotificationPreferences,
+  parseNotificationPreferences,
+} from '../utils/notificationPreferences'
 import VerifiedAvatar from '../components/VerifiedAvatar'
 import FloatingTab from '../components/FloatingTab'
 import {
@@ -70,19 +83,105 @@ import {
   FaDesktop,
   FaAccessibleIcon,
   FaEnvelope,
+  FaGraduationCap,
   FaMobile,
+  FaHome,
+  FaExchangeAlt,
+  FaUsers,
+  FaHandshake,
+  FaComments,
+  FaShieldAlt,
+  FaBullhorn,
+  FaCalendarCheck,
+  FaStar,
 } from 'react-icons/fa'
 import { FiSettings, FiSave, FiMapPin } from 'react-icons/fi'
+
+const NOTIFICATION_GROUPS: Array<{
+  title: string
+  description: string
+  items: Array<{
+    key: NotificationPreferenceKey
+    label: string
+    helper: string
+    icon: React.ElementType
+    locked?: boolean
+  }>
+}> = [
+  {
+    title: 'Trading',
+    description: 'Choose which trade events should interrupt you.',
+    items: [
+      { key: 'trade_matches', label: 'Trade match notifications', helper: 'Alerts when an item you listed or want has a promising match.', icon: FaExchangeAlt },
+      { key: 'multiway_trades', label: 'Multiway trade notifications', helper: 'Alerts for loop and multi-person trade opportunities.', icon: FaUsers },
+      { key: 'offers_received', label: 'Offer received notifications', helper: 'Alerts when someone sends you a new offer.', icon: FaHandshake },
+      { key: 'offers_accepted', label: 'Offer accepted notifications', helper: 'Alerts when another user accepts one of your offers.', icon: FaCheckCircle },
+      { key: 'offers_rejected', label: 'Offer rejected notifications', helper: 'Alerts when an offer is declined so you can move on quickly.', icon: FaBell },
+      { key: 'trade_updates', label: 'Ongoing trade updates', helper: 'Status changes, delivery movement, and other active trade progress.', icon: FaCalendarCheck },
+    ],
+  },
+  {
+    title: 'Meetups and messages',
+    description: 'Keep coordination updates separate from marketplace discovery.',
+    items: [
+      { key: 'meetup_updates', label: 'Meetup updates', helper: 'Changes to meetup time, place, participants, or confirmation status.', icon: FaCalendarCheck },
+      { key: 'chat_messages', label: 'Chat message notifications', helper: 'New messages from people you are trading or coordinating with.', icon: FaComments },
+      { key: 'review_reminders', label: 'Review reminders', helper: 'Gentle prompts to review a completed trade.', icon: FaStar },
+    ],
+  },
+  {
+    title: 'Account and system',
+    description: 'Important account notices and platform-wide updates.',
+    items: [
+      { key: 'account_security', label: 'Account/security notifications', helper: 'Verification, password, login, and safety alerts. These stay on to protect your account.', icon: FaShieldAlt, locked: true },
+      { key: 'system_announcements', label: 'System announcements', helper: 'Maintenance, feature updates, and other Clovia platform notices.', icon: FaBullhorn },
+    ],
+  },
+]
+
+const USER_SETTINGS_TABS = ['account', 'education', 'notifications', 'danger'] as const
+const ADMIN_SETTINGS_TABS = ['account', 'notifications', 'danger'] as const
+
+// Fix leaflet icon issues (same as AddProduct)
+// @ts-ignore
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+})
+
+// Map click handler for home address picker
+const HomeMapClickHandler = ({ onSelect }: { onSelect: (lat: number, lng: number) => void }) => {
+  const map = useMap()
+  useEffect(() => {
+    const handler = (e: any) => onSelect(e.latlng.lat, e.latlng.lng)
+    map.on('click', handler)
+    return () => { map.off('click', handler) }
+  }, [map, onSelect])
+  return null
+}
+
+const HomeMapCenterUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
+  const map = useMap()
+  useEffect(() => { map.setView([lat, lng], 15, { animate: true }) }, [lat, lng, map])
+  return null
+}
 
 const SettingsPage: React.FC = () => {
   const toast = useToast()
   const navigate = useNavigate()
-  const { user, logout, updateProfile, refreshUser } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const { colorMode, toggleColorMode } = useColorMode()
   const pageBg = useColorModeValue('#FFFDF1', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+  const mutedTextColor = useColorModeValue('gray.500', 'gray.400')
   const schoolOtpBoxBg = useColorModeValue('gray.50', 'gray.700')
+  const notificationEnabledBorder = useColorModeValue('brand.200', 'brand.700')
+  const notificationEnabledBg = useColorModeValue('brand.50', 'whiteAlpha.100')
+  const notificationDisabledBg = useColorModeValue('white', 'gray.800')
+  const notificationIconBg = useColorModeValue('white', 'gray.700')
   const isMobile = useBreakpointValue({ base: true, md: false })
 
   // Account State
@@ -126,10 +225,16 @@ const SettingsPage: React.FC = () => {
   // Notifications State
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(true)
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(() =>
+    parseNotificationPreferences((user as any)?.notification_preferences)
+  )
   // School ID / COR verification state
   const [verificationStatus, setVerificationStatus] = useState<'not_verified' | 'pending' | 'verified' | 'rejected'>('not_verified')
   const [schoolName, setSchoolName] = useState<string>('')
   const [schoolEmail, setSchoolEmail] = useState<string>('')
+  const [academicProgram, setAcademicProgram] = useState<string>((user as any)?.academic_program || '')
+  const [yearLevel, setYearLevel] = useState<string>((user as any)?.year_level || '')
+  const [academicBio, setAcademicBio] = useState<string>((user as any)?.bio || '')
   const [verificationLoading, setVerificationLoading] = useState(false)
   const [idUploadLoading, setIdUploadLoading] = useState(false)
   const [verificationReason, setVerificationReason] = useState<string | null>(null)
@@ -146,17 +251,54 @@ const SettingsPage: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [changingPassword, setChangingPassword] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const settingsTabs = useMemo(
+    () => user?.role === 'admin' ? [...ADMIN_SETTINGS_TABS] : [...USER_SETTINGS_TABS],
+    [user?.role]
+  )
+  const getTabKeyFromHash = () => {
+    const hashTab = window.location.hash.replace('#', '').toLowerCase()
+    return settingsTabs.includes(hashTab as typeof settingsTabs[number])
+      ? hashTab as typeof settingsTabs[number]
+      : 'account'
+  }
+  const [activeTabKey, setActiveTabKey] = useState<typeof settingsTabs[number]>(getTabKeyFromHash)
+  const activeTabIndex = Math.max(0, settingsTabs.indexOf(activeTabKey))
 
 
 
   // Modals
   const { isOpen: isPasswordModalOpen, onOpen: onPasswordModalOpen, onClose: onPasswordModalClose } = useDisclosure()
   const { isOpen: isPhoneModalOpen, onOpen: onPhoneModalOpen, onClose: onPhoneModalClose } = useDisclosure()
+  const { isOpen: isIdentityConfirmOpen, onOpen: onIdentityConfirmOpen, onClose: onIdentityConfirmClose } = useDisclosure()
   const { isOpen: isLogoutModalOpen, onOpen: onLogoutModalOpen, onClose: onLogoutModalClose } = useDisclosure()
   const { isOpen: isDeleteAccountOpen, onOpen: onDeleteAccountOpen, onClose: onDeleteAccountClose } = useDisclosure()
+  const [identityChangeSummary, setIdentityChangeSummary] = useState<string[]>([])
+  // Home Address state
+  const [homeLocation, setHomeLocation] = useState<{ lat: number; lng: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('clovia_home_location')
+      if (saved) { const p = JSON.parse(saved); if (p?.lat && p?.lng) return p }
+    } catch { /* ignore */ }
+    if ((user as any)?.home_latitude && (user as any)?.home_longitude) {
+      return { lat: (user as any).home_latitude, lng: (user as any).home_longitude }
+    }
+    return null
+  })
+  const [homeAddressLabel, setHomeAddressLabel] = useState<string>((user as any)?.home_address || '')
+  const [homeSaving, setHomeSaving] = useState(false)
+  const [pendingHomeLocation, setPendingHomeLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const { isOpen: isHomeMapOpen, onOpen: onHomeMapOpen, onClose: onHomeMapClose } = useDisclosure()
+  const [addressSearch, setAddressSearch] = useState('')
+  const [searchResults, setSearchResults] = useState<{ display_name: string; lat: string; lon: string }[]>([])
+  const [searching, setSearching] = useState(false)
+  const [gpsLoading, setGpsLoading] = useState(false)
+
   const cancelRef = useRef<HTMLButtonElement>(null)
   const logoutCancelRef = useRef<HTMLButtonElement>(null)
   const deleteAccountCancelRef = useRef<HTMLButtonElement>(null)
+  const identityConfirmCancelRef = useRef<HTMLButtonElement>(null)
+  const initializedUserKeyRef = useRef<string | number | null>(null)
+  const dirtyFieldsRef = useRef<Set<string>>(new Set())
 
   // Helper to strip cache busters from URLs (they should only be added in display, not stored)
   const stripCacheBuster = (url: string | null): string | null => {
@@ -165,38 +307,67 @@ const SettingsPage: React.FC = () => {
     return url.replace(/[?&]t=\d+/g, '')
   }
 
+  const markFieldDirty = (field: string) => {
+    dirtyFieldsRef.current.add(field)
+    setHasUnsavedChanges(true)
+  }
+
+  const updateNotificationPreference = (key: NotificationPreferenceKey, enabled: boolean) => {
+    setNotificationPreferences(prev => ({
+      ...prev,
+      [key]: key === 'account_security' ? true : enabled,
+    }))
+    markFieldDirty('notificationPreferences')
+  }
+
+  const resetEditableStateFromUser = (nextUser: any, force = false) => {
+    if (!nextUser) return
+
+    const nextUserKey = nextUser.id ?? nextUser.email ?? 'current-user'
+    const shouldResetAll = force || initializedUserKeyRef.current !== nextUserKey
+    const dirty = dirtyFieldsRef.current
+    const cleanPicture = stripCacheBuster(nextUser?.profile_picture)
+
+    if (shouldResetAll || !dirty.has('username')) setUsername(nextUser.name || '')
+    if (shouldResetAll || !dirty.has('email')) setEmail(nextUser.email || '')
+    if (shouldResetAll || !dirty.has('phone')) setPhoneNumber(nextUser?.phone || '')
+    if (shouldResetAll || !dirty.has('profileImage')) setProfileImage(cleanPicture)
+    if (shouldResetAll || !dirty.has('emailNotifications')) setEmailNotifications(nextUser?.email_notifications_enabled ?? true)
+    if (shouldResetAll || !dirty.has('pushNotifications')) setPushNotifications(nextUser?.push_notifications_enabled ?? true)
+    if (shouldResetAll || !dirty.has('notificationPreferences')) setNotificationPreferences(parseNotificationPreferences(nextUser?.notification_preferences))
+    if (shouldResetAll || !dirty.has('academicProgram')) setAcademicProgram(nextUser?.academic_program || '')
+    if (shouldResetAll || !dirty.has('yearLevel')) setYearLevel(nextUser?.year_level || '')
+    if (shouldResetAll || !dirty.has('academicBio')) setAcademicBio(nextUser?.bio || '')
+    if (shouldResetAll || !dirty.has('phone')) setPhoneVerified(nextUser?.phone_verified || false)
+
+    const vs = nextUser?.verification_status as ('not_verified' | 'pending' | 'verified' | 'rejected') | undefined
+    setVerificationStatus(vs || 'not_verified')
+    setSchoolName(nextUser?.school_name || '')
+    setSchoolEmail(nextUser?.school_email || '')
+    setShowSchoolOtpStep(Boolean(nextUser?.school_email && !nextUser?.school_email_verified_at))
+
+    if (nextUser?.home_latitude && nextUser?.home_longitude) {
+      setHomeLocation({ lat: nextUser.home_latitude, lng: nextUser.home_longitude })
+    }
+    if (nextUser?.home_address) setHomeAddressLabel(nextUser.home_address)
+
+    if (shouldResetAll) {
+      dirtyFieldsRef.current.clear()
+      initializedUserKeyRef.current = nextUserKey
+      setHasUnsavedChanges(false)
+    }
+  }
+
   // Refresh user data on component mount.
   useEffect(() => {
     console.log('🗺️ Settings page mounted, refreshing user data...')
     refreshUser()
-  }, [refreshUser])
+  }, [])
 
-  // Load initial values from user
+  // Load initial values from user without overwriting fields the user is editing.
   useEffect(() => {
-    if (user) {
-      setUsername(user.name || '')
-      setEmail(user.email || '')
-      setPhoneNumber((user as any)?.phone || '')
-      setPhoneVerified((user as any)?.phone_verified || false)
-      // Strip any cache busters that might have been saved
-      const cleanPicture = stripCacheBuster((user as any)?.profile_picture)
-      setProfileImage(cleanPicture)
-      // Load notification settings from user object
-      setEmailNotifications((user as any)?.email_notifications_enabled ?? true)
-      setPushNotifications((user as any)?.push_notifications_enabled ?? true)
-      if ((user as any)?.profile_picture) {
-        console.log('📸 Profile picture loaded - Raw:', (user as any)?.profile_picture, 'Cleaned:', cleanPicture)
-      }
-      // Initialize verification state from user when available
-      const vs = (user as any)?.verification_status as ('not_verified' | 'pending' | 'verified' | 'rejected') | undefined
-      if (vs) setVerificationStatus(vs)
-      if ((user as any)?.school_name) setSchoolName((user as any).school_name)
-      if ((user as any)?.school_email) setSchoolEmail((user as any).school_email)
-      // Show OTP step if they have school email set but not yet verified
-      if ((user as any)?.school_email && !(user as any)?.school_email_verified_at) setShowSchoolOtpStep(true)
-    }
+    resetEditableStateFromUser(user)
   }, [user])
-
   // Track changes
   useEffect(() => {
     const hasChanges =
@@ -204,8 +375,12 @@ const SettingsPage: React.FC = () => {
       email !== (user?.email || '') ||
       phoneNumber !== ((user as any)?.phone || '') ||
       profileImage !== ((user as any)?.profile_picture || null) ||
+      academicProgram !== ((user as any)?.academic_program || '') ||
+      yearLevel !== ((user as any)?.year_level || '') ||
+      academicBio !== ((user as any)?.bio || '') ||
       emailNotifications !== ((user as any)?.email_notifications_enabled ?? true) ||
-      pushNotifications !== ((user as any)?.push_notifications_enabled ?? true)
+      pushNotifications !== ((user as any)?.push_notifications_enabled ?? true) ||
+      JSON.stringify(notificationPreferences) !== JSON.stringify(parseNotificationPreferences((user as any)?.notification_preferences))
 
     setHasUnsavedChanges(hasChanges)
   }, [
@@ -213,8 +388,12 @@ const SettingsPage: React.FC = () => {
     email,
     phoneNumber,
     profileImage,
+    academicProgram,
+    yearLevel,
+    academicBio,
     emailNotifications,
     pushNotifications,
+    notificationPreferences,
     user
   ])
 
@@ -227,6 +406,28 @@ const SettingsPage: React.FC = () => {
       return () => clearTimeout(timer)
     }
   }, [saveStatus])
+
+  useEffect(() => {
+    const syncTabFromHash = () => {
+      const hashTab = window.location.hash.replace('#', '').toLowerCase()
+      setActiveTabKey(settingsTabs.includes(hashTab as typeof settingsTabs[number])
+        ? hashTab as typeof settingsTabs[number]
+        : 'account'
+      )
+    }
+
+    syncTabFromHash()
+    window.addEventListener('hashchange', syncTabFromHash)
+    return () => window.removeEventListener('hashchange', syncTabFromHash)
+  }, [settingsTabs])
+
+  const handleSettingsTabChange = (index: number) => {
+    const tabKey = settingsTabs[index]
+    if (tabKey) {
+      setActiveTabKey(tabKey)
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${tabKey}`)
+    }
+  }
 
   useEffect(() => {
     if (resendPhoneCooldown <= 0) return
@@ -276,7 +477,7 @@ const SettingsPage: React.FC = () => {
       console.log('📸 Data URL preview (first 100 chars):', dataUrl.substring(0, 100))
       setProfileImage(dataUrl)
       setUploadingImage(false)
-      setHasUnsavedChanges(true)
+      markFieldDirty('profileImage')
       toast({
         id: 'image-uploaded',
         title: 'Image uploaded',
@@ -395,7 +596,43 @@ const SettingsPage: React.FC = () => {
 
   const validatePhone = (phone: string): boolean => {
     if (!phone.trim()) return true
-    return /^\d{10,15}$/.test(phone.trim())
+    return /^09\d{9}$/.test(phone.trim())
+  }
+
+  const normalizePhilippinePhone = (value: string): string => {
+    const trimmed = value.trim()
+    if (trimmed.startsWith('+63')) {
+      return `0${trimmed.slice(3).replace(/\D/g, '')}`.slice(0, 11)
+    }
+    const digitsOnly = trimmed.replace(/\D/g, '')
+    if (digitsOnly.startsWith('63') && digitsOnly.length >= 12) {
+      return `0${digitsOnly.slice(2)}`.slice(0, 11)
+    }
+    return digitsOnly.slice(0, 11)
+  }
+
+  const addThreeMonths = (raw?: string | null): Date | null => {
+    if (!raw) return null
+    const parsed = new Date(raw)
+    if (Number.isNaN(parsed.getTime())) return null
+    const next = new Date(parsed)
+    next.setMonth(next.getMonth() + 3)
+    return next
+  }
+
+  const formatAccountDate = (date: Date): string => (
+    date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+  )
+
+  const getFieldLock = (raw?: string | null) => {
+    const nextAvailable = addThreeMonths(raw)
+    if (!nextAvailable) return { isLocked: false, lastChanged: null as Date | null, nextAvailable: null as Date | null }
+    const lastChanged = new Date(raw as string)
+    return {
+      isLocked: new Date() < nextAvailable,
+      lastChanged,
+      nextAvailable,
+    }
   }
 
   const getPasswordChangedLabel = (): string => {
@@ -406,12 +643,16 @@ const SettingsPage: React.FC = () => {
     return `Password last changed: ${parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}`
   }
 
+  const displayNameLock = getFieldLock((user as any)?.display_name_changed_at || (user as any)?.name_changed_at)
+  const phoneLock = getFieldLock((user as any)?.phone_changed_at)
+  const emailLock = getFieldLock((user as any)?.email_changed_at)
+
   const handleStartPhoneVerification = async () => {
     if (!validatePhone(phoneNumber) || !phoneNumber.trim()) {
       toast({
         id: 'settings-invalid-phone-start',
         title: 'Invalid phone number',
-        description: 'Use 10 to 15 digits before requesting a code.',
+        description: 'Use a valid Philippine mobile number with exactly 11 digits, like 09XXXXXXXXX.',
         status: 'warning',
         duration: 3000,
         isClosable: true,
@@ -423,7 +664,9 @@ const SettingsPage: React.FC = () => {
     try {
       const resp = await api.post('/api/users/verification/phone/start', { phone: phoneNumber.trim() })
       setPhoneOtpSent(true)
+      setPhoneVerified(false)
       setResendPhoneCooldown(60)
+      await refreshUser()
       toast({
         id: 'settings-phone-code-sent',
         title: 'Code sent',
@@ -519,10 +762,14 @@ const SettingsPage: React.FC = () => {
     }
   }
 
-  // Handle save
-  const handleSave = async () => {
-    // Validate email
-    if (!validateEmail(email)) {
+  const handleSaveSettings = async (confirmedIdentityChange = false) => {
+    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedPhone = phoneNumber.trim()
+    const nameChanged = username.trim() !== (user?.name || '')
+    const phoneChanged = normalizedPhone !== ((user as any)?.phone || '')
+    const emailChanged = normalizedEmail !== (user?.email || '').toLowerCase()
+
+    if (!validateEmail(normalizedEmail)) {
       toast({
         id: 'invalid-email',
         title: 'Invalid email',
@@ -534,7 +781,6 @@ const SettingsPage: React.FC = () => {
       return
     }
 
-    // Validate username
     if (!username.trim()) {
       toast({
         id: 'username-required',
@@ -547,12 +793,11 @@ const SettingsPage: React.FC = () => {
       return
     }
 
-    // Validate phone number
-    if (!validatePhone(phoneNumber)) {
+    if ((normalizedPhone || phoneChanged) && !validatePhone(normalizedPhone)) {
       toast({
         id: 'invalid-phone',
         title: 'Invalid phone number',
-        description: 'Use 10 to 15 digits only.',
+        description: 'Use a valid Philippine mobile number in 11-digit format, like 09XXXXXXXXX.',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -560,128 +805,140 @@ const SettingsPage: React.FC = () => {
       return
     }
 
+    if (nameChanged && displayNameLock.isLocked) {
+      toast({
+        id: 'display-name-cooldown',
+        title: 'Display name locked',
+        description: `You can only change your display name once every 3 months. Try again on ${displayNameLock.nextAvailable ? formatAccountDate(displayNameLock.nextAvailable) : 'the next allowed date'}.`,
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
+      })
+      return
+    }
+
+    if (phoneChanged && phoneLock.isLocked) {
+      toast({
+        id: 'phone-cooldown',
+        title: 'Phone number locked',
+        description: `You recently changed your phone number. Try again on ${phoneLock.nextAvailable ? formatAccountDate(phoneLock.nextAvailable) : 'the next allowed date'}.`,
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
+      })
+      return
+    }
+
+    if (emailChanged && emailLock.isLocked) {
+      toast({
+        id: 'email-cooldown',
+        title: 'Email locked',
+        description: `Email can only be changed once every 3 months for account security. Try again on ${emailLock.nextAvailable ? formatAccountDate(emailLock.nextAvailable) : 'the next allowed date'}.`,
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
+      })
+      return
+    }
+
+    const identityChanges = [
+      nameChanged ? 'display name' : null,
+      phoneChanged ? 'phone number' : null,
+      emailChanged ? 'email address' : null,
+    ].filter(Boolean) as string[]
+
+    if (identityChanges.length > 0 && !confirmedIdentityChange) {
+      setIdentityChangeSummary(identityChanges)
+      onIdentityConfirmOpen()
+      return
+    }
+
     setIsSaving(true)
     setSaveStatus('saving')
 
     try {
-      // If profileImage is a data URL (client-side uploaded), upload it to server first
       let profileUrlToSave: string | undefined = undefined
       if (profileImage && profileImage.startsWith('data:')) {
         setUploadingImage(true)
         try {
-          console.log('📸 Uploading profile picture from data URL')
           const blob = await (await fetch(profileImage)).blob()
-          console.log('📸 Blob created:', { size: blob.size, type: blob.type })
           const form = new FormData()
           form.append('image', blob, 'profile.jpg')
           const uploadRes = await api.post('/api/users/profile-picture', form)
-          // API returns { Success: true, Data: url, Message: "Uploaded" }
           profileUrlToSave = uploadRes.data?.Data || uploadRes.data?.data || uploadRes.data
-          console.log('📸 Profile picture uploaded successfully, URL:', profileUrlToSave)
-          console.log('📸 Full upload response:', uploadRes.data)
-          console.log('📸 Response structure - Data field:', uploadRes.data?.Data)
-          console.log('📸 Response structure - data field:', uploadRes.data?.data)
         } catch (uploadErr: any) {
-          console.error('❌ Profile image upload failed', uploadErr)
           const serverMsg = uploadErr?.response?.data?.error || uploadErr?.response?.data || uploadErr?.message
           throw new Error(serverMsg || 'Failed to upload profile image')
         } finally {
           setUploadingImage(false)
         }
       } else if (profileImage) {
-        // Already a URL (e.g., /uploads/...), use as-is
         profileUrlToSave = profileImage
       }
 
-      // Update server-side profile (name/email/profile_picture)
-      console.log('📸 Saving profile with picture URL:', profileUrlToSave)
-
-      // DON'T save cache busters to the database - they're only for display
-      if (updateProfile) {
-        await updateProfile({
-          name: username,
-          email,
-          phone: phoneNumber.trim(),
-          profile_picture: profileUrlToSave,
-        })
-        // Update local state with the clean URL (no cache buster)
-        if (profileUrlToSave) {
-          setProfileImage(profileUrlToSave)
-        }
-      }
-
-      // Persist settings locally
-      const settings = {
-        username,
-        email,
-        phoneNumber,
-        profileImage: profileUrlToSave ?? profileImage,
-        emailNotifications,
-        pushNotifications,
-      }
-      localStorage.setItem('user_settings', JSON.stringify(settings))
-
-      // Update user profile in backend
-      console.log('📸 Calling PUT /api/users/profile with profile_picture:', profileUrlToSave ?? profileImage)
-      const resp = await api.put('/api/users/profile', {
-        name: username,
-        email: email,
-        phone: phoneNumber.trim(),
+      const profilePayload: Record<string, any> = {
+        name: username.trim(),
+        email: normalizedEmail,
         profile_picture: profileUrlToSave ?? profileImage,
+        bio: academicBio.trim(),
+        academic_program: academicProgram.trim(),
+        year_level: yearLevel.trim(),
         email_notifications_enabled: emailNotifications,
         push_notifications_enabled: pushNotifications,
-      })
-
-      if (resp.data && resp.data.success) {
-        console.log('📸 Profile updated successfully on backend, response:', resp.data)
-
-        // Refresh context user so changes persist across pages
-        try {
-          await refreshUser()
-          console.log('📸 User context refreshed after profile update')
-          // Update local state from refreshed user data
-          if (user) {
-            setProfileImage((user as any)?.profile_picture || null)
-          }
-        } catch (e) {
-          console.warn('Failed to refresh user after profile update', e)
-        }
-
-        setIsSaving(false)
-        setSaveStatus('saved')
-        setHasUnsavedChanges(false)
-
-        toast({
-          id: 'settings-saved',
-          title: 'Settings saved',
-          description: 'Your preferences have been updated successfully.',
-          status: 'success',
-          duration: 3000,
-          isClosable: true,
-        })
-      } else {
-        setIsSaving(false)
-        setSaveStatus('error')
-        toast({
-          id: 'error-save-settings',
-          title: 'Error',
-          description: resp.data?.error || 'Failed to update profile',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        })
+        notification_preferences: JSON.stringify(notificationPreferences),
       }
+      if (normalizedPhone || phoneChanged) {
+        profilePayload.phone = normalizedPhone
+      }
+
+      const resp = await api.put('/api/users/profile', profilePayload)
+
+      if (!resp.data?.success) {
+        throw new Error(resp.data?.error || 'Failed to update profile')
+      }
+
+      const requiresEmailVerification = Boolean(resp.data?.data?.requires_verification)
+      localStorage.setItem('user_settings', JSON.stringify({
+        username: username.trim(),
+        email: normalizedEmail,
+        phoneNumber: normalizedPhone,
+        profileImage: profileUrlToSave ?? profileImage,
+        academicProgram: academicProgram.trim(),
+        yearLevel: yearLevel.trim(),
+        academicBio: academicBio.trim(),
+        emailNotifications,
+        pushNotifications,
+        notificationPreferences,
+      }))
+
+      dirtyFieldsRef.current.clear()
+      await refreshUser()
+      if (profileUrlToSave) setProfileImage(profileUrlToSave)
+
+      setSaveStatus('saved')
+      setHasUnsavedChanges(false)
+      toast({
+        id: requiresEmailVerification ? 'settings-email-verification-needed' : 'settings-saved',
+        title: requiresEmailVerification ? 'Settings saved, verify your new email' : 'Settings saved',
+        description: requiresEmailVerification
+          ? (resp.data?.message || 'We sent a verification code to your new email address.')
+          : 'Your preferences have been updated successfully.',
+        status: requiresEmailVerification ? 'info' : 'success',
+        duration: requiresEmailVerification ? 6000 : 3000,
+        isClosable: true,
+      })
     } catch (err: any) {
-      setIsSaving(false)
       setSaveStatus('error')
       toast({
         id: "settings-error",
-        title: 'Error',
+        title: 'Could not save settings',
         description: err?.response?.data?.error || err?.message || 'Failed to save settings',
         status: 'error',
-        duration: 4000,
+        duration: 5000,
         isClosable: true,
       })
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -790,8 +1047,71 @@ const SettingsPage: React.FC = () => {
 
 
 
+  // Save home address
+  const handleSaveHomeAddress = async (loc: { lat: number; lng: number }) => {
+    setHomeSaving(true)
+    try {
+      // Reverse geocode using Nominatim (free, no API key)
+      let addressLabel = `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`
+      try {
+        const geoRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json`,
+          { headers: { 'Accept-Language': 'en' } }
+        )
+        const geoData = await geoRes.json()
+        if (geoData?.display_name) {
+          // Show only the first 2 parts (e.g. "Street, City")
+          const parts = geoData.display_name.split(',')
+          addressLabel = parts.slice(0, 3).join(',').trim()
+        }
+      } catch { /* use coordinate fallback */ }
+
+      // Save to backend
+      await api.put('/api/users/profile', {
+        home_latitude: loc.lat,
+        home_longitude: loc.lng,
+        home_address: addressLabel,
+      })
+
+      // Persist to localStorage so ProductContext can read it immediately
+      localStorage.setItem('clovia_home_location', JSON.stringify({ lat: loc.lat, lng: loc.lng }))
+
+      // Update local state
+      setHomeLocation(loc)
+      setHomeAddressLabel(addressLabel)
+      setPendingHomeLocation(null)
+      onHomeMapClose()
+
+      // Notify ProductContext to recalculate distances from new home
+      window.dispatchEvent(new CustomEvent('homeAddressChanged', { detail: { lat: loc.lat, lng: loc.lng } }))
+
+      await refreshUser()
+
+      toast({
+        id: 'home-address-saved',
+        title: 'Home address saved',
+        description: `Distance calculations will now use: ${addressLabel}`,
+        status: 'success',
+        duration: 4000,
+        isClosable: true,
+      })
+    } catch (err: any) {
+      toast({
+        id: 'home-address-error',
+        title: 'Failed to save home address',
+        description: err?.response?.data?.error || err?.message || 'Please try again',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+    } finally {
+      setHomeSaving(false)
+    }
+  }
+
   // Handle logout — clear tokens/cookies and notify backend if possible
   const handleLogout = async () => {
+
     // Clear common client-side storage keys
     try {
       const keys = ['token', 'auth_token', 'access_token', 'refresh_token', 'session']
@@ -880,11 +1200,11 @@ const SettingsPage: React.FC = () => {
 
   return (
     <Box minH="100vh" bg={pageBg} pb={{ base: '100px', md: '80px' }}>
-      <Container maxW="container.md" py={8}>
+      <Container maxW="container.lg" py={{ base: 6, md: 8 }}>
         <VStack spacing={6} align="stretch">
 
           {/* Tabs Container */}
-          <Tabs variant="unstyled" isLazy>
+          <Tabs variant="unstyled" isLazy index={activeTabIndex} onChange={handleSettingsTabChange}>
 
             {/* Sticky Header Pill */}
             <Box
@@ -897,7 +1217,7 @@ const SettingsPage: React.FC = () => {
               border="1px"
               borderColor={borderColor}
               shadow="sm"
-              transform="translateY(-20px)"
+              transform={{ base: 'translateY(-12px)', md: 'translateY(-20px)' }}
             >
               {/* Header Title & Actions */}
               <Flex justify="space-between" align="center" mb={4}>
@@ -987,7 +1307,7 @@ const SettingsPage: React.FC = () => {
                     }}
                     _hover={{ bg: useColorModeValue('gray.50', 'gray.700'), transform: 'translateY(-1px)', shadow: 'md' }}
                     transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                  ><Icon as={FaEnvelope} mr={2} boxSize={4} /> Education</Tab>
+                  ><Icon as={FaGraduationCap} mr={2} boxSize={4} /> Education</Tab>
                 )}
 
                 <Tab
@@ -1042,9 +1362,10 @@ const SettingsPage: React.FC = () => {
               </TabList>
             </Box>
 
-            <TabPanels mt={6}>
+            <Box mt={6}>
               {/* Profile/Account Tab */}
-              <TabPanel p={0} m={0}>
+              {activeTabKey === 'account' && (
+              <Box p={0} m={0}>
                 <Card
                   bg={cardBg}
                   borderRadius="2xl"
@@ -1109,17 +1430,43 @@ const SettingsPage: React.FC = () => {
 
                       <Divider />
 
+                      <Alert status="info" borderRadius="xl" py={3}>
+                        <AlertIcon />
+                        <Box>
+                          <AlertTitle fontSize="sm">Protected account details</AlertTitle>
+                          <AlertDescription fontSize="sm">
+                            Display name, phone number, and email can each be changed once every 3 months to keep accounts and trades trustworthy.
+                          </AlertDescription>
+                        </Box>
+                      </Alert>
+
                       {/* Display Name */}
                       <FormControl>
-                        <FormLabel>Display Name</FormLabel>
+                        <HStack justify="space-between" mb={2} flexWrap="wrap" gap={2}>
+                          <FormLabel mb={0}>Display Name</FormLabel>
+                          {displayNameLock.isLocked && (
+                            <Badge colorScheme="purple" variant="subtle" borderRadius="full" px={2}>
+                              3-month lock
+                            </Badge>
+                          )}
+                        </HStack>
                         <Input
                           value={username}
                           onChange={(e) => {
                             setUsername(e.target.value)
-                            setHasUnsavedChanges(true)
+                            markFieldDirty('username')
                           }}
+                          isDisabled={displayNameLock.isLocked}
                           placeholder="Your public display name"
                         />
+                        <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
+                          Your display name helps keep trades recognizable. For account safety, it can only be changed once every 3 months.
+                        </Text>
+                        {displayNameLock.lastChanged && displayNameLock.nextAvailable && (
+                          <Text fontSize="xs" color={displayNameLock.isLocked ? 'orange.500' : useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                            Last changed: {formatAccountDate(displayNameLock.lastChanged)}. {displayNameLock.isLocked ? `You can update this again on ${formatAccountDate(displayNameLock.nextAvailable)}.` : 'You can update this now.'}
+                          </Text>
+                        )}
                       </FormControl>
 
                       {/* Phone Number */}
@@ -1145,23 +1492,26 @@ const SettingsPage: React.FC = () => {
                         <HStack spacing={2}>
                           <Input
                             type="tel"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             value={phoneNumber}
                             onChange={(e) => {
-                              const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 15)
+                              const digitsOnly = normalizePhilippinePhone(e.target.value)
                               setPhoneNumber(digitsOnly)
                               if (phoneVerified && digitsOnly !== ((user as any)?.phone || '')) {
                                 setPhoneVerified(false)
                               }
-                              setHasUnsavedChanges(true)
+                              markFieldDirty('phone')
                             }}
-                            placeholder="e.g. 09171234567"
+                            isDisabled={phoneLock.isLocked}
+                            placeholder="09XXXXXXXXX"
                           />
                           <Button
                             size="sm"
                             colorScheme="orange"
-                            variant="ghost"
+                            variant="outline"
                             fontSize="xs"
-                            isDisabled={!phoneNumber.trim() || phoneVerified}
+                            isDisabled={!phoneNumber.trim() || phoneVerified || phoneNumber !== ((user as any)?.phone || '') || !validatePhone(phoneNumber)}
                             onClick={() => {
                               setPhoneOtpCode('')
                               setPhoneOtpSent(false)
@@ -1169,19 +1519,26 @@ const SettingsPage: React.FC = () => {
                               onPhoneModalOpen()
                             }}
                           >
-                            {phoneVerified ? 'Verified' : 'Verify'}
+                            {phoneVerified ? 'Verified' : 'Verify Phone'}
                           </Button>
                         </HStack>
 
                         {phoneNumber && !validatePhone(phoneNumber) && (
                           <Text fontSize="xs" color="red.500" mt={1}>
-                            Phone number must be 10 to 15 digits.
+                            Use a valid Philippine mobile number with exactly 11 digits, like 09XXXXXXXXX.
                           </Text>
                         )}
 
                         {!phoneVerified && phoneNumber && validatePhone(phoneNumber) && (
                           <Text fontSize="xs" color="orange.500" mt={2}>
-                            Add your phone number to strengthen account trust for trades and delivery.
+                            {phoneNumber !== ((user as any)?.phone || '')
+                              ? 'Save this phone number first, then verify it. Changing phone number starts a new 3-month lock.'
+                              : 'Verify this number to strengthen account trust for trades and delivery.'}
+                          </Text>
+                        )}
+                        {phoneLock.lastChanged && phoneLock.nextAvailable && (
+                          <Text fontSize="xs" color={phoneLock.isLocked ? 'orange.500' : useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                            Last changed: {formatAccountDate(phoneLock.lastChanged)}. {phoneLock.isLocked ? `You can update this again on ${formatAccountDate(phoneLock.nextAvailable)}.` : 'You can update this now.'}
                           </Text>
                         )}
                       </FormControl>
@@ -1211,8 +1568,9 @@ const SettingsPage: React.FC = () => {
                             value={email}
                             onChange={(e) => {
                               setEmail(e.target.value)
-                              setHasUnsavedChanges(true)
+                              markFieldDirty('email')
                             }}
+                            isDisabled={emailLock.isLocked}
                             placeholder="you@example.com"
                           />
                           {!user?.verified && email === user?.email && (
@@ -1257,6 +1615,25 @@ const SettingsPage: React.FC = () => {
                             Please enter a valid email address
                           </Text>
                         )}
+                        <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
+                          Email changes require verification and are limited to once every 3 months for account security.
+                        </Text>
+                        {emailLock.lastChanged && emailLock.nextAvailable && (
+                          <Text fontSize="xs" color={emailLock.isLocked ? 'orange.500' : useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                            Last changed: {formatAccountDate(emailLock.lastChanged)}. {emailLock.isLocked ? `You can update this again on ${formatAccountDate(emailLock.nextAvailable)}.` : 'You can update this now.'}
+                          </Text>
+                        )}
+                        {email.trim().toLowerCase() !== (user?.email || '').toLowerCase() && validateEmail(email.trim()) && (
+                          <Alert status="info" borderRadius="xl" mt={3} py={2}>
+                            <AlertIcon />
+                            <Box>
+                              <AlertTitle fontSize="xs">Email verification required after save</AlertTitle>
+                              <AlertDescription fontSize="xs">
+                                We will send a verification code to the new address and mark the account unverified until it is confirmed.
+                              </AlertDescription>
+                            </Box>
+                          </Alert>
+                        )}
                         {!user?.verified && (
                           <Text fontSize="xs" color="orange.500" mt={2}>
                             ⚠️ Your email is not verified. Some features may be restricted.
@@ -1300,14 +1677,281 @@ const SettingsPage: React.FC = () => {
                           Sign out from this device.
                         </Text>
                       </FormControl>
+
+                      <Divider />
+
+                      {/* Home Address — for stable distance calculations */}
+                      <Box>
+                        <HStack justify="space-between" mb={2} flexWrap="wrap" gap={2}>
+                          <HStack spacing={2}>
+                            <Icon as={FaHome} color="brand.500" boxSize={4} />
+                            <Text fontWeight="600" fontSize="sm">Home Address</Text>
+                          </HStack>
+                          {homeLocation && (
+                            <Badge colorScheme="green" borderRadius="full" px={2} py={0.5} fontSize="2xs">
+                              <HStack spacing={1}>
+                                <Icon as={FaCheckCircle} boxSize={3} />
+                                <Text>Set</Text>
+                              </HStack>
+                            </Badge>
+                          )}
+                        </HStack>
+
+                        {!homeLocation && (
+                          <Alert status="info" borderRadius="xl" mb={3} fontSize="sm" py={2}>
+                            <AlertIcon boxSize={4} />
+                            <Box>
+                              <AlertTitle fontSize="xs" fontWeight="700">Set your home address</AlertTitle>
+                              <AlertDescription fontSize="xs" color="gray.600">
+                                Distance badges on listings will use your home as the reference point instead of your live GPS — giving you more stable and meaningful distances.
+                              </AlertDescription>
+                            </Box>
+                          </Alert>
+                        )}
+
+                        {homeLocation && homeAddressLabel && (
+                          <HStack
+                            bg={useColorModeValue('green.50', 'green.900')}
+                            borderRadius="xl"
+                            px={3} py={2} mb={3}
+                            border="1px solid"
+                            borderColor={useColorModeValue('green.200', 'green.700')}
+                            spacing={2}
+                          >
+                            <Icon as={FiMapPin} color="green.500" boxSize={4} flexShrink={0} />
+                            <Text fontSize="sm" color={useColorModeValue('green.700', 'green.200')} noOfLines={2}>
+                              {homeAddressLabel}
+                            </Text>
+                          </HStack>
+                        )}
+
+                        <HStack spacing={2}>
+                          <Button
+                            id="settings-set-home-address-btn"
+                            leftIcon={<FiMapPin />}
+                            size="sm"
+                            colorScheme="brand"
+                            variant={homeLocation ? 'outline' : 'solid'}
+                            onClick={() => {
+                              setAddressSearch('')
+                              setSearchResults([])
+                              // Start with existing, then try GPS
+                              const initial = homeLocation || { lat: 14.5995, lng: 120.9842 } // Manila fallback
+                              setPendingHomeLocation(initial)
+                              onHomeMapOpen()
+                              // Auto-request GPS to center map
+                              if ('geolocation' in navigator) {
+                                setGpsLoading(true)
+                                navigator.geolocation.getCurrentPosition(
+                                  (pos) => {
+                                    setPendingHomeLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+                                    setGpsLoading(false)
+                                  },
+                                  () => setGpsLoading(false),
+                                  { timeout: 8000 }
+                                )
+                              }
+                            }}
+                          >
+                            {homeLocation ? 'Update Home Address' : 'Set Home Address'}
+                          </Button>
+                          {homeLocation && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              colorScheme="red"
+                              onClick={async () => {
+                                try {
+                                  await api.put('/api/users/profile', {
+                                    home_latitude: null,
+                                    home_longitude: null,
+                                    home_address: '',
+                                  })
+                                  localStorage.removeItem('clovia_home_location')
+                                  setHomeLocation(null)
+                                  setHomeAddressLabel('')
+                                  window.dispatchEvent(new CustomEvent('homeAddressChanged', { detail: { lat: null, lng: null } }))
+                                  toast({ id: 'home-address-cleared', title: 'Home address removed', status: 'info', duration: 3000, isClosable: true })
+                                } catch { /* ignore */ }
+                              }}
+                            >
+                              Clear
+                            </Button>
+                          )}
+                        </HStack>
+                        <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
+                          Tap the map to pin your home. This is used only for calculating listing distances — it's never shown publicly.
+                        </Text>
+                      </Box>
                     </VStack>
                   </CardBody>
                 </Card>
-              </TabPanel>
+              </Box>
+              )}
+
+              {/* ── Home Address Map Modal ── */}
+              <Modal isOpen={isHomeMapOpen} onClose={() => { onHomeMapClose(); setSearchResults([]); setAddressSearch('') }} size="xl" isCentered scrollBehavior="inside">
+                <ModalOverlay backdropFilter="blur(4px)" />
+                <ModalContent borderRadius="2xl" overflow="hidden" mx={2} maxH="90vh">
+                  <ModalHeader pb={2}>
+                    <HStack spacing={2}>
+                      <Icon as={FaHome} color="brand.500" />
+                      <Text>Set Home Address</Text>
+                    </HStack>
+                  </ModalHeader>
+                  <ModalCloseButton />
+                  <ModalBody p={0}>
+                    <VStack spacing={0} align="stretch">
+
+                      {/* Search bar + GPS button */}
+                      <Box px={4} py={3} borderBottomWidth="1px" borderColor={borderColor}>
+                        <HStack spacing={2}>
+                          <InputGroup size="sm" flex={1}>
+                            <Input
+                              placeholder="Search address or place name..."
+                              value={addressSearch}
+                              onChange={(e) => setAddressSearch(e.target.value)}
+                              borderRadius="lg"
+                              onKeyDown={async (e) => {
+                                if (e.key === 'Enter' && addressSearch.trim().length > 2) {
+                                  setSearching(true)
+                                  try {
+                                    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressSearch)}&format=json&limit=5&countrycodes=ph`, { headers: { 'Accept-Language': 'en' } })
+                                    setSearchResults(await res.json())
+                                  } catch { /* ignore */ } finally { setSearching(false) }
+                                }
+                              }}
+                            />
+                            <InputRightElement>
+                              {searching ? <Spinner size="xs" /> : null}
+                            </InputRightElement>
+                          </InputGroup>
+                          <Button
+                            size="sm"
+                            leftIcon={gpsLoading ? <Spinner size="xs" /> : <Icon as={FiMapPin} />}
+                            colorScheme="green"
+                            variant="outline"
+                            borderRadius="lg"
+                            isLoading={gpsLoading}
+                            onClick={() => {
+                              if (!('geolocation' in navigator)) return
+                              setGpsLoading(true)
+                              navigator.geolocation.getCurrentPosition(
+                                (pos) => {
+                                  setPendingHomeLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+                                  setGpsLoading(false)
+                                  setSearchResults([])
+                                },
+                                () => {
+                                  setGpsLoading(false)
+                                  toast({ id: 'gps-error', title: 'Could not get GPS location', status: 'warning', duration: 3000, isClosable: true })
+                                },
+                                { timeout: 8000, enableHighAccuracy: true }
+                              )
+                            }}
+                          >
+                            My Location
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            colorScheme="brand"
+                            borderRadius="lg"
+                            isLoading={searching}
+                            onClick={async () => {
+                              if (addressSearch.trim().length < 2) return
+                              setSearching(true)
+                              try {
+                                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressSearch)}&format=json&limit=5&countrycodes=ph`, { headers: { 'Accept-Language': 'en' } })
+                                setSearchResults(await res.json())
+                              } catch { /* ignore */ } finally { setSearching(false) }
+                            }}
+                          >
+                            Search
+                          </Button>
+                        </HStack>
+
+                        {/* Search results dropdown */}
+                        {searchResults.length > 0 && (
+                          <VStack align="stretch" mt={2} spacing={0} borderRadius="lg" border="1px solid" borderColor={borderColor} overflow="hidden" maxH="180px" overflowY="auto">
+                            {searchResults.map((r, i) => (
+                              <Box
+                                key={i}
+                                px={3} py={2}
+                                cursor="pointer"
+                                bg={useColorModeValue('white', 'gray.800')}
+                                _hover={{ bg: useColorModeValue('brand.50', 'gray.700') }}
+                                borderBottomWidth={i < searchResults.length - 1 ? '1px' : '0'}
+                                borderColor={borderColor}
+                                onClick={() => {
+                                  setPendingHomeLocation({ lat: parseFloat(r.lat), lng: parseFloat(r.lon) })
+                                  setSearchResults([])
+                                  setAddressSearch(r.display_name.split(',').slice(0, 3).join(','))
+                                }}
+                              >
+                                <HStack spacing={2}>
+                                  <Icon as={FiMapPin} color="brand.500" boxSize={3} flexShrink={0} />
+                                  <Text fontSize="xs" noOfLines={2}>{r.display_name}</Text>
+                                </HStack>
+                              </Box>
+                            ))}
+                          </VStack>
+                        )}
+                      </Box>
+
+                      {/* Map */}
+                      {pendingHomeLocation && (
+                        <Box h="340px" position="relative">
+                          <MapContainer
+                            center={[pendingHomeLocation.lat, pendingHomeLocation.lng]}
+                            zoom={15}
+                            style={{ height: '100%', width: '100%' }}
+                          >
+                            <TileLayer
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                            />
+                            <HomeMapClickHandler onSelect={(lat, lng) => { setPendingHomeLocation({ lat, lng }); setSearchResults([]) }} />
+                            <HomeMapCenterUpdater lat={pendingHomeLocation.lat} lng={pendingHomeLocation.lng} />
+                            <Marker position={[pendingHomeLocation.lat, pendingHomeLocation.lng]} />
+                          </MapContainer>
+                        </Box>
+                      )}
+
+                      {/* Selected coords */}
+                      {pendingHomeLocation && (
+                        <Box px={4} py={2} bg={useColorModeValue('gray.50', 'gray.800')}>
+                          <HStack spacing={2}>
+                            <Icon as={FiMapPin} color="brand.500" boxSize={3} />
+                            <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')}>
+                              Pinned: {pendingHomeLocation.lat.toFixed(5)}, {pendingHomeLocation.lng.toFixed(5)} · Tap map to adjust
+                            </Text>
+                          </HStack>
+                        </Box>
+                      )}
+                    </VStack>
+                  </ModalBody>
+                  <ModalFooter gap={2} pt={3}>
+                    <Button variant="ghost" size="sm" onClick={() => { onHomeMapClose(); setSearchResults([]); setAddressSearch('') }} isDisabled={homeSaving}>Cancel</Button>
+                    <Button
+                      id="settings-confirm-home-address-btn"
+                      colorScheme="brand"
+                      size="sm"
+                      leftIcon={<FaHome />}
+                      isLoading={homeSaving}
+                      isDisabled={!pendingHomeLocation}
+                      onClick={() => pendingHomeLocation && handleSaveHomeAddress(pendingHomeLocation)}
+                    >
+                      Confirm Home Address
+                    </Button>
+                  </ModalFooter>
+                </ModalContent>
+              </Modal>
 
               {/* School ID Verification Section - hidden for admins */}
-              {user?.role !== 'admin' && (
-                <TabPanel p={0} m={0}>
+              {activeTabKey === 'education' && user?.role !== 'admin' && (
+                <Box p={0} m={0}>
+                  <VStack spacing={5} align="stretch">
                   <Card
                     bg={cardBg}
                     borderRadius="2xl"
@@ -1349,6 +1993,84 @@ const SettingsPage: React.FC = () => {
                     </CardHeader>
                     <CardBody pt={0}>
                       <VStack spacing={4} align="stretch">
+                        <Box
+                          p={{ base: 4, md: 5 }}
+                          borderWidth="1px"
+                          borderColor={borderColor}
+                          borderRadius="xl"
+                          bg={useColorModeValue('green.50', 'whiteAlpha.50')}
+                        >
+                          <HStack spacing={3} mb={4}>
+                            <Icon as={FaGraduationCap} color="brand.500" boxSize={5} />
+                            <Box>
+                              <Text fontWeight="700">Academic Profile</Text>
+                              <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.300')}>
+                                Add the school details that help other students understand who they are trading with.
+                              </Text>
+                            </Box>
+                          </HStack>
+
+                          {!academicProgram && !yearLevel && !academicBio && (
+                            <Alert status="info" borderRadius="xl" mb={4}>
+                              <AlertIcon />
+                              <Box>
+                                <AlertTitle fontSize="sm">Your education profile is empty</AlertTitle>
+                                <AlertDescription fontSize="sm">
+                                  Add your program, year level, or a short academic note. These fields save with the main Settings button.
+                                </AlertDescription>
+                              </Box>
+                            </Alert>
+                          )}
+
+                          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                            <FormControl>
+                              <FormLabel>Course / Program</FormLabel>
+                              <Input
+                                value={academicProgram}
+                                onChange={(e) => {
+                                  setAcademicProgram(e.target.value)
+                                  markFieldDirty('academicProgram')
+                                }}
+                                placeholder="e.g. BS Computer Science"
+                              />
+                            </FormControl>
+
+                            <FormControl>
+                              <FormLabel>Year Level</FormLabel>
+                              <Select
+                                value={yearLevel}
+                                onChange={(e) => {
+                                  setYearLevel(e.target.value)
+                                  markFieldDirty('yearLevel')
+                                }}
+                                placeholder="Select year level"
+                              >
+                                <option value="1st Year">1st Year</option>
+                                <option value="2nd Year">2nd Year</option>
+                                <option value="3rd Year">3rd Year</option>
+                                <option value="4th Year">4th Year</option>
+                                <option value="5th Year">5th Year</option>
+                                <option value="Graduate">Graduate</option>
+                                <option value="Faculty / Staff">Faculty / Staff</option>
+                                <option value="Other">Other</option>
+                              </Select>
+                            </FormControl>
+                          </SimpleGrid>
+
+                          <FormControl mt={4}>
+                            <FormLabel>Academic Bio</FormLabel>
+                            <Textarea
+                              value={academicBio}
+                              onChange={(e) => {
+                                setAcademicBio(e.target.value)
+                                markFieldDirty('academicBio')
+                              }}
+                              placeholder="Share a short note about your course, interests, or what you usually trade."
+                              rows={4}
+                              resize="vertical"
+                            />
+                          </FormControl>
+                        </Box>
                         <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.300')}>
                           Verifying your school ID helps other students trust your listings and trades.
                           This is optional – you can continue using Clovia without verification.
@@ -1431,11 +2153,106 @@ const SettingsPage: React.FC = () => {
                       </VStack>
                     </CardBody>
                   </Card>
-                </TabPanel>
+                  <Card
+                    bg={cardBg}
+                    borderRadius="2xl"
+                    overflow="hidden"
+                    variant="outline"
+                    borderColor={borderColor}
+                    shadow="sm"
+                  >
+                    <CardHeader pb={3}>
+                      <HStack spacing={3} justify="space-between" flexWrap="wrap" gap={2}>
+                        <HStack spacing={3}>
+                          <Icon as={FaBell} color="brand.500" boxSize={5} />
+                          <Heading size={{ base: 'sm', md: 'md' }}>Education Updates</Heading>
+                        </HStack>
+                        <Badge colorScheme="brand" variant="subtle" borderRadius="full" px={3} py={1}>
+                          Communication defaults
+                        </Badge>
+                      </HStack>
+                    </CardHeader>
+                    <CardBody pt={0}>
+                      <VStack spacing={4} align="stretch">
+                        <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.300')}>
+                          Choose how Clovia can reach you about school verification, student trust signals, and education profile changes.
+                        </Text>
+
+                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                          <Flex
+                            justify="space-between"
+                            align="center"
+                            gap={4}
+                            p={4}
+                            borderWidth="1px"
+                            borderColor={borderColor}
+                            borderRadius="xl"
+                            bg={useColorModeValue('gray.50', 'whiteAlpha.50')}
+                          >
+                            <Box minW={0}>
+                              <FormLabel mb={1}>
+                                <HStack spacing={2}>
+                                  <Icon as={FaEnvelope} color="brand.500" />
+                                  <Text>Email Notifications</Text>
+                                </HStack>
+                              </FormLabel>
+                              <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
+                                Receive school verification and education updates by email.
+                              </Text>
+                            </Box>
+                            <Switch
+                              isChecked={emailNotifications}
+                              onChange={(e) => {
+                                setEmailNotifications(e.target.checked)
+                                markFieldDirty('emailNotifications')
+                              }}
+                              colorScheme="brand"
+                              size="lg"
+                            />
+                          </Flex>
+
+                          <Flex
+                            justify="space-between"
+                            align="center"
+                            gap={4}
+                            p={4}
+                            borderWidth="1px"
+                            borderColor={borderColor}
+                            borderRadius="xl"
+                            bg={useColorModeValue('gray.50', 'whiteAlpha.50')}
+                          >
+                            <Box minW={0}>
+                              <FormLabel mb={1}>
+                                <HStack spacing={2}>
+                                  <Icon as={FaMobile} color="brand.500" />
+                                  <Text>Push Notifications</Text>
+                                </HStack>
+                              </FormLabel>
+                              <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
+                                Receive in-app and browser notices for education-related activity.
+                              </Text>
+                            </Box>
+                            <Switch
+                              isChecked={pushNotifications}
+                              onChange={(e) => {
+                                setPushNotifications(e.target.checked)
+                                markFieldDirty('pushNotifications')
+                              }}
+                              colorScheme="brand"
+                              size="lg"
+                            />
+                          </Flex>
+                        </SimpleGrid>
+                      </VStack>
+                    </CardBody>
+                  </Card>
+                  </VStack>
+                </Box>
               )}
 
               {/* Notifications Section */}
-              <TabPanel p={0} m={0}>
+              {activeTabKey === 'notifications' && (
+              <Box p={0} m={0}>
                 <Card
                   bg={cardBg}
                   borderRadius="2xl"
@@ -1445,69 +2262,112 @@ const SettingsPage: React.FC = () => {
                   shadow="sm"
                 >
                   <CardHeader pb={3}>
-                    <HStack spacing={3}>
-                      <Icon as={FaBell} color="brand.500" boxSize={5} />
-                      <Heading size="md">Notifications</Heading>
+                    <HStack spacing={3} justify="space-between" flexWrap="wrap" gap={2}>
+                      <HStack spacing={3}>
+                        <Icon as={FaBell} color="brand.500" boxSize={5} />
+                        <Box>
+                          <Heading size={{ base: 'sm', md: 'md' }}>Notification Preferences</Heading>
+                          <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                            Fine-tune exactly which Clovia updates you want to receive.
+                          </Text>
+                        </Box>
+                      </HStack>
+                      <Badge colorScheme="green" variant="subtle" borderRadius="full" px={3} py={1}>
+                        {Object.values(notificationPreferences).filter(Boolean).length} enabled
+                      </Badge>
                     </HStack>
                   </CardHeader>
                   <CardBody pt={0}>
-                    <VStack spacing={6} align="stretch">
-                      {/* Email Notifications */}
-                      <Flex justify="space-between" align="center">
+                    <VStack spacing={5} align="stretch">
+                      <Alert status="info" borderRadius="xl">
+                        <AlertIcon />
                         <Box>
-                          <FormLabel mb={1}>
-                            <HStack spacing={2}>
-                              <Icon as={FaEnvelope} />
-                              <Text>Email Notifications</Text>
-                            </HStack>
-                          </FormLabel>
-                          <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
-                            Receive updates and offers via email
-                          </Text>
+                          <AlertTitle fontSize="sm">Granular controls</AlertTitle>
+                          <AlertDescription fontSize="sm">
+                            Turn off one category without muting the rest. Delivery channels live in the Education tab.
+                          </AlertDescription>
                         </Box>
-                        <Switch
-                          isChecked={emailNotifications}
-                          onChange={(e) => {
-                            setEmailNotifications(e.target.checked)
-                            setHasUnsavedChanges(true)
-                          }}
-                          colorScheme="brand"
-                          size="lg"
-                        />
-                      </Flex>
+                      </Alert>
 
-                      {/* Push Notifications */}
-                      <Flex justify="space-between" align="center">
-                        <Box>
-                          <FormLabel mb={1}>
-                            <HStack spacing={2}>
-                              <Icon as={FaMobile} />
-                              <Text>Push Notifications</Text>
-                            </HStack>
-                          </FormLabel>
-                          <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
-                            Receive in-app and browser notifications
-                          </Text>
+                      {NOTIFICATION_GROUPS.map((group, groupIndex) => (
+                        <Box key={group.title}>
+                          {groupIndex > 0 && <Divider mb={5} />}
+                          <VStack spacing={4} align="stretch">
+                            <Box>
+                              <Heading size="sm">{group.title}</Heading>
+                              <Text fontSize="sm" color={mutedTextColor} mt={1}>
+                                {group.description}
+                              </Text>
+                            </Box>
+
+                            <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={3}>
+                              {group.items.map((item) => {
+                                const ItemIcon = item.icon
+                                return (
+                                  <Flex
+                                    key={item.key}
+                                    justify="space-between"
+                                    align="center"
+                                    gap={4}
+                                    p={{ base: 3, md: 4 }}
+                                    borderWidth="1px"
+                                    borderColor={notificationPreferences[item.key] ? notificationEnabledBorder : borderColor}
+                                    borderRadius="xl"
+                                    bg={notificationPreferences[item.key] ? notificationEnabledBg : notificationDisabledBg}
+                                  >
+                                    <HStack align="start" spacing={3} minW={0}>
+                                      <Flex
+                                        w="36px"
+                                        h="36px"
+                                        align="center"
+                                        justify="center"
+                                        borderRadius="lg"
+                                        bg={notificationIconBg}
+                                        borderWidth="1px"
+                                        borderColor={borderColor}
+                                        flexShrink={0}
+                                      >
+                                        <Icon as={ItemIcon} color="brand.500" boxSize={4} />
+                                      </Flex>
+                                      <Box minW={0}>
+                                        <HStack spacing={2} flexWrap="wrap">
+                                          <Text fontWeight="700" fontSize="sm">{item.label}</Text>
+                                          {item.locked && (
+                                            <Badge colorScheme="orange" variant="subtle" borderRadius="full">
+                                              Required
+                                            </Badge>
+                                          )}
+                                        </HStack>
+                                        <Text fontSize="xs" color={mutedTextColor} mt={1}>
+                                          {item.helper}
+                                        </Text>
+                                      </Box>
+                                    </HStack>
+                                    <Switch
+                                      aria-label={item.label}
+                                      isChecked={notificationPreferences[item.key]}
+                                      isDisabled={item.locked}
+                                      onChange={(e) => updateNotificationPreference(item.key, e.target.checked)}
+                                      colorScheme="brand"
+                                      size="lg"
+                                      flexShrink={0}
+                                    />
+                                  </Flex>
+                                )
+                              })}
+                            </SimpleGrid>
+                          </VStack>
                         </Box>
-                        <Switch
-                          isChecked={pushNotifications}
-                          onChange={(e) => {
-                            setPushNotifications(e.target.checked)
-                            setHasUnsavedChanges(true)
-                          }}
-                          colorScheme="brand"
-                          size="lg"
-                        />
-                      </Flex>
-
-                      <Divider />
+                      ))}
                     </VStack>
                   </CardBody>
                 </Card>
-              </TabPanel>
+              </Box>
+              )}
 
               {/* Delete Account Section - Subtle but Dangerous */}
-              <TabPanel p={0} m={0}>
+              {activeTabKey === 'danger' && (
+              <Box p={0} m={0}>
                 <Card
                   bg={useColorModeValue('red.50', 'rgba(245, 75, 85, 0.1)')}
                   borderRadius="2xl"
@@ -1543,8 +2403,9 @@ const SettingsPage: React.FC = () => {
                     </VStack>
                   </CardBody>
                 </Card>
-              </TabPanel>
-            </TabPanels>
+              </Box>
+              )}
+            </Box>
           </Tabs>
         </VStack>
       </Container>
@@ -1575,13 +2436,18 @@ const SettingsPage: React.FC = () => {
                   onClick={() => {
                     // Reset to original values
                     if (user) {
+                      dirtyFieldsRef.current.clear()
                       setUsername(user.name || '')
                       setEmail(user.email || '')
                       setPhoneNumber((user as any)?.phone || '')
                       setPhoneVerified((user as any)?.phone_verified || false)
                       setProfileImage((user as any)?.profile_picture || null)
+                      setAcademicProgram((user as any)?.academic_program || '')
+                      setYearLevel((user as any)?.year_level || '')
+                      setAcademicBio((user as any)?.bio || '')
                       setEmailNotifications((user as any)?.email_notifications_enabled ?? true)
                       setPushNotifications((user as any)?.push_notifications_enabled ?? true)
+                      setNotificationPreferences(parseNotificationPreferences((user as any)?.notification_preferences))
                     }
                     setHasUnsavedChanges(false)
                     toast({
@@ -1599,7 +2465,7 @@ const SettingsPage: React.FC = () => {
                 <Button
                   colorScheme="brand"
                   leftIcon={isSaving ? <Spinner size="sm" /> : <FiSave />}
-                  onClick={handleSave}
+                  onClick={() => handleSaveSettings()}
                   isLoading={isSaving}
                   loadingText="Saving..."
                 >
@@ -1610,6 +2476,53 @@ const SettingsPage: React.FC = () => {
           </Container>
         </Box>
       )}
+
+      <AlertDialog
+        isOpen={isIdentityConfirmOpen}
+        leastDestructiveRef={identityConfirmCancelRef}
+        onClose={onIdentityConfirmClose}
+        isCentered
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent borderRadius="2xl">
+            <AlertDialogHeader fontSize="lg" fontWeight="700">
+              Confirm account identity changes
+            </AlertDialogHeader>
+            <AlertDialogBody>
+              <VStack align="stretch" spacing={3}>
+                <Text fontSize="sm">
+                  You are changing your {identityChangeSummary.join(', ')}. These fields are protected and cannot be changed again for 3 months after saving.
+                </Text>
+                <Alert status="warning" borderRadius="xl">
+                  <AlertIcon />
+                  <Box>
+                    <AlertTitle fontSize="sm">Security restriction</AlertTitle>
+                    <AlertDescription fontSize="sm">
+                      Email changes also require verification. Phone changes may need phone verification before the number is trusted.
+                    </AlertDescription>
+                  </Box>
+                </Alert>
+              </VStack>
+            </AlertDialogBody>
+            <AlertDialogFooter>
+              <Button ref={identityConfirmCancelRef} variant="ghost" onClick={onIdentityConfirmClose}>
+                Cancel
+              </Button>
+              <Button
+                colorScheme="brand"
+                ml={3}
+                isLoading={isSaving}
+                onClick={() => {
+                  onIdentityConfirmClose()
+                  handleSaveSettings(true)
+                }}
+              >
+                Save Protected Changes
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
 
       {/* Password Change Modal */}
       <Modal isOpen={isPasswordModalOpen} onClose={onPasswordModalClose} size="md">

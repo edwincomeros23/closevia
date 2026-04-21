@@ -172,6 +172,7 @@ interface MultiWayTradeModalProps {
   onClose: () => void
   multiWayTrade: MultiWayTrade
   onTradeCompleted?: () => void
+  onTradeUpdated?: (status?: string) => void
   canManage?: boolean
   currentUserId?: number
 }
@@ -206,14 +207,21 @@ function formatTimeLeft(expiresAt: string): string {
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
     pending: 'Pending',
+    partially_accepted: 'Partially Accepted',
     confirmed: 'Confirmed',
+    ongoing: 'Ongoing',
     user3_accepted: 'Accepted',
     active: 'Active',
     pending_user3: 'Awaiting 3rd Party',
     accepted: 'Accepted',
     declined: 'Declined',
     completed: 'Completed',
+    history: 'History',
+    broken: 'Broken',
     cancelled: 'Cancelled',
+    cancelled_due_to_conflict: 'Cancelled by Conflict',
+    expired: 'Expired',
+    rejected: 'Rejected',
     in_progress: 'In Progress',
     multiway_active: 'Active',
     pending_initiator_upgrade: 'Upgrade Required',
@@ -224,8 +232,10 @@ function statusLabel(status: string): string {
 function statusColorScheme(status: string): string {
   switch (status) {
     case 'pending':
+    case 'partially_accepted':
       return 'yellow'
     case 'confirmed':
+    case 'ongoing':
       return 'green'
     case 'pending_user3':
     case 'pending_initiator_upgrade':
@@ -238,7 +248,11 @@ function statusColorScheme(status: string): string {
     case 'in_progress':
       return 'blue'
     case 'declined':
+    case 'rejected':
     case 'cancelled':
+    case 'cancelled_due_to_conflict':
+    case 'broken':
+    case 'expired':
       return 'red'
     case 'completed':
       return 'cyan'
@@ -252,13 +266,31 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   onClose,
   multiWayTrade,
   onTradeCompleted,
+  onTradeUpdated,
   canManage = false,
   currentUserId,
 }) => {
   const { user } = useAuth()
   const viewerUserId = currentUserId ?? user?.id
+  const loopParticipants = useMemo(
+    () => Array.isArray(multiWayTrade.participants) ? multiWayTrade.participants : [],
+    [multiWayTrade.participants]
+  )
+  const loopStatus = String(multiWayTrade.status || '').toLowerCase()
+  const reviewCompleteCount = loopParticipants.filter((p) => Boolean((p as any).is_reviewed)).length
+  const allParticipantsReviewed = loopParticipants.length > 0 && reviewCompleteCount >= loopParticipants.length
+  const collaborationAcceptedStatuses = ['accepted', 'confirmed', 'ongoing', 'active', 'multiway_active', 'user3_accepted']
+  const allParticipantsAcceptedForCollaboration =
+    loopParticipants.length > 0 &&
+    loopParticipants.every((p) =>
+      collaborationAcceptedStatuses.includes(String((p as any).trade_status || (p as any).status || '').toLowerCase())
+    )
   const isActiveChain =
-    multiWayTrade.status === 'confirmed'
+    ['confirmed', 'ongoing', 'active', 'multiway_active'].includes(loopStatus) ||
+    ((loopStatus === 'completed' || loopStatus === 'history') && !allParticipantsReviewed)
+  // Keep Chat and Meetup available until every required participant has reviewed/completed.
+  // One participant submitting their review must not lock the remaining users out.
+  const showCollaborationTabs = !allParticipantsReviewed && (isActiveChain || allParticipantsAcceptedForCollaboration)
 
   const [loading, setLoading] = useState(false)
   const [selectedAction, setSelectedAction] = useState<
@@ -332,6 +364,17 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [submittingReview, setSubmittingReview] = useState(false)
   const [reviewSubmitted, setReviewSubmitted] = useState(false)
+  const [completingTrade, setCompletingTrade] = useState(false)
+
+  // Sync review status from props
+  useEffect(() => {
+    const me = multiWayTrade.participants.find(p => p.user_id === user?.id)
+    if (me?.is_reviewed) {
+      setReviewSubmitted(true)
+    } else {
+      setReviewSubmitted(false)
+    }
+  }, [multiWayTrade.participants, user?.id])
 
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -361,16 +404,29 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     }
   }, [isOpen, activeTab])
 
-  const fetchMeetupStatus = async () => {
+  const fetchMeetupStatus = async (silent = false) => {
     if (!multiWayTrade.loop_id) return
-    setLoadingMeetupStatus(true)
+    if (!silent) setLoadingMeetupStatus(true)
     try {
       const data = await fetchTradeLoopMeetup(multiWayTrade.loop_id)
       setMeetupStatus(data as any)
     } catch {
       setMeetupStatus(null)
     } finally {
-      setLoadingMeetupStatus(false)
+      if (!silent) setLoadingMeetupStatus(false)
+    }
+  }
+
+  const fetchLoopMessages = async (silent = false) => {
+    if (!multiWayTrade.loop_id) return
+    if (!silent) setLoadingMessages(true)
+    try {
+      const res = await api.get(`/api/trades/loops/${multiWayTrade.loop_id}/messages`)
+      setMessages(Array.isArray(res.data?.data) ? res.data.data : [])
+    } catch (error) {
+      setMessages([])
+    } finally {
+      if (!silent) setLoadingMessages(false)
     }
   }
 
@@ -384,19 +440,19 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   // Fetch chat messages for loop
   useEffect(() => {
     if (!isOpen || !multiWayTrade.loop_id) return
-    const fetchMessages = async () => {
-      setLoadingMessages(true)
-      try {
-        const res = await api.get(`/api/trades/loops/${multiWayTrade.loop_id}/messages`)
-        setMessages(Array.isArray(res.data?.data) ? res.data.data : [])
-      } catch (error) {
-        setMessages([])
-      } finally {
-        setLoadingMessages(false)
-      }
-    }
-    fetchMessages()
+    fetchLoopMessages()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, multiWayTrade.loop_id])
+
+  useEffect(() => {
+    if (!isOpen || !multiWayTrade.loop_id || !showCollaborationTabs) return
+    const id = setInterval(() => {
+      fetchMeetupStatus(true)
+      fetchLoopMessages(true)
+    }, 5000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, multiWayTrade.loop_id, showCollaborationTabs])
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -405,12 +461,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
   const sortedParticipants = useMemo(
     () =>
-      [...multiWayTrade.participants].sort(
+      [...loopParticipants].sort(
         (a, b) =>
           ((a as any).position_in_loop ?? (a as any).position ?? 0) -
           ((b as any).position_in_loop ?? (b as any).position ?? 0)
       ),
-    [multiWayTrade.participants]
+    [loopParticipants]
   )
 
   const meetupByUserId = useMemo(() => {
@@ -529,7 +585,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const completedLegs = multiWayTrade.edges.filter((e) => e.status === 'completed').length
   const totalLegs = multiWayTrade.edges.length
   const healthPct = totalLegs > 0 ? Math.round((completedLegs / totalLegs) * 100) : 0
-  const isTwoWayLoop = sortedParticipants.length === 2
   const reviewTradeId = useMemo(() => {
     const edgeTradeId = multiWayTrade.edges.find((e) => e.trade_id)?.trade_id
     const participantTradeId = sortedParticipants.find((p) => p.trade_id)?.trade_id
@@ -538,9 +593,9 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
   // Show Execute button only when the overall trade is active AND every participant has accepted.
   const canExecute =
-    ['active', 'confirmed', 'multiway_active', 'in_progress'].includes(multiWayTrade.status as string) &&
+    ['active', 'confirmed', 'ongoing', 'multiway_active', 'in_progress'].includes(multiWayTrade.status as string) &&
     sortedParticipants.every((p) =>
-      ['accepted', 'confirmed', 'active', 'multiway_active', 'user3_accepted'].includes(p.trade_status)
+      ['accepted', 'confirmed', 'ongoing', 'active', 'multiway_active', 'user3_accepted'].includes(p.trade_status)
     ) &&
     meetupAgreed &&
     allMetConfirmed
@@ -550,10 +605,24 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     return sortedParticipants.find((p) => p.user_id === viewerUserId) || null
   }, [sortedParticipants, viewerUserId])
 
-  const viewerHasAccepted = !!viewerParticipant &&
-    ['accepted', 'confirmed', 'active', 'multiway_active', 'user3_accepted'].includes(viewerParticipant.trade_status)
+  const getParticipantStatus = (participant?: typeof sortedParticipants[number] | null) =>
+    String(participant?.trade_status || (participant as any)?.status || '').toLowerCase()
 
-  const canAcceptLoopTrade = (multiWayTrade.status as string) === 'pending' && !!viewerUserId && !viewerHasAccepted
+  const acceptedParticipantStatuses = ['accepted', 'confirmed', 'ongoing', 'active', 'multiway_active', 'user3_accepted']
+  const pendingParticipantStatuses = ['', 'pending']
+  const decisionLoopStatuses = ['pending', 'partially_accepted', 'accepted', 'accepted_by_one']
+  const rejectedParticipantStatuses = ['declined', 'rejected', 'cancelled', 'expired']
+  const viewerParticipantStatus = getParticipantStatus(viewerParticipant)
+  const viewerHasAccepted = !!viewerParticipant &&
+    acceptedParticipantStatuses.includes(viewerParticipantStatus)
+  const viewerCanStillAccept = !!viewerParticipant &&
+    pendingParticipantStatuses.includes(viewerParticipantStatus) &&
+    !rejectedParticipantStatuses.includes(viewerParticipantStatus)
+
+  const canAcceptLoopTrade = decisionLoopStatuses.includes(String(multiWayTrade.status || '').toLowerCase()) &&
+    !!viewerUserId &&
+    !viewerHasAccepted &&
+    viewerCanStillAccept
 
   // ── handlers ──────────────────────────────────────────────────────────────
 
@@ -593,9 +662,10 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     try {
       setLoading(true)
       setSelectedAction('accept')
-      await acceptMultiWayTrade(multiWayTrade.loop_id)
+      const result = await acceptMultiWayTrade(multiWayTrade.loop_id)
+      const nextStatus = result?.status
       toast({ id: 'mwt-accept', title: 'Trade accepted!', status: 'success' })
-      onTradeCompleted?.()
+      onTradeUpdated?.(nextStatus)
       onClose()
     } catch (error: any) {
       toast({
@@ -616,6 +686,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setSelectedAction('decline')
       await declineMultiWayTrade(multiWayTrade.loop_id)
       toast({ id: 'mwt-decline', title: 'Trade declined', status: 'info' })
+      onTradeUpdated?.()
       onClose()
     } catch (error: any) {
       toast({
@@ -786,22 +857,40 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     try {
       setSubmittingReview(true)
 
+      let uploadedProofUrl: string | undefined
       if (proofFile) {
         const formData = new FormData()
         formData.append('image', proofFile)
         formData.append('type', 'trade_proof')
         const uploadRes = await api.post('/api/upload', formData)
-        const uploadedProofUrl = uploadRes.data?.data?.url
+        if (!uploadRes.data?.success) {
+          throw new Error(uploadRes.data?.error || 'Upload failed: invalid response')
+        }
+        uploadedProofUrl = uploadRes.data?.data?.url
         if (!uploadedProofUrl) {
           throw new Error(uploadRes.data?.error || 'Upload succeeded but no image URL was returned.')
         }
       }
 
       setSelectedAction('execute')
-      await executeMultiWayTrade(multiWayTrade.loop_id)
+      const result = await executeMultiWayTrade(multiWayTrade.loop_id, {
+        rating,
+        feedback,
+        proof_url: uploadedProofUrl || '',
+        is_camera_photo: true, // Multiway modal uses in-app logic for photo
+      })
       toast({ id: 'mwt-review-submitted', title: 'Review submitted', status: 'success' })
-      onTradeCompleted?.()
       setReviewSubmitted(true)
+
+      if (result?.is_fully_completed) {
+        onTradeCompleted?.()
+        setIsReviewModalOpen(false)
+        onClose()
+      } else {
+        onTradeCompleted?.()
+        setIsReviewModalOpen(false)
+        onClose()
+      }
     } catch (error: any) {
       toast({
         id: 'mwt-review-error',
@@ -813,6 +902,11 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setSubmittingReview(false)
       setSelectedAction(null)
     }
+  }
+
+  const handleInstantComplete = async () => {
+    if (!multiWayTrade.loop_id || completingTrade) return
+    setIsReviewModalOpen(true)
   }
 
   const handleChatPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1335,10 +1429,14 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
           <Tabs index={activeTab} onChange={setActiveTab} variant="soft-rounded" colorScheme="brand" display="flex" flexDirection="column" flex={1} overflow="hidden">
             <TabList px={6} pt={2} pb={4} mb={0} borderBottomWidth="1px" borderColor={borderColor}>
               <Tab fontSize="md" fontWeight="600" px={5}>Overview</Tab>
-              <Tab fontSize="md" fontWeight="600" px={5}>
-                {sortedParticipants.length >= 3 ? 'Group Chat' : 'Chat'}
-              </Tab>
-              <Tab fontSize="md" fontWeight="600" px={5}>Meet up</Tab>
+              {showCollaborationTabs && (
+                <Tab fontSize="md" fontWeight="600" px={5}>
+                  {sortedParticipants.length >= 3 ? 'Group Chat' : 'Chat'}
+                </Tab>
+              )}
+              {showCollaborationTabs && (
+                <Tab fontSize="md" fontWeight="600" px={5}>Meet up</Tab>
+              )}
             </TabList>
 
             <TabPanels flex={1} minH={0} overflow="hidden" display="flex" flexDirection="column">
@@ -1394,7 +1492,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       <VStack spacing={0} align="stretch">
                         <HStack spacing={2} align="flex-end" justify="center">
                           {sortedParticipants.map((p, idx) => {
-                            const isAccepted = ['accepted', 'confirmed', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)
+                            const isAccepted = ['accepted', 'confirmed', 'ongoing', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)
                             return (
                               <Box key={idx} display="flex" alignItems="center" gap={2}>
                                 <Box
@@ -1427,7 +1525,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                     ) : (
                       <HStack spacing={2} align="center" justify="center">
                         {sortedParticipants.map((p, idx) => {
-                          const isAccepted = ['accepted', 'confirmed', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)
+                          const isAccepted = ['accepted', 'confirmed', 'ongoing', 'user3_accepted', 'active', 'multiway_active'].includes(p.trade_status)
                           return (
                             <Box key={idx} display="flex" alignItems="center" gap={2}>
                               <Box
@@ -1668,7 +1766,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       <Box overflowX="auto" pb={2}>
                         <HStack spacing={2} minW="min-content" justify="center" px={2}>
                           {sortedParticipants.map((participant, idx) => {
-                            const isAccepted = ['accepted', 'confirmed', 'user3_accepted', 'active', 'multiway_active'].includes(participant.trade_status)
+                            const isAccepted = ['accepted', 'confirmed', 'ongoing', 'user3_accepted', 'active', 'multiway_active'].includes(participant.trade_status)
                             return (
                               <Box key={idx} display="flex" alignItems="center" gap={2} flexShrink={0}>
                                 {/* Participant Avatar */}
@@ -1766,7 +1864,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                     </Heading>
                     <VStack spacing={3} align="stretch">
                       {sortedParticipants.map((participant, idx) => {
-                        const isAccepted = ['accepted', 'confirmed', 'user3_accepted', 'active', 'multiway_active'].includes(participant.trade_status)
+                        const isAccepted = ['accepted', 'confirmed', 'ongoing', 'user3_accepted', 'active', 'multiway_active'].includes(participant.trade_status)
                         const isCurrentUser = participant.user_id === user?.id
                         
                         return (
@@ -1819,7 +1917,8 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 </VStack>
               </TabPanel>
 
-        {/* Chat Tab */}
+        {/* Chat Tab — hidden while the loop is still pending approvals */}
+        {showCollaborationTabs && (
         <TabPanel px={[2, 4]} py={3} overflow="hidden" minH={0} flex={1} display="flex" flexDirection="column">
           <VStack spacing={2} align="stretch" h="full" display="flex" flexDirection="column" minH={0}>
             {/* Messages Area */}
@@ -1983,8 +2082,10 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
             </Box>
           </VStack>
         </TabPanel>
+        )}
 
-              {/* Meet up Tab */}
+              {/* Meet up Tab — hidden while the loop is still pending approvals */}
+              {showCollaborationTabs && (
               <TabPanel px={[2, 4]} py={3} overflowY="auto" minH={0} flex={1} display="flex" flexDirection="column">
                 <VStack spacing={4} align="stretch">
                   <Box p={3} bg={meetupInfoBg} borderLeft="4px" borderColor="brand.500" borderRadius="md">
@@ -2547,13 +2648,37 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                                 colorScheme="green"
                                 size="lg"
                                 onClick={() => setIsReviewModalOpen(true)}
-                                leftIcon={<FaStar />}
+                                isLoading={submittingReview}
+                                loadingText="Completing..."
+                                leftIcon={<FaCheckCircle />}
+                                isDisabled={reviewSubmitted}
                                 w="full"
                                 transition="all 0.2s"
                                 _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
                               >
-                                Review & Complete Trade
+                                {reviewSubmitted ? 'Review Submitted' : 'Leave a Review and Complete Trade'}
                               </Button>
+                            )}
+
+                            {allMetConfirmed && reviewSubmitted && !allParticipantsReviewed && (
+                              <Box
+                                p={4}
+                                bg="blue.50"
+                                borderRadius="2xl"
+                                borderWidth="1px"
+                                borderColor="blue.200"
+                                textAlign="center"
+                              >
+                                <VStack spacing={1}>
+                                  <Icon as={FaCheckCircle} color="blue.500" boxSize={6} />
+                                  <Text fontWeight="600" color="blue.800" fontSize="md">
+                                    Your review has been submitted
+                                  </Text>
+                                  <Text fontSize="xs" color="blue.700">
+                                    Waiting for the remaining participants to complete their reviews.
+                                  </Text>
+                                </VStack>
+                              </Box>
                             )}
                           </VStack>
                         )}
@@ -2642,6 +2767,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                   </Box>
                 </VStack>
               </TabPanel>
+              )}
 
         </TabPanels>
       </Tabs>
@@ -2698,7 +2824,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
           <ModalCloseButton mt={4} mr={4} size="md" />
           <ModalBody py={6} px={6}>
             <VStack spacing={6} align="stretch">
-              <SimpleGrid columns={2} spacing={4}>
+              <SimpleGrid columns={sortedParticipants.length > 3 ? 1 : 2} spacing={4}>
                 <Box
                   p={4}
                   bg={reviewSubmitted ? 'green.50' : 'gray.50'}
@@ -2706,34 +2832,41 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                   borderWidth="0"
                   shadow="sm"
                 >
-                  <VStack spacing={2}>
+                  <VStack spacing={2} align="start">
                     <HStack justify="space-between" w="full">
                       <Text fontWeight="600" fontSize="sm" color="gray.800">Your Review</Text>
                       <Icon as={reviewSubmitted ? FaCheck : FaClock} color={reviewSubmitted ? 'green.500' : 'gray.400'} boxSize={4} />
                     </HStack>
-                    <Text fontSize="xs" fontWeight="500" color="gray.500" w="full">
+                    <Text fontSize="xs" fontWeight="500" color="gray.500">
                       {reviewSubmitted ? 'Submitted' : 'Pending'}
                     </Text>
                   </VStack>
                 </Box>
 
-                <Box
-                  p={4}
-                  bg="gray.50"
-                  borderRadius="2xl"
-                  borderWidth="0"
-                  shadow="sm"
-                >
-                  <VStack spacing={2}>
-                    <HStack justify="space-between" w="full">
-                      <Text fontWeight="600" fontSize="sm" color="gray.800">Other Party</Text>
-                      <Icon as={FaClock} color="gray.400" boxSize={4} />
-                    </HStack>
-                    <Text fontSize="xs" fontWeight="500" color="gray.500" w="full">
-                      Pending
-                    </Text>
-                  </VStack>
-                </Box>
+                {sortedParticipants
+                  .filter((p) => p.user_id !== user?.id)
+                  .map((p) => (
+                    <Box
+                      key={`review-status-${p.user_id}`}
+                      p={4}
+                      bg={p.is_reviewed ? 'green.50' : 'gray.50'}
+                      borderRadius="2xl"
+                      borderWidth="0"
+                      shadow="sm"
+                    >
+                      <VStack spacing={2} align="start">
+                        <HStack justify="space-between" w="full">
+                          <Text fontWeight="600" fontSize="sm" color="gray.800" noOfLines={1}>
+                            {p.user_name}
+                          </Text>
+                          <Icon as={p.is_reviewed ? FaCheck : FaClock} color={p.is_reviewed ? 'green.500' : 'gray.400'} boxSize={4} />
+                        </HStack>
+                        <Text fontSize="xs" fontWeight="500" color="gray.500">
+                          {p.is_reviewed ? 'Submitted' : 'Pending'}
+                        </Text>
+                      </VStack>
+                    </Box>
+                  ))}
               </SimpleGrid>
 
               {reviewSubmitted && (
@@ -2854,14 +2987,15 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 colorScheme="brand"
                 onClick={submitReview}
                 isLoading={submittingReview}
-                leftIcon={<FaStar />}
-                isDisabled={reviewSubmitted}
+                loadingText="Completing..."
+                leftIcon={<FaCheckCircle />}
                 shadow="md"
-                _hover={reviewSubmitted ? undefined : { transform: 'translateY(-2px)' }}
+                _hover={{ transform: 'translateY(-2px)' }}
                 transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
                 mb={2}
+                isDisabled={reviewSubmitted}
               >
-                Review & Complete Trade
+                Leave a Review and Complete Trade
               </Button>
             </VStack>
           </ModalBody>
@@ -2878,230 +3012,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       currentUserId={viewerUserId}
     />
   </>
-  )
-}
-
-export default MultiWayTradeModal
-
-        <VStack w="full" spacing={2} align="stretch">
-          {/* Action Buttons */}
-          <HStack w="full" spacing={2} justify="flex-end">
-            <Button
-              flex={1}
-              variant="ghost"
-              isDisabled={loading}
-              onClick={handleDecline}
-              isLoading={selectedAction === 'decline' && loading}
-              leftIcon={<FaTimes />}
-              colorScheme="red"
-            >
-              Decline
-            </Button>
-            <Button
-              flex={1}
-              colorScheme="green"
-              isDisabled={loading || !canAcceptLoopTrade}
-              isLoading={selectedAction === 'accept' && loading}
-              onClick={handleAccept}
-              leftIcon={<FaCheck />}
-            >
-              Accept Trade
-            </Button>
-          </HStack>
-        </VStack>
-      </ModalFooter>
-    )}
-        </ModalContent>
-      </Modal>
-
-      <Modal
-        isOpen={isReviewModalOpen}
-        onClose={() => setIsReviewModalOpen(false)}
-        size={["xs", "sm", "md"]}
-        isCentered
-        scrollBehavior="inside"
-      >
-        <ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
-        <ModalContent bg="white" borderRadius="3xl" boxShadow="2xl" maxW={["90vw", "500px"]} mx={[2, 4]} overflow="hidden">
-          <ModalHeader pt={6} pb={2} px={6}>
-            <HStack spacing={3} fontSize="xl">
-              <Icon as={FaStar} color="yellow.400" boxSize={6} />
-              <Text fontWeight="600" color={useColorModeValue('gray.800', 'white')} letterSpacing="tight">Trade Review & Completion</Text>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton mt={4} mr={4} size="md" />
-          <ModalBody py={6} px={6}>
-            <VStack spacing={6} align="stretch">
-              <SimpleGrid columns={2} spacing={4}>
-                <Box
-                  p={4}
-                  bg={reviewSubmitted ? 'green.50' : 'gray.50'}
-                  borderRadius="2xl"
-                  borderWidth="0"
-                  shadow="sm"
-                >
-                  <VStack spacing={2}>
-                    <HStack justify="space-between" w="full">
-                      <Text fontWeight="600" fontSize="sm" color="gray.800">Your Review</Text>
-                      <Icon as={reviewSubmitted ? FaCheck : FaClock} color={reviewSubmitted ? 'green.500' : 'gray.400'} boxSize={4} />
-                    </HStack>
-                    <Text fontSize="xs" fontWeight="500" color="gray.500" w="full">
-                      {reviewSubmitted ? 'Submitted' : 'Pending'}
-                    </Text>
-                  </VStack>
-                </Box>
-
-                <Box
-                  p={4}
-                  bg="gray.50"
-                  borderRadius="2xl"
-                  borderWidth="0"
-                  shadow="sm"
-                >
-                  <VStack spacing={2}>
-                    <HStack justify="space-between" w="full">
-                      <Text fontWeight="600" fontSize="sm" color="gray.800">Other Party</Text>
-                      <Icon as={FaClock} color="gray.400" boxSize={4} />
-                    </HStack>
-                    <Text fontSize="xs" fontWeight="500" color="gray.500" w="full">
-                      Pending
-                    </Text>
-                  </VStack>
-                </Box>
-              </SimpleGrid>
-
-              {reviewSubmitted && (
-                <Box
-                  p={5}
-                  bg="blue.50"
-                  borderRadius="2xl"
-                  borderWidth="0"
-                  shadow="sm"
-                  textAlign="center"
-                >
-                  <VStack spacing={2}>
-                    <Icon as={FaCheckCircle} color="blue.500" boxSize={6} />
-                    <Text fontWeight="600" color="blue.800" fontSize="md">
-                      Your review has been submitted
-                    </Text>
-                    <Text fontSize="xs" fontWeight="500" color="blue.700">
-                      Waiting for the other party to complete their review...
-                    </Text>
-                  </VStack>
-                </Box>
-              )}
-
-              <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Rating</FormLabel>
-                <HStack spacing={2}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Icon
-                      key={`loop-review-star-${star}`}
-                      as={FaStar}
-                      color={star <= rating ? 'yellow.400' : 'gray.200'}
-                      cursor={reviewSubmitted ? 'default' : 'pointer'}
-                      onClick={reviewSubmitted ? undefined : () => setRating(star)}
-                      boxSize={8}
-                      transition="transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
-                      _hover={reviewSubmitted ? undefined : { transform: 'scale(1.15) translateY(-2px)' }}
-                    />
-                  ))}
-                  <Text fontSize="sm" fontWeight="600" color="gray.600" ml={3}>
-                    {rating}/5
-                  </Text>
-                </HStack>
-              </FormControl>
-
-              <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Feedback</FormLabel>
-                <Textarea
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  placeholder="Share your experience with this trade..."
-                  rows={4}
-                  fontSize="sm"
-                  borderRadius="xl"
-                  bg="white"
-                  borderWidth="2px"
-                  borderColor="gray.200"
-                  _hover={{ borderColor: 'gray.300' }}
-                  _focus={{ borderColor: 'brand.500', boxShadow: 'sm' }}
-                  isDisabled={reviewSubmitted}
-                  shadow="sm"
-                  transition="all 0.2s"
-                />
-                <Text fontSize="xs" fontWeight="500" color="gray.400" mt={2}>
-                  {feedback.length} characters
-                </Text>
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="600" color="gray.700">
-                  Proof Image {proofRequired ? '(Required)' : '(Optional)'}
-                </FormLabel>
-                {proofImage ? (
-                  <VStack spacing={3} align="stretch">
-                    <Box position="relative" w="full" maxW="250px" bg="gray.50" borderRadius="2xl" overflow="hidden" aspectRatio="4/3" display="flex" alignItems="center" justifyContent="center" shadow="sm">
-                      <Image
-                        src={proofImage}
-                        alt="Proof"
-                        w="100%"
-                        h="100%"
-                        objectFit="cover"
-                        borderRadius="2xl"
-                      />
-                    </Box>
-                    <Button size="sm" variant="outline" borderRadius="xl" fontWeight="600" onClick={() => { setProofImage(null); setProofFile(null) }}>
-                      Remove Image
-                    </Button>
-                  </VStack>
-                ) : (
-                  <Button
-                    size="md"
-                    borderRadius="xl"
-                    fontWeight="600"
-                    variant="outline"
-                    colorScheme="gray"
-                    borderWidth="2px"
-                    leftIcon={<FaCamera />}
-                    onClick={() => document.getElementById('loop-proof-upload')?.click()}
-                    isDisabled={reviewSubmitted}
-                    _hover={reviewSubmitted ? undefined : { bg: 'gray.50', transform: 'translateY(-1px)' }}
-                    transition="all 0.2s"
-                  >
-                    Upload Proof Image
-                  </Button>
-                )}
-                <input
-                  id="loop-proof-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleProofUpload}
-                  style={{ display: 'none' }}
-                />
-              </FormControl>
-
-              <Button
-                size="lg"
-                borderRadius="3xl"
-                fontWeight="600"
-                colorScheme="brand"
-                onClick={submitReview}
-                isLoading={submittingReview}
-                leftIcon={<FaStar />}
-                isDisabled={reviewSubmitted}
-                shadow="md"
-                _hover={reviewSubmitted ? undefined : { transform: 'translateY(-2px)' }}
-                transition="all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)"
-                mb={2}
-              >
-                Review & Complete Trade
-              </Button>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-    </>
   )
 }
 

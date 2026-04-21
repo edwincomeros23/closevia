@@ -29,6 +29,9 @@ export interface User {
   response_rating?: 'excellent' | 'good' | 'average' | 'poor'
   latitude?: number
   longitude?: number
+  home_latitude?: number   // Saved home address latitude
+  home_longitude?: number  // Saved home address longitude
+  home_address?: string    // Human-readable home address label
   is_premium?: boolean
   premium_tier?: 'free' | 'plus' | 'pro'
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
@@ -37,6 +40,9 @@ export interface User {
   password_changed_at?: string
   last_login?: string
   activity_status?: 'active_today' | 'active_this_week' | 'inactive'
+  email_notifications_enabled?: boolean
+  push_notifications_enabled?: boolean
+  notification_preferences?: string
 }
 
 export interface Product {
@@ -51,7 +57,7 @@ export interface Product {
   seller_name?: string
   seller_profile_picture?: string
   premium: boolean
-  status: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
+  status: 'available' | 'sold' | 'traded' | 'locked' | 'suspended' | 'deleted'
   allow_buying: boolean
   barter_only: boolean
   location?: string
@@ -124,7 +130,7 @@ export interface ProductUpdate {
   price?: number
   image_urls?: string[]
   premium?: boolean
-  status?: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
+  status?: 'available' | 'sold' | 'traded' | 'locked' | 'suspended' | 'deleted'
   allow_buying?: boolean
   barter_only?: boolean
   location?: string
@@ -188,7 +194,7 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
-export type TradeStatus = 'pending' | 'pending_multiway' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired' | 'multiway_active' | 'pending_user3' | 'user3_accepted'
+export type TradeStatus = 'pending' | 'partially_accepted' | 'pending_multiway' | 'accepted' | 'accepted_by_one' | 'accepted_by_both' | 'confirmed' | 'declined' | 'rejected' | 'countered' | 'active' | 'ongoing' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'cancelled_due_to_conflict' | 'expired' | 'broken' | 'history' | 'multiway_active' | 'pending_user3' | 'user3_accepted'
 export type TradeOption = 'meetup' | 'delivery'
 
 export interface TradeItem {
@@ -198,8 +204,9 @@ export interface TradeItem {
   offered_by: 'buyer' | 'seller'
   created_at: string
   product_title?: string
-  product_status?: 'available' | 'sold' | 'traded'
+  product_status?: 'available' | 'sold' | 'traded' | 'locked' | 'deleted'
   product_image_url?: string
+  product_pickup_address?: string
 }
 
 export interface Trade {
@@ -217,9 +224,13 @@ export interface Trade {
   seller_name?: string
   product_title?: string
   product_image_url?: string
+  target_product_pickup_address?: string
   buyer_completed?: boolean
   seller_completed?: boolean
+  buyer_accepted?: boolean
+  seller_accepted?: boolean
   completed_at?: string | null
+  meetup_status?: 'pending' | 'accepted' | 'declined' | 'disputed' | string
   meetup_confirmed?: boolean
   meetup_location?: string
   meetup_time?: string
@@ -254,6 +265,8 @@ export interface Trade {
   // Review rating fields
   buyer_rating?: number // Rating given by buyer (1-5)
   seller_rating?: number // Rating given by seller (1-5)
+  countered_by?: number
+  parent_trade_id?: number | null
 }
 
 // Multi-way/Three-way Trading Types
@@ -284,6 +297,7 @@ export interface MultiWayTradeParticipant {
   trade_id: number
   trade_status: TradeStatus
   position_in_loop: number // 0 = first, 1 = second, etc.
+  is_reviewed?: boolean
 }
 
 export interface MultiWayTrade {
@@ -291,7 +305,7 @@ export interface MultiWayTrade {
   participants: MultiWayTradeParticipant[]
   edges: TradeEdge[]
   total_value?: number
-  status: 'pending' | 'confirmed' | 'cancelled' | 'active' | 'completed' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
+  status: 'pending' | 'partially_accepted' | 'accepted' | 'confirmed' | 'ongoing' | 'cancelled' | 'cancelled_due_to_conflict' | 'broken' | 'expired' | 'rejected' | 'history' | 'active' | 'completed' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
   created_at?: string
   expires_at?: string
 }

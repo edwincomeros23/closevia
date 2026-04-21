@@ -88,9 +88,10 @@ export const fetchMultiWayTrade = async (loopId: string): Promise<MultiWayTrade>
 /**
  * Accept a multi-way trade (all participants need to accept)
  */
-export const acceptMultiWayTrade = async (loopId: string): Promise<void> => {
+export const acceptMultiWayTrade = async (loopId: string): Promise<any> => {
   try {
-    await api.post(`/api/trades/loops/${loopId}/accept`)
+    const response = await api.post(`/api/trades/loops/${loopId}/accept`)
+    return response.data?.data || response.data
   } catch (error) {
     console.error(`Failed to accept multi-way trade ${loopId}:`, error)
     throw error
@@ -110,11 +111,20 @@ export const declineMultiWayTrade = async (loopId: string): Promise<void> => {
 }
 
 /**
- * Execute/complete a multi-way trade (moves all trades in the loop to completed)
+ * Execute/complete a multi-way trade with review data
  */
-export const executeMultiWayTrade = async (loopId: string): Promise<void> => {
+export const executeMultiWayTrade = async (
+  loopId: string,
+  reviewData?: {
+    rating: number
+    feedback: string
+    proof_url: string
+    is_camera_photo: boolean
+  }
+): Promise<{ is_fully_completed?: boolean } | undefined> => {
   try {
-    await api.post(`/api/trades/loops/${loopId}/execute`)
+    const response = await api.post(`/api/trades/loops/${loopId}/execute`, reviewData)
+    return response.data?.data
   } catch (error) {
     console.error(`Failed to execute multi-way trade ${loopId}:`, error)
     throw error

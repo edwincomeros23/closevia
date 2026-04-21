@@ -44,11 +44,20 @@ func (h *AIFeaturesHandler) GetProximity(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid target_id"})
 	}
 
-	// Get current user's coordinates
+	// Get current user's coordinates. Prefer the home address set in Settings
+	// (home_latitude / home_longitude) — this is the "locked" base for distance
+	// calculations. Fall back to the general latitude/longitude only if the user
+	// has not configured a home address.
 	var userLat, userLon sql.NullFloat64
-	err = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", userID).Scan(&userLat, &userLon)
+	var userHomeLat, userHomeLon sql.NullFloat64
+	err = h.db.QueryRow("SELECT latitude, longitude, home_latitude, home_longitude FROM users WHERE id = ?", userID).Scan(&userLat, &userLon, &userHomeLat, &userHomeLon)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get user location"})
+	}
+
+	if userHomeLat.Valid && userHomeLon.Valid {
+		userLat = userHomeLat
+		userLon = userHomeLon
 	}
 
 	if !userLat.Valid || !userLon.Valid {
@@ -63,11 +72,18 @@ func (h *AIFeaturesHandler) GetProximity(c *fiber.Ctx) error {
 
 	switch targetType {
 	case "user":
-		// Calculate distance to another user
+		// Calculate distance to another user. Prefer their Settings home address
+		// when set, fall back to their general latitude/longitude.
 		var targetLat, targetLon sql.NullFloat64
-		err = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", targetID).Scan(&targetLat, &targetLon)
+		var targetHomeLat, targetHomeLon sql.NullFloat64
+		err = h.db.QueryRow("SELECT latitude, longitude, home_latitude, home_longitude FROM users WHERE id = ?", targetID).Scan(&targetLat, &targetLon, &targetHomeLat, &targetHomeLon)
 		if err != nil {
 			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target user not found"})
+		}
+
+		if targetHomeLat.Valid && targetHomeLon.Valid {
+			targetLat = targetHomeLat
+			targetLon = targetHomeLon
 		}
 
 		if !targetLat.Valid || !targetLon.Valid {
@@ -103,11 +119,19 @@ func (h *AIFeaturesHandler) GetProximity(c *fiber.Ctx) error {
 			return c.JSON(models.APIResponse{Success: true, Data: nil, Message: "Product not found"})
 		}
 
-		// Get the seller's location (not product-specific coordinates)
+		// Get the seller's location (not product-specific coordinates). Prefer
+		// the seller's Settings home address when set — same "lock" behavior as
+		// the current user above. Falls back to general lat/lon otherwise.
 		var productLat, productLon sql.NullFloat64
-		err = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", sellerID).Scan(&productLat, &productLon)
+		var sellerHomeLat, sellerHomeLon sql.NullFloat64
+		err = h.db.QueryRow("SELECT latitude, longitude, home_latitude, home_longitude FROM users WHERE id = ?", sellerID).Scan(&productLat, &productLon, &sellerHomeLat, &sellerHomeLon)
 		if err != nil {
 			return c.JSON(models.APIResponse{Success: true, Data: nil, Message: "Seller not found"})
+		}
+
+		if sellerHomeLat.Valid && sellerHomeLon.Valid {
+			productLat = sellerHomeLat
+			productLon = sellerHomeLon
 		}
 
 		if !productLat.Valid || !productLon.Valid {

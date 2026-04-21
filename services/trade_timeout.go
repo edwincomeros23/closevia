@@ -86,7 +86,7 @@ func runTradeTimeoutPass(db *sql.DB) error {
 		}
 	}
 
-	// Stage 3: Expire inactive trades after 7 days with no progress
+	// Stage 3: Expire inactive trades after 3 days with no progress
 	// Ping DB to recover stale connections before querying
 	if err := db.Ping(); err != nil {
 		return err
@@ -94,8 +94,8 @@ func runTradeTimeoutPass(db *sql.DB) error {
 	var expireIDs []int
 	expiredRows, err := db.Query(`
 		SELECT id FROM trades
-		WHERE status IN ('pending', 'accepted', 'countered', 'active')
-		  AND TIMESTAMPDIFF(DAY, updated_at, NOW()) >= 7
+		WHERE status IN ('pending', 'accepted', 'accepted_by_one', 'countered', 'active')
+		  AND TIMESTAMPDIFF(DAY, updated_at, NOW()) >= 3
 	`)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func runTradeTimeoutPass(db *sql.DB) error {
 		}
 	}
 
-	// Stage 4: Auto-dissolve expired multi-way chains (18hr acceptance window)
+	// Stage 4: Auto-dissolve expired multi-way chains (3-day acceptance window)
 	if err := dissolveExpiredMultiwayChains(db); err != nil {
 		log.Printf("dissolve expired multiway chains error: %v", err)
 	}
@@ -126,6 +126,16 @@ func runTradeTimeoutPass(db *sql.DB) error {
 	// Stage 6: Expire active multiway chains past 7-day ongoing deadline
 	if err := expireOngoingMultiwayChains(db); err != nil {
 		log.Printf("expire ongoing multiway chains error: %v", err)
+	}
+
+	// Stage 7: Expire trade like loops that have been pending for > 3 days
+	if err := expireStaleLikeLoops(db); err != nil {
+		log.Printf("expire stale like loops error: %v", err)
+	}
+
+	// Stage 8: Notify users about stuck loops (not all participants have confirmed/canceled)
+	if err := notifyStuckLoopsAndChains(db); err != nil {
+		log.Printf("notify stuck loops error: %v", err)
 	}
 
 	return nil
@@ -205,7 +215,7 @@ func autoExpireTrade(db *sql.DB, tradeID int) error {
 
 	// Double-check status hasn't changed since the SELECT outside the tx
 	switch currentStatus {
-	case "pending", "accepted", "countered", "active":
+	case "pending", "accepted", "accepted_by_one", "countered", "active":
 		// valid for expiry
 	default:
 		return nil // Already moved to a terminal status; skip
@@ -248,19 +258,19 @@ func autoExpireTrade(db *sql.DB, tradeID int) error {
 
 	// Notify both users (outside transaction)
 	_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
-		buyerID, "A trade has expired due to 7 days of inactivity.")
+		buyerID, "A trade has expired due to 3 days of inactivity.")
 	_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
-		sellerID, "A trade has expired due to 7 days of inactivity.")
+		sellerID, "A trade has expired due to 3 days of inactivity.")
 
 	// Record trade event (system action, no actor)
-	_, _ = db.Exec("INSERT INTO trade_events (trade_id, from_status, to_status, note) VALUES (?, ?, 'expired', 'Auto-expired after 7 days of inactivity')",
+	_, _ = db.Exec("INSERT INTO trade_events (trade_id, from_status, to_status, note) VALUES (?, ?, 'expired', 'Auto-expired after 3 days of inactivity')",
 		tradeID, currentStatus)
 
-	log.Printf("Trade %d auto-expired (was %s, inactive 7+ days)", tradeID, currentStatus)
+	log.Printf("Trade %d auto-expired (was %s, inactive 3+ days)", tradeID, currentStatus)
 	return nil
 }
 
-// dissolveExpiredMultiwayChains finds multi-way chains past their 18hr acceptance
+// dissolveExpiredMultiwayChains finds multi-way chains past their 3-day acceptance
 // window and auto-dissolves them. The original trade is restored to 'pending' so
 // the algorithm can re-search, and all parties are notified.
 func dissolveExpiredMultiwayChains(db *sql.DB) error {
@@ -307,7 +317,7 @@ func dissolveExpiredMultiwayChains(db *sql.DB) error {
 		// Cancel the chain
 		_, _ = db.Exec(`
 			UPDATE multiway_trades
-			SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+			SET status = 'expired', cancelled_at = NOW(), updated_at = NOW()
 			WHERE id = ?
 		`, c.id)
 
@@ -319,7 +329,7 @@ func dissolveExpiredMultiwayChains(db *sql.DB) error {
 		`, c.tradeID)
 
 		// Notify all parties
-		msg := "A multi-way trade match has expired because not all parties accepted within 18 hours. Your items are available again."
+		msg := "A multi-way trade match has expired because not all parties accepted within 3 days. Your items are available again."
 		for _, uid := range []int{c.u1, c.u2, c.u3} {
 			if uid <= 0 {
 				continue
@@ -426,7 +436,7 @@ func expireOngoingMultiwayChains(db *sql.DB) error {
 
 	type expired struct {
 		id, tradeID, u1, u2, u3 int
-		chainID                  string
+		chainID                 string
 	}
 	var chains []expired
 	for rows.Next() {
@@ -456,6 +466,122 @@ func expireOngoingMultiwayChains(db *sql.DB) error {
 		}
 
 		log.Printf("Ongoing multiway chain %s (id=%d) expired after 7-day deadline", c.chainID, c.id)
+	}
+
+	return nil
+}
+
+// expireStaleLikeLoops finds trade matching like-loops that nobody has canceled
+// but 3 days have passed since creation. It marks them as cancelled.
+func expireStaleLikeLoops(db *sql.DB) error {
+	// Check if trade_like_loops table exists
+	var tblCount int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trade_like_loops'
+	`).Scan(&tblCount); err != nil || tblCount == 0 {
+		return nil
+	}
+
+	rows, err := db.Query(`
+		SELECT id
+		FROM trade_like_loops
+		WHERE status = 'pending'
+		AND TIMESTAMPDIFF(HOUR, created_at, NOW()) >= 72
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var expiredIDs []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err == nil {
+			expiredIDs = append(expiredIDs, id)
+		}
+	}
+
+	for _, id := range expiredIDs {
+		// Update loop status
+		_, _ = db.Exec("UPDATE trade_like_loops SET status = 'expired', updated_at = NOW() WHERE id = ?", id)
+
+		// Update participants
+		_, _ = db.Exec("UPDATE trade_like_loop_participants SET status = 'expired' WHERE loop_id = ?", id)
+
+		// Notify participants
+		pRows, _ := db.Query("SELECT user_id FROM trade_like_loop_participants WHERE loop_id = ?", id)
+		defer pRows.Close()
+		msg := "A like-loop opportunity has expired because it was not confirmed by all parties within 3 days."
+		for pRows.Next() {
+			var uid int
+			if pRows.Scan(&uid) == nil && uid > 0 {
+				_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, msg)
+			}
+		}
+
+		log.Printf("Auto-expired 3-day stale like-loop (id=%d)", id)
+	}
+
+	return nil
+}
+
+// notifyStuckLoopsAndChains sends a gentle reminder to users in loops that are
+// pending for >24 hours because some participants haven't acted yet.
+func notifyStuckLoopsAndChains(db *sql.DB) error {
+	msgAction := "Your multiway loop matching is paused! Please respond (confirm or cancel) so the loop can proceed."
+	msgWaiting := "Your multiway loop is stuck waiting for other users. If they don't respond soon, the loop will be canceled."
+
+	// 1. Process like-loops waiting for > 24 hours
+	loopRows, _ := db.Query(`
+		SELECT id FROM trade_like_loops
+		WHERE status = 'pending'
+		AND TIMESTAMPDIFF(HOUR, created_at, NOW()) = 24
+	`)
+	if loopRows != nil {
+		defer loopRows.Close()
+		for loopRows.Next() {
+			var loopID int
+			if loopRows.Scan(&loopID) == nil {
+				// We found a stuck like-loop. Let's see who is pending and who is confirmed
+				pRows, _ := db.Query("SELECT user_id, status FROM trade_like_loop_participants WHERE loop_id = ?", loopID)
+				for pRows.Next() {
+					var u int
+					var s string
+					if pRows.Scan(&u, &s) == nil && u > 0 {
+						if s == "pending" {
+							_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", u, msgAction)
+						} else {
+							_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", u, msgWaiting)
+						}
+					}
+				}
+				pRows.Close()
+			}
+		}
+	}
+
+	// 2. Process multiway chains waiting for > 24 hours
+	// Note: multiway expires in 72 hours, so 24 hours is a good time to send a reminder.
+	chainRows, _ := db.Query(`
+		SELECT id, chain_id, user1_id, user2_id, user3_id, status 
+		FROM multiway_trades
+		WHERE status IN ('pending_user3', 'pending_initiator_upgrade')
+		AND TIMESTAMPDIFF(HOUR, created_at, NOW()) = 24
+	`)
+	if chainRows != nil {
+		defer chainRows.Close()
+		for chainRows.Next() {
+			var id, u1, u2, u3 int
+			var chainID, status string
+			if chainRows.Scan(&id, &chainID, &u1, &u2, &u3, &status) == nil {
+				if status == "pending_user3" && u3 > 0 {
+					_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", u3, msgAction)
+					_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", u1, msgWaiting)
+					_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", u2, msgWaiting)
+				}
+			}
+		}
 	}
 
 	return nil

@@ -68,6 +68,7 @@ const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 }
 // Lazy load delivery option components with error handling
 const RiderHome = lazy(() => import('./delivery_option/RiderHome').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Rider Home</Text></Box> })))
+const RiderApplication = lazy(() => import('./delivery_option/rider').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Rider Application</Text></Box> })))
 const BatchPreview = lazy(() => import('./delivery_option/BatchPreview').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Preview</Text></Box> })))
 const BatchStatus = lazy(() => import('./delivery_option/BatchStatus').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Status</Text></Box> })))
 const RemittanceLedger = lazy(() => import('./delivery_option/RemittanceLedger').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Remittance Ledger</Text></Box> })))
@@ -160,6 +161,11 @@ const AppContent: React.FC = () => {
         <Route path="/rider-home" element={
           <PageTransition>
             <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderHome /></Suspense>
+          </PageTransition>
+        } />
+        <Route path="/rider-application" element={
+          <PageTransition>
+            <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderApplication /></Suspense>
           </PageTransition>
         } />
         <Route path="/batch-preview/:batchId" element={

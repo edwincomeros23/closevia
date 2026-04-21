@@ -275,7 +275,7 @@ func calculateProactiveMatchScore(
 // storeMultiwaySuggestion saves a proactive multiway match to the database
 // Using multiway_trades table with a synthetic chain_id to track proactive matches
 func (h *TradeHandler) storeMultiwaySuggestion(user1ID, user1ProductID, user2ID, user2ProductID, user3ID, user3ProductID int,
-	user1ProdTitle, user2ProdTitle, user3ProdTitle string, score int) {
+	_, _, _ string, score int) {
 
 	// Create a unique chain ID for this proactive suggestion
 	// Format: proactive_U1_U2_U3_timestamp

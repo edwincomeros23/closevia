@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect, useState } from 'react'
+import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -38,6 +38,7 @@ import { getImageUrl } from '../utils/imageUtils'
 import VerifiedAvatar from './VerifiedAvatar'
 import InstallAppPrompt from './InstallAppPrompt'
 import { api } from '../services/api'
+import { isRunningStandalone } from '../serviceWorkerRegistration'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
@@ -54,6 +55,15 @@ const Sidebar: React.FC = () => {
   const { user, logout } = useAuth()
   const [riderStatus, setRiderStatus] = useState<{ is_rider: boolean; status?: string } | null>(null)
   const [touchStart, setTouchStart] = useState<number | null>(null)
+  const [isStandalone, setIsStandalone] = useState(false)
+  // Vertical swipe-to-dismiss for the bottom sheet drawer
+  const dragStartYRef = useRef<number | null>(null)
+  const dragDeltaRef = useRef<number>(0)
+  const [dragOffset, setDragOffset] = useState(0)
+
+  useEffect(() => {
+    setIsStandalone(isRunningStandalone())
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -113,6 +123,55 @@ const Sidebar: React.FC = () => {
     }
   }, [handleTouchStart, handleTouchEnd])
 
+  // Intercept the hardware/browser back button while the drawer is open so
+  // Android doesn't exit the app. We push a throwaway history entry on open,
+  // consume it on close, and close the drawer when popstate fires.
+  useEffect(() => {
+    if (!isOpen) return
+
+    window.history.pushState({ sidebarOpen: true }, '')
+    const handlePopState = () => {
+      onClose()
+    }
+    window.addEventListener('popstate', handlePopState)
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+      // If the drawer was closed by UI (overlay / menu tap), the throwaway
+      // entry is still on the stack — pop it so the user isn't "stuck" on it.
+      if (window.history.state && (window.history.state as any).sidebarOpen) {
+        window.history.back()
+      }
+    }
+  }, [isOpen, onClose])
+
+  // Vertical swipe-to-dismiss on the bottom sheet
+  const handleSheetTouchStart = useCallback((e: React.TouchEvent) => {
+    dragStartYRef.current = e.touches[0].clientY
+    dragDeltaRef.current = 0
+  }, [])
+
+  const handleSheetTouchMove = useCallback((e: React.TouchEvent) => {
+    if (dragStartYRef.current === null) return
+    const delta = e.touches[0].clientY - dragStartYRef.current
+    // Only react to downward drags; clamp so the sheet doesn't jump up
+    if (delta > 0) {
+      dragDeltaRef.current = delta
+      setDragOffset(delta)
+    }
+  }, [])
+
+  const handleSheetTouchEnd = useCallback(() => {
+    if (dragStartYRef.current === null) return
+    const delta = dragDeltaRef.current
+    dragStartYRef.current = null
+    dragDeltaRef.current = 0
+    setDragOffset(0)
+    if (delta > 100) {
+      onClose()
+    }
+  }, [onClose])
+
   // Memoize callback handlers to prevent unnecessary re-renders
   const handleLogoClick = useCallback(() => {
     navigate('/landing')
@@ -164,7 +223,7 @@ const Sidebar: React.FC = () => {
         {
           icon: FaMotorcycle,
           label: riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider',
-          path: '/rider-home'
+          path: riderStatus?.is_rider && riderStatus?.status === 'approved' ? '/rider-home' : '/rider-application'
         },
         {
           icon: FaCrown,
@@ -195,9 +254,18 @@ const Sidebar: React.FC = () => {
           bg="#FAFAFA"
           boxShadow="0 -10px 40px rgba(0,0,0,0.1)"
           sx={{ '& [data-testid="chakra-modal.close-button"]': { display: 'none' } }}
+          style={{ transform: dragOffset ? `translateY(${dragOffset}px)` : undefined, transition: dragOffset ? 'none' : 'transform 0.2s' }}
         >
-          {/* Swipe Indicator Handle */}
-          <Center pt={3} pb={1} w="full">
+          {/* Swipe Indicator Handle — also the swipe-down grab area */}
+          <Center
+            pt={3}
+            pb={1}
+            w="full"
+            onTouchStart={handleSheetTouchStart}
+            onTouchMove={handleSheetTouchMove}
+            onTouchEnd={handleSheetTouchEnd}
+            style={{ touchAction: 'none', cursor: 'grab' }}
+          >
             <Box w="40px" h="5px" bg="gray.300" borderRadius="full" />
           </Center>
 
@@ -295,23 +363,25 @@ const Sidebar: React.FC = () => {
 
               {/* Extras Card (ECODE + Install) */}
               <Box bg="white" p={2} borderRadius="2xl" overflow="hidden" shadow="sm" border="1px" borderColor="gray.100">
-                <Button
-                  as="a"
-                  href="/clovia.apk"
-                  download="clovia.apk"
-                  w="full"
-                  variant="ghost"
-                  minH="52px"
-                  justifyContent="flex-start"
-                  px={4}
-                  color="gray.600"
-                  _hover={{ bg: 'gray.50' }}
-                >
-                  <Flex align="center" gap={3}>
-                    <Icon as={FiDownload} size={18} />
-                    <Text fontSize="md" fontWeight="500">Install Clovia (Android)</Text>
-                  </Flex>
-                </Button>
+                {!isStandalone && (
+                  <Button
+                    as="a"
+                    href="/clovia.apk"
+                    download="clovia.apk"
+                    w="full"
+                    variant="ghost"
+                    minH="52px"
+                    justifyContent="flex-start"
+                    px={4}
+                    color="gray.600"
+                    _hover={{ bg: 'gray.50' }}
+                  >
+                    <Flex align="center" gap={3}>
+                      <Icon as={FiDownload} size={18} />
+                      <Text fontSize="md" fontWeight="500">Install Clovia (Android)</Text>
+                    </Flex>
+                  </Button>
+                )}
                 <InstallAppPrompt variant="mobile-menu" onInstalled={onClose} />
                 
                 <Flex

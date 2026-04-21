@@ -148,31 +148,58 @@ const ProductUploadStep3: React.FC<ProductUploadStep3Props> = ({
           </Text>
         </VStack>
 
-        {/* AI Estimated Value Ribbon */}
-        {(product.estimated_value_min !== undefined || product.isAnalyzing) && (
-          <Box
-            p={4}
-            bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-            borderRadius="xl"
-            textAlign="center"
-            color="white"
-            shadow="md"
-          >
-            <Text fontSize="xs" fontWeight="semibold" opacity={0.9} mb={1} textTransform="uppercase" letterSpacing="1px">
-              Estimated Market Value
-            </Text>
-            {product.isAnalyzing ? (
-              <Skeleton height="36px" borderRadius="md" speed={0.8} />
-            ) : (
-              <Heading fontSize="3xl" fontWeight="800">
-                ₱{(product.estimated_value_min || 0).toLocaleString()} – ₱{(product.estimated_value_max || 0).toLocaleString()}
-              </Heading>
-            )}
-            <Text fontSize="2xs" opacity={0.85} mt={2}>
-              {product.isAnalyzing ? 'AI is analyzing your product...' : 'Based on AI analysis of product condition and market data'}
-            </Text>
-          </Box>
-        )}
+        {/* Market Value Ribbon — uses AI estimate when reliable, otherwise
+            falls back to the user-entered price sFix trade matches card persistence + notify third party on accept/decline
+            
+            Fix counter offer routing so it appears in original offerer's received offerso the badge still renders. */}
+        {(() => {
+          const aiMin = product.estimated_value_min
+          const aiMax = product.estimated_value_max
+          // An AI range is "reliable" when max/min <= 3. A 2k–100k swing is
+          // meaningless and should trigger the user-price fallback.
+          const aiReliable =
+            aiMin !== undefined &&
+            aiMax !== undefined &&
+            aiMin > 0 &&
+            aiMax > 0 &&
+            aiMax / aiMin <= 3
+          const userPrice = product.price || 0
+          const showBadge = product.isAnalyzing || aiReliable || userPrice > 0
+          if (!showBadge) return null
+          const showFallback = !product.isAnalyzing && !aiReliable && userPrice > 0
+          return (
+            <Box
+              p={4}
+              bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+              borderRadius="xl"
+              textAlign="center"
+              color="white"
+              shadow="md"
+            >
+              <Text fontSize="xs" fontWeight="semibold" opacity={0.9} mb={1} textTransform="uppercase" letterSpacing="1px">
+                {showFallback ? 'Your Market Estimate' : 'Estimated Market Value'}
+              </Text>
+              {product.isAnalyzing ? (
+                <Skeleton height="36px" borderRadius="md" speed={0.8} />
+              ) : aiReliable ? (
+                <Heading fontSize="3xl" fontWeight="800">
+                  ₱{(aiMin || 0).toLocaleString()} – ₱{(aiMax || 0).toLocaleString()}
+                </Heading>
+              ) : (
+                <Heading fontSize="3xl" fontWeight="800">
+                  ₱{userPrice.toLocaleString()}
+                </Heading>
+              )}
+              <Text fontSize="2xs" opacity={0.85} mt={2}>
+                {product.isAnalyzing
+                  ? 'AI is analyzing your product...'
+                  : showFallback
+                    ? 'Based on the price you entered (AI estimate was unavailable)'
+                    : 'Based on AI analysis of product condition and market data'}
+              </Text>
+            </Box>
+          )
+        })()}
 
         <Divider />
 

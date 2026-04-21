@@ -123,6 +123,9 @@ type User struct {
 	BackgroundPosition          string     `json:"background_position,omitempty"`
 	Latitude                    *float64   `json:"latitude,omitempty"`
 	Longitude                   *float64   `json:"longitude,omitempty"`
+	HomeLatitude                *float64   `json:"home_latitude,omitempty"`  // Saved home address lat
+	HomeLongitude               *float64   `json:"home_longitude,omitempty"` // Saved home address lng
+	HomeAddress                 string     `json:"home_address,omitempty"`   // Human-readable home address
 	IsPremium                   bool       `json:"is_premium"`
 	PremiumTier                 string     `json:"premium_tier"` // "free", "plus", "pro"
 	PremiumExpiresAt            *time.Time `json:"premium_expires_at,omitempty"`
@@ -131,18 +134,23 @@ type User struct {
 	VerificationStatus          string     `json:"verification_status,omitempty"`
 	SchoolName                  string     `json:"school_name,omitempty"`
 	SchoolEmail                 string     `json:"school_email,omitempty"`
+	AcademicProgram             string     `json:"academic_program,omitempty"`
+	YearLevel                   string     `json:"year_level,omitempty"`
 	SchoolEmailVerifiedAt       *time.Time `json:"school_email_verified_at,omitempty"`
 	SchoolIDImagePath           string     `json:"school_id_image_path,omitempty"`
 	VerificationRejectionReason string     `json:"verification_rejection_reason,omitempty"`
 	EmailNotificationsEnabled   bool       `json:"email_notifications_enabled"`
 	PushNotificationsEnabled    bool       `json:"push_notifications_enabled"`
+	NotificationPreferences     string     `json:"notification_preferences,omitempty"`
 	PasswordChangedAt           *time.Time `json:"password_changed_at,omitempty"`
 	LastLogin                   *time.Time `json:"last_login,omitempty"`
 	ActivityStatus              string     `json:"activity_status,omitempty"`
 	Strikes                     int        `json:"strikes"`
 	IsSuspended                 bool       `json:"is_suspended"`
+	DisplayNameChangedAt        *time.Time `json:"display_name_changed_at,omitempty"`
 	NameChangedAt               *time.Time `json:"name_changed_at,omitempty"`
 	PhoneChangedAt              *time.Time `json:"phone_changed_at,omitempty"`
+	EmailChangedAt              *time.Time `json:"email_changed_at,omitempty"`
 }
 
 // UserLogin represents login credentials
@@ -194,7 +202,7 @@ type Product struct {
 	SellerName           string            `json:"seller_name,omitempty"`
 	SellerProfilePicture string            `json:"seller_profile_picture,omitempty"`
 	Premium              bool              `json:"premium"`
-	Status               string            `json:"status" validate:"oneof=available sold traded locked"`
+	Status               string            `json:"status" validate:"oneof=available sold traded locked suspended deleted"`
 	AllowBuying          bool              `json:"allow_buying"` // Whether buying is allowed
 	BarterOnly           bool              `json:"barter_only"`  // Whether it's barter only
 	Location             string            `json:"location,omitempty"`
@@ -259,7 +267,7 @@ type ProductUpdate struct {
 	Price            *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
 	ImageURLs        *StringArray `json:"image_urls,omitempty"`
 	Premium          *bool        `json:"premium,omitempty"`
-	Status           *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked"`
+	Status           *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked suspended deleted"`
 	AllowBuying      *bool        `json:"allow_buying,omitempty"`
 	BarterOnly       *bool        `json:"barter_only,omitempty"`
 	Location         *string      `json:"location,omitempty"`
@@ -317,7 +325,7 @@ type Trade struct {
 	BuyerID         int         `json:"buyer_id"`
 	SellerID        int         `json:"seller_id"`
 	TargetProductID int         `json:"target_product_id"`
-	Status          string      `json:"status" validate:"oneof=pending accepted declined countered active awaiting_confirmation completed auto_completed cancelled expired"`
+	Status          string      `json:"status" validate:"oneof=pending accepted accepted_by_one accepted_by_both declined countered active ongoing awaiting_confirmation completed auto_completed cancelled cancelled_due_to_conflict expired broken history pending_multiway multiway_active"`
 	Message         string      `json:"message,omitempty"`
 	OfferedCash     *float64    `json:"offered_cash_amount,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
@@ -325,6 +333,8 @@ type Trade struct {
 	Items           []TradeItem `json:"items"`
 	BuyerCompleted  bool        `json:"buyer_completed"`
 	SellerCompleted bool        `json:"seller_completed"`
+	BuyerAccepted   bool        `json:"buyer_accepted"`
+	SellerAccepted  bool        `json:"seller_accepted"`
 	CompletedAt     *time.Time  `json:"completed_at,omitempty"`
 	// Timeout-based completion fields
 	FirstCompletionAt         *time.Time `json:"first_completion_at,omitempty"`
@@ -332,6 +342,7 @@ type Trade struct {
 	AutoCompletedAt           *time.Time `json:"auto_completed_at,omitempty"`
 	// Trade option and delivery fields
 	TradeOption     string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
+	MeetingType     string `json:"meeting_type,omitempty" validate:"omitempty,oneof=meetup pickup"`
 	DeliveryAddress string `json:"delivery_address,omitempty"`
 	// Delivery state fields (for progress tracking and persistence)
 	DeliveryType            string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
@@ -363,14 +374,20 @@ type Trade struct {
 	SellerName            string `json:"seller_name,omitempty"`
 	ProductTitle          string `json:"product_title,omitempty"`
 	ProductImageURL       string `json:"product_image_url,omitempty"`
-	BuyerMet              bool   `json:"buyer_met"`
-	SellerMet             bool   `json:"seller_met"`
+	// Pickup address of the target (seller's) product, surfaced at trade level
+	// so the pickup UI can show it without relying on trade_items rows.
+	TargetProductPickupAddress string `json:"target_product_pickup_address,omitempty"`
+	BuyerMet                   bool   `json:"buyer_met"`
+	SellerMet                  bool   `json:"seller_met"`
 	// Enhanced review system fields
 	BuyerReviewCreatedAt      *time.Time    `json:"buyer_review_created_at,omitempty"`  // Timestamp of initial review
 	SellerReviewCreatedAt     *time.Time    `json:"seller_review_created_at,omitempty"` // Timestamp of initial review
 	BuyerInitialReviewLocked  bool          `json:"buyer_initial_review_locked"`        // Prevents tampering with initial review
 	SellerInitialReviewLocked bool          `json:"seller_initial_review_locked"`       // Prevents tampering with initial review
 	ReviewHistory             []TradeReview `json:"reviews,omitempty"`                  // Full review history (initial + followups)
+	// Counter offer fields
+	CounteredBy   int  `json:"countered_by,omitempty"`
+	ParentTradeID *int `json:"parent_trade_id,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade
@@ -381,9 +398,10 @@ type TradeItem struct {
 	OfferedBy string    `json:"offered_by" validate:"oneof=buyer seller"`
 	CreatedAt time.Time `json:"created_at"`
 	// Denormalized product details for display
-	ProductTitle    string `json:"product_title,omitempty"`
-	ProductStatus   string `json:"product_status,omitempty"`
-	ProductImageURL string `json:"product_image_url,omitempty"`
+	ProductTitle         string `json:"product_title,omitempty"`
+	ProductStatus        string `json:"product_status,omitempty"`
+	ProductImageURL      string `json:"product_image_url,omitempty"`
+	ProductPickupAddress string `json:"product_pickup_address,omitempty"`
 }
 
 // TradeReview represents a review submitted by a user for a trade

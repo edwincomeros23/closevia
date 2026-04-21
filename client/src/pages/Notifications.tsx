@@ -22,7 +22,6 @@ import {
   Skeleton,
   SkeletonText,
   ScaleFade,
-  Tooltip,
   Divider,
   Icon,
 } from '@chakra-ui/react'
@@ -34,6 +33,7 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { getFirstImage } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
+import { isNotificationAllowed } from '../utils/notificationPreferences'
 import { api } from '../services/api'
 import FloatingTab from '../components/FloatingTab'
 
@@ -221,12 +221,10 @@ const Notifications: React.FC = () => {
   /* --- Filtering & Pagination --- */
   const filtered = useMemo(() => {
     return notifications.filter(n => {
-      // Filter out proactive auto-detected trade_loop notifications (spam from category matching)
-      if (n.type === 'trade_loop' && n.message && (
-        n.message.includes('A 3-way trade opportunity was found') ||
-        n.message.includes('Great match!') ||
-        n.message.includes('in a 3-way trade')
-      )) return false
+      // Hide all multiway/loop "Trade Loop Found" notifications — users found
+      // these noisy (loop-confirmed, participant-confirmed, mutual-like pending).
+      if (n.type === 'trade_loop') return false
+      if (!isNotificationAllowed((user as any)?.notification_preferences, n)) return false
 
       if (!query) return true
       const q = query.toLowerCase()
@@ -248,7 +246,7 @@ const Notifications: React.FC = () => {
 
       return false
     })
-  }, [notifications, query, products])
+  }, [notifications, query, products, user])
 
   const unreadCount = useMemo(() => filtered.filter(n => !n.read).length, [filtered])
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage))
@@ -407,17 +405,22 @@ const Notifications: React.FC = () => {
                   />
                 </InputGroup>
                 {unreadCount > 0 && (
-                  <Tooltip label="Mark all as read" hasArrow placement="bottom">
-                    <IconButton
-                      aria-label="Mark all as read"
-                      icon={<Icon as={FaCheckDouble} />}
-                      size="sm"
-                      variant="ghost"
-                      colorScheme="brand"
-                      borderRadius="full"
-                      onClick={markAllAsRead}
-                    />
-                  </Tooltip>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    colorScheme="brand"
+                    borderRadius="full"
+                    leftIcon={<Icon as={FaCheckDouble} boxSize={3} />}
+                    onClick={markAllAsRead}
+                    fontWeight="semibold"
+                    fontSize="xs"
+                    px={3}
+                    flexShrink={0}
+                    _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
+                    transition="all 0.15s"
+                  >
+                    Mark all as read
+                  </Button>
                 )}
               </HStack>
             </Flex>

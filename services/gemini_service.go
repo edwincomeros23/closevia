@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type GeminiResponse struct {
@@ -281,7 +282,7 @@ Remember: Check for prohibited items FIRST. If found, respond ONLY with {"prohib
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		client := &http.Client{}
+		client := &http.Client{Timeout: 45 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("Error making request to Gemini API (%s): %v", model, err)
@@ -392,6 +393,16 @@ Remember: Check for prohibited items FIRST. If found, respond ONLY with {"prohib
 			raw = strings.TrimSuffix(raw, "```")
 			raw = strings.TrimSpace(raw)
 			log.Printf("Stripped markdown: %q -> %q", truncate(old, 50), truncate(raw, 50))
+		}
+
+		// Extract the JSON object even when the model wraps it in chatter like
+		// "Here's the analysis:" or trailing notes. This is the single biggest
+		// source of instability — parse fails because of a prefix/suffix that
+		// has nothing to do with the payload.
+		if start := strings.Index(raw, "{"); start >= 0 {
+			if end := strings.LastIndex(raw, "}"); end > start {
+				raw = raw[start : end+1]
+			}
 		}
 
 		var result GeminiResponse

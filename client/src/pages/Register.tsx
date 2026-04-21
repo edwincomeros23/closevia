@@ -38,7 +38,7 @@ const Register: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [department, setDepartment] = useState('')
+
   const [bio, setBio] = useState('')
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -57,10 +57,7 @@ const Register: React.FC = () => {
     if (!email) errors.email = 'Email is required'
     else if (!email.includes('@')) errors.email = 'Please enter a valid email address'
 
-    // Department required ONLY for WMSU emails
-    if (isWmsuEmail && !department) {
-      errors.department = 'Department/College is required for WMSU students'
-    }
+
 
     // Phone number validation: must be 11 digits, start with 09, numeric only (PH only)
     if (phoneNumber && !/^09\d{9}$/.test(phoneNumber)) {
@@ -112,7 +109,7 @@ const Register: React.FC = () => {
         email,
         phone: phoneNumber || undefined,
         password,
-        department: department || undefined,
+
         bio: bio || undefined,
       })
 
@@ -436,36 +433,7 @@ const Register: React.FC = () => {
                         )}
                       </FormControl>
 
-                      {/* WMSU Department for students */}
-                      {email.toLowerCase().endsWith('@wmsu.edu.ph') && (
-                        <FormControl isRequired isInvalid={!!fieldErrors.department}>
-                          <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Department / College</FormLabel>
-                          <Input
-                            value={department}
-                            onChange={(e) => {
-                              setDepartment(e.target.value)
-                              if (fieldErrors.department) setFieldErrors({ ...fieldErrors, department: '' })
-                            }}
-                            placeholder="e.g., CCS, COE, CTE"
-                            size="lg"
-                            bg="#F5F5F5"
-                            borderColor={fieldErrors.department ? '#ef5350' : '#E0E0E0'}
-                            borderWidth="1px"
-                            height="44px"
-                            fontSize="14px"
-                            _focus={{
-                              borderColor: fieldErrors.department ? '#ef5350' : '#2D876D',
-                              boxShadow: fieldErrors.department ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
-                              bg: 'white',
-                            }}
-                            _hover={{
-                              borderColor: '#E8E8E8',
-                            }}
-                            transition="all 0.2s"
-                          />
-                          {fieldErrors.department && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.department}</FormErrorMessage>}
-                        </FormControl>
-                      )}
+
 
                       {/* Bio */}
                       <FormControl>

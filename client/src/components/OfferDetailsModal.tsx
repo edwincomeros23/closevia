@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, VStack, HStack, Box, Image, Text, Badge, Button, Divider, Grid, useToast, ModalFooter, AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter, useDisclosure, Icon, Card, CardBody, useColorModeValue, FormControl, FormLabel, Textarea } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaTruck, FaHandshake } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaTruck, FaHandshake, FaChevronLeft, FaChevronRight } from 'react-icons/fa'
 import { formatPHP } from '../utils/currency'
 import { Trade, Product, TradeAction, TradeOption } from '../types'
 import { useProducts } from '../contexts/ProductContext'
@@ -13,7 +13,7 @@ interface OfferDetailsModalProps {
   trade: Trade | null
   isOpen: boolean
   onClose: () => void
-  onAccepted: () => void
+  onAccepted: (action?: 'accept' | 'counter') => void
   onDeclined: () => void
 }
 
@@ -74,6 +74,17 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   }, [isOpen, trade])
 
   const effectiveTrade = detailedTrade || trade
+  const needsUserAcceptance = Boolean(
+    effectiveTrade?.status === 'accepted_by_one' &&
+    user?.id &&
+    ((effectiveTrade.buyer_id === user.id && !effectiveTrade.buyer_accepted) ||
+      (effectiveTrade.seller_id === user.id && !effectiveTrade.seller_accepted))
+  )
+  const canRespondToOffer = Boolean(
+    ((effectiveTrade?.status === 'pending' || effectiveTrade?.status === 'pending_multiway') && effectiveTrade?.seller_id === user?.id) ||
+    needsUserAcceptance ||
+    (effectiveTrade?.status === 'countered' && effectiveTrade?.countered_by !== user?.id)
+  )
 
   // Resilient extraction of buyer-offered items and their product IDs
   const buyerItems = useMemo(() => {
@@ -176,7 +187,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'accept' } as TradeAction)
       toast({
         id: "offerdetailsmodal-offer-accepted", title: 'Offer accepted', status: 'success' })
-      onAccepted()
+      onAccepted('accept')
       onClose()
     } catch (e: any) {
       toast({
@@ -277,7 +288,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'counter', counter_offered_product_ids: selectedCounterIds, message: counterMsg, counter_offered_cash_amount: cashDelta ? Number(cashDelta) : undefined } as TradeAction)
       toast({
         id: "offerdetailsmodal-counter-offer-sent", title: 'Counter offer sent', status: 'success' })
-      onAccepted()
+      onAccepted('counter')
       onClose()
     } catch (e: any) {
       toast({
@@ -388,11 +399,10 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     if (!p) return null
     const compact = !!opts?.compact
     const showPrice = !!p.allow_buying && !p.barter_only && typeof p.price === 'number'
-    const imageHeight = compact ? '50px' : '75px'
-    const padding = compact ? 1 : 1.5
+    const imageHeight = compact ? '120px' : '180px' // Increased height for better visibility
+    const padding = compact ? 2 : 3
     const titleSize = compact ? 'xs' : 'sm'
-    const titleFontWeight = compact ? 'semibold' : 'semibold'
-    const priceFontSize = compact ? 'xs' : 'sm'
+    const titleFontWeight = 'semibold'
 
     const imgSrc = resolveImage(p)
     if (!imgSrc) {
@@ -401,41 +411,41 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     }
 
     return (
-      <Box borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden" bg="white" height="100%" display="flex" flexDirection="column">
-        <Box w="full" h={imageHeight} bg="gray.50" display="flex" alignItems="center" justifyContent="center" overflow="hidden">
+      <Box borderWidth="1px" borderColor="gray.100" rounded="lg" overflow="hidden" bg="white" height="100%" display="flex" flexDirection="column" shadow="sm" transition="all 0.2s" _hover={{ shadow: 'md' }}>
+        <Box w="full" h={imageHeight} bg="gray.100" display="flex" alignItems="center" justifyContent="center" overflow="hidden" position="relative">
           <Image 
             src={imgSrc || ''} 
             alt={p.title} 
             w="100%" 
             h="100%" 
-            objectFit="contain" 
+            objectFit="cover" 
             fallbackSrc="/no-image.svg" 
           />
+          {/* Show premium badge */}
+          {p.premium && !compact && (
+             <Badge position="absolute" top={2} right={2} colorScheme="brand" backdropFilter="blur(4px)" bg="brand.500" color="white" fontSize="xs" px={2} py={0.5} borderRadius="full">Boosted</Badge>
+          )}
         </Box>
         <Box p={padding} display="flex" flexDirection="column" flex={1}>
-          <HStack justify="space-between">
-            <Text fontWeight={titleFontWeight} fontSize={titleSize} noOfLines={2}>{p.title}</Text>
-            {/* Show premium only on full (requested) cards, hide for compact (offered) */}
-            {p.premium && !compact && <Badge colorScheme="yellow" fontSize={compact ? 'xs' : undefined}>Boosted</Badge>}
-          </HStack>
+          <Text fontWeight={titleFontWeight} fontSize={titleSize} noOfLines={2} mb={1}>{p.title}</Text>
 
-          {/* Hide status / barter badges in compact (offered) mode */}
+          {/* Status badges */}
           {!compact && (
-            <HStack spacing={2} mt={1}>
-              <Badge colorScheme={p.status === 'available' ? 'green' : 'red'} fontSize="2xs">{p.status}</Badge>
-              {p.barter_only ? <Badge colorScheme="purple" fontSize="2xs">Barter</Badge> : <Badge colorScheme="blue" fontSize="2xs">For Sale</Badge>}
+            <HStack spacing={2} mb={2}>
+              <Badge colorScheme={p.status === 'available' ? 'green' : 'red'} fontSize="2xs" variant="subtle">{p.status}</Badge>
+              {p.barter_only ? <Badge colorScheme="purple" fontSize="2xs" variant="subtle">Barter</Badge> : <Badge colorScheme="blue" fontSize="2xs" variant="subtle">For Sale</Badge>}
             </HStack>
           )}
 
-          {!compact && p.description && <Text color="gray.600" mt={1} fontSize="10px" noOfLines={2}>{p.description}</Text>}
+          {!compact && p.description && <Text color="gray.500" mb={2} fontSize="11px" noOfLines={2}>{p.description}</Text>}
 
           {showPrice && (
-            <Text mt={0.5} fontWeight="bold" fontSize="xs" color="brand.600">{formatPHP(p.price as number)}</Text>
+            <Text mb={compact ? 1 : 2} fontWeight="bold" fontSize="xs" color="brand.600">{formatPHP(p.price as number)}</Text>
           )}
 
-          {!compact && <Text mt={0.5} fontSize="9px" color="gray.500">Seller: {p.seller_name || `#${p.seller_id}`}</Text>}
+          {!compact && <Text mt="auto" mb={2} fontSize="10px" color="gray.500" fontWeight="medium">Seller: {p.seller_name || `#${p.seller_id}`}</Text>}
 
-          <Button as={'a'} href={getProductUrl(p)} variant="link" colorScheme="brand" mt="auto" size="sm" fontSize="xs">View listing</Button>
+          <Button as={'a'} href={getProductUrl(p)} variant="outline" colorScheme="brand" mt="auto" size="xs" w="full" borderRadius="md">View Listing</Button>
         </Box>
       </Box>
     )
@@ -456,11 +466,15 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 colorScheme={
                   effectiveTrade?.status === 'pending' ? 'yellow' : 
                   effectiveTrade?.status === 'accepted' ? 'green' : 
-                  effectiveTrade?.status === 'declined' ? 'red' : 'gray'
+                  effectiveTrade?.status === 'declined' ? 'red' : 
+                  effectiveTrade?.status === 'countered' ? 'purple' : 'gray'
                 } 
                 fontSize="xs"
               >
-                {effectiveTrade?.status ? effectiveTrade.status.toUpperCase() : 'UNKNOWN'}
+                {effectiveTrade?.status === 'countered' 
+                  ? (effectiveTrade?.countered_by === user?.id ? 'COUNTER-OFFER SENT' : 'COUNTER-OFFER RECEIVED')
+                  : (effectiveTrade?.status ? effectiveTrade.status.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN')
+                }
               </Badge>
             </VStack>
             <ModalCloseButton position="static" />
@@ -471,19 +485,29 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         <ModalBody p={3} overflowY="auto" flex={1}>
           <VStack align="stretch" spacing={3}>
             {/* User Info Section */}
-            <Box p={2.5} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
-              <Text fontSize="10px" fontWeight="bold" color="blue.900" mb={1.5} textTransform="uppercase">Trade Participant</Text>
-              <VStack align="start" spacing={1.5} fontSize="sm">
-                <HStack w="100%" justify="space-between">
-                  <Text fontWeight="semibold" fontSize="13px">{effectiveTrade?.buyer_id === user?.id ? 'From: ' : 'With: '}{effectiveTrade?.buyer_id === user?.id ? effectiveTrade?.seller_name : effectiveTrade?.buyer_name}</Text>
+            <Box p={3} bg="gray.50" borderRadius="lg" borderWidth="1px" borderColor="gray.200">
+              <Text fontSize="10px" fontWeight="bold" color="gray.500" mb={2} textTransform="uppercase" letterSpacing="wider">Trade Participant</Text>
+              <HStack align="center" justify="space-between">
+                <HStack spacing={3}>
+                  <Box p={2} bg="brand.100" color="brand.600" borderRadius="full">
+                    <Icon as={effectiveTrade?.buyer_id === user?.id ? FaChevronRight : FaChevronLeft} boxSize={3} />
+                  </Box>
+                  <VStack align="start" spacing={0}>
+                    <Text fontSize="10px" color="gray.500">{effectiveTrade?.buyer_id === user?.id ? 'You sent offer to' : 'Offer received from'}</Text>
+                    <Text fontWeight="bold" fontSize="13px" color="gray.800">
+                      {effectiveTrade?.buyer_id === user?.id ? effectiveTrade?.seller_name : effectiveTrade?.buyer_name}
+                    </Text>
+                  </VStack>
                 </HStack>
-                {effectiveTrade?.buyer_id === user?.id && effectiveTrade?.seller_location && (
-                  <Text fontSize="11px" color="gray.600">📍 {effectiveTrade.seller_location || 'Location not specified'}</Text>
-                )}
-                {effectiveTrade?.buyer_id !== user?.id && effectiveTrade?.buyer_location && (
-                  <Text fontSize="11px" color="gray.600">📍 {effectiveTrade.buyer_location || 'Location not specified'}</Text>
-                )}
-              </VStack>
+                <VStack align="end" spacing={1}>
+                  <Badge variant="subtle" colorScheme="gray" fontSize="9px">
+                    <Text as="span" mr={1}>📍</Text>
+                    {effectiveTrade?.buyer_id === user?.id 
+                      ? (effectiveTrade?.seller_location || 'Not specified') 
+                      : (effectiveTrade?.buyer_location || 'Not specified')}
+                  </Badge>
+                </VStack>
+              </HStack>
             </Box>
 
             {/* Offer Details Section - Compact 2-Column Info Grid */}
@@ -635,61 +659,40 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                           const itemImg = item.product_image_url || item.productImageUrl || item.image || ''
                           const itemTitle = item.product_title || item.productTitle || 'Unknown Item'
                           return (
-                            <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="white" height="100%" display="flex" flexDirection="column" flex={1}>
-                              <Image 
-                                src={itemImg} 
-                                alt={itemTitle} 
-                                w="full" 
-                                h="80px" 
-                                objectFit="cover" 
-                                fallbackSrc="/no-image.svg" 
-                              />
-                              <Box p={2}>
-                                <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{itemTitle}</Text>
+                            <Box key={item.id || idx} borderWidth="1px" borderColor="gray.100" borderRadius="lg" overflow="hidden" bg="white" height="100%" display="flex" flexDirection="column" shadow="sm">
+                              <Box w="full" h="120px" bg="gray.100" display="flex" alignItems="center" justifyContent="center">
+                                <Image 
+                                  src={itemImg} 
+                                  alt={itemTitle} 
+                                  w="full" 
+                                  h="100%" 
+                                  objectFit="cover" 
+                                  fallbackSrc="/no-image.svg" 
+                                />
                               </Box>
-                              {itemId && (
+                              <Box p={2} display="flex" flexDirection="column" flex={1}>
+                                <Text fontWeight="semibold" fontSize="xs" noOfLines={2} mb={2}>{itemTitle}</Text>
                                 <Button 
                                   as="a" 
-                                  href={`/products/${itemId}`} 
-                                  variant="link" 
+                                  href={itemId ? `/products/${itemId}` : '#'} 
+                                  variant="outline" 
                                   colorScheme="brand" 
                                   w="full" 
-                                  fontSize="2xs"
-                                  p={2}
+                                  size="xs"
                                   mt="auto"
+                                  borderRadius="md"
+                                  isDisabled={!itemId}
                                 >
-                                  View →
+                                  View Listing
                                 </Button>
-                              )}
+                              </Box>
                             </Box>
                           )
                         }
                         
                         return (
-                          <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="white" height="100%" display="flex" flexDirection="column" flex={1}>
-                            <Image 
-                              src={resolveImage(product)} 
-                              alt={product.title} 
-                              w="full" 
-                              h="80px" 
-                              objectFit="cover" 
-                              fallbackSrc="/no-image.svg"
-                            />
-                            <Box p={2}>
-                              <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{product.title}</Text>
-                            </Box>
-                            <Button 
-                              as="a" 
-                              href={getProductUrl(product)} 
-                              variant="link" 
-                              colorScheme="brand" 
-                              w="full" 
-                              fontSize="2xs"
-                              p={2}
-                              mt="auto"
-                            >
-                              View →
-                            </Button>
+                          <Box key={item.id || idx} h="100%">
+                            {renderProductCard(product, { compact: true })}
                           </Box>
                         );
                       })}
@@ -799,17 +802,16 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         {/* Footer */}
         <Box borderTopWidth="1px" borderColor="gray.200" p={2} bg="white">
           <HStack spacing={1.5} justify="flex-end">
-            {/* Only show action buttons if trade is pending AND user is the seller (received this offer) */}
-            {effectiveTrade?.status === 'pending' && effectiveTrade?.buyer_id !== user?.id ? (
+            {canRespondToOffer ? (
               <>
                 {/* Decline Button */}
                 <Button size="xs" variant="outline" colorScheme="red" onClick={decline} fontSize="11px">
                   Decline
                 </Button>
 
-                {/* Counter Button */}
+                {/* Counter Back Button */}
                 <Button size="xs" variant="outline" colorScheme="brand" onClick={openCounter} fontSize="11px">
-                  Counter
+                  Counter Back
                 </Button>
 
                 {/* Accept Button */}
@@ -819,7 +821,12 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </>
             ) : (
               <Text fontSize="11px" color="gray.500" fontStyle="italic">
-                {effectiveTrade?.buyer_id === user?.id ? 'No actions available for offers you sent' : `No actions available for ${effectiveTrade?.status} trades`}
+                {effectiveTrade?.status === 'countered' && effectiveTrade?.countered_by === user?.id 
+                  ? 'Waiting for other party to respond to your counter-offer' 
+                  : (effectiveTrade?.buyer_id === user?.id && (effectiveTrade?.status === 'pending' || effectiveTrade?.status === 'pending_multiway'))
+                    ? 'No actions available for offers you sent' 
+                    : `No actions available for ${effectiveTrade?.status?.replace(/_/g, ' ')} trades`
+                }
               </Text>
             )}
           </HStack>
@@ -972,5 +979,3 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 }
 
 export default OfferDetailsModal
-
-

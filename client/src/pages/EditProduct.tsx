@@ -524,10 +524,14 @@ const EditProduct: React.FC = () => {
                   <Input
                     type="number"
                     value={formData.price || ''}
-                    onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => handleInputChange('price', Math.max(0, parseFloat(e.target.value) || 0))}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === '+') e.preventDefault()
+                    }}
                     placeholder="Enter price"
                     size={{ base: 'md', md: 'lg' }}
                     min={0}
+                    inputMode="numeric"
                   />
                 </FormControl>
 
@@ -828,45 +832,10 @@ const EditProduct: React.FC = () => {
                         )}
                       </Box>
 
-                      {/* Option 3: No Fixed Location */}
-                      <Box 
-                        p={2.5} 
-                        borderWidth="1px" 
-                        borderRadius="md"
-                        bg={locationTypeSelected === 'no_location' ? 'yellow.100' : 'white'}
-                        borderColor={locationTypeSelected === 'no_location' ? 'yellow.400' : 'gray.200'}
-                        transition="all 0.2s"
-                        cursor="pointer"
-                        _hover={{ borderColor: 'yellow.300' }}
-                      >
-                        <HStack align="start" spacing={2}>
-                          <Radio 
-                            isChecked={locationTypeSelected === 'no_location'}
-                            onChange={() => {
-                              setLocationTypeSelected('no_location')
-                              setFormData(prev => ({ ...prev, location_type: 'no_location' }))
-                            }}
-                            colorScheme="yellow"
-                            flex="0 0 auto"
-                            mt={0.5}
-                            cursor="pointer"
-                          />
-                          <VStack align="start" spacing={0.5} flex={1} cursor="pointer" onClick={() => {
-                            setLocationTypeSelected('no_location')
-                            setFormData(prev => ({ ...prev, location_type: 'no_location' }))
-                          }}>
-                            <Text fontWeight="600" fontSize="xs">🤝 No Fixed Location</Text>
-                            <Text fontSize="9px" color="gray.600">Buyers will negotiate location with you directly</Text>
-                          </VStack>
-                        </HStack>
-                      </Box>
+
                     </VStack>
                     
-                    {/* Helper text */}
-                    <Alert status="info" mt={2} py={2} px={2.5} borderRadius="md" fontSize="8px" color="yellow.700">
-                      <AlertIcon boxSize="14px" />
-                      📌 Fixed location = "Pickup" is primary. No location = buyers must negotiate meeting place.
-                    </Alert>
+
                   </FormControl>
                 </Box>
 
@@ -921,16 +890,7 @@ const EditProduct: React.FC = () => {
                       </FormHelperText>
                     </FormControl>
 
-                    <FormControl>
-                      <FormLabel fontSize="xs" color="gray.600" fontWeight="600" mb={1}>Preferred Items</FormLabel>
-                      <Input
-                        value={formData.wants || ''}
-                        onChange={(e) => handleInputChange('wants', e.target.value)}
-                        placeholder="e.g. Any smartphone, mechanical keyboard, etc."
-                        size={{ base: 'sm', md: 'md' }}
-                        h={{ base: '28px', md: '32px' }}
-                      />
-                    </FormControl>
+
                   </VStack>
                 </Box>
 
