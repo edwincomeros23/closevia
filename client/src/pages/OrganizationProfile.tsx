@@ -52,6 +52,9 @@ const OrganizationProfile: React.FC = () => {
   const [error, setError] = useState('')
   const [tradeFeedProducts, setTradeFeedProducts] = useState<any[]>([])
   const [tradeFeedLoading, setTradeFeedLoading] = useState(false)
+  const [transferTarget, setTransferTarget] = useState<number | null>(null)
+  const [transferConfirm, setTransferConfirm] = useState(false)
+  const [transferLoading, setTransferLoading] = useState(false)
 
   const fetchOrganization = useCallback(async () => {
     if (!handle) return
@@ -173,6 +176,22 @@ const OrganizationProfile: React.FC = () => {
       fetchFeed()
     } catch (err: any) {
       toast({ title: 'Failed to remove member', description: err?.response?.data?.error || 'Please try again', status: 'error' })
+    }
+  }
+
+  const handleTransferOwnership = async () => {
+    if (!handle || !transferTarget) return
+    setTransferLoading(true)
+    try {
+      await api.post(`/api/organizations/${handle}/transfer-ownership`, { new_owner_user_id: transferTarget })
+      toast({ title: 'Ownership transferred', description: 'You are no longer the owner of this organization.', status: 'success' })
+      setTransferTarget(null)
+      setTransferConfirm(false)
+      fetchOrganization()
+    } catch (err: any) {
+      toast({ title: 'Transfer failed', description: err?.response?.data?.error || 'Please try again', status: 'error' })
+    } finally {
+      setTransferLoading(false)
     }
   }
 
@@ -674,6 +693,35 @@ const OrganizationProfile: React.FC = () => {
                   </Box>
                 </Box>
 
+                {/* Transfer Ownership — desktop */}
+                <Box borderTopWidth="1px" borderColor="red.100" pt={6}>
+                  <Text fontSize="sm" fontWeight="800" mb={1} color="red.500" textTransform="uppercase" letterSpacing="wider">Transfer Ownership</Text>
+                  <Text fontSize="xs" color="gray.500" mb={4}>Hand control to an approved member. You will lose owner privileges immediately.</Text>
+                  {members.filter(m => m.user_id !== user?.id).length === 0 ? (
+                    <Text fontSize="xs" color="gray.400" fontWeight="500">No other members to transfer to.</Text>
+                  ) : (
+                    <VStack align="stretch" spacing={3} maxW="360px">
+                      <Select placeholder="Select new owner…" value={transferTarget ?? ''} onChange={e => { setTransferTarget(Number(e.target.value) || null); setTransferConfirm(false) }} borderRadius="xl" size="sm" borderColor="red.200" _focus={{ borderColor: 'red.400' }}>
+                        {members.filter(m => m.user_id !== user?.id).map(m => (
+                          <option key={m.user_id} value={m.user_id}>{m.name}</option>
+                        ))}
+                      </Select>
+                      {transferTarget && !transferConfirm && (
+                        <Button size="sm" h="36px" borderRadius="xl" fontWeight="800" bg="red.50" color="red.600" borderWidth="1px" borderColor="red.200" _hover={{ bg: 'red.100' }} onClick={() => setTransferConfirm(true)}>Transfer Ownership</Button>
+                      )}
+                      {transferTarget && transferConfirm && (
+                        <Box bg="red.50" borderRadius="xl" p={4} borderWidth="1px" borderColor="red.200">
+                          <Text fontSize="xs" fontWeight="700" color="red.700" mb={3}>Are you sure? You will lose all owner privileges for "{communityOrg?.name}" immediately. This cannot be undone.</Text>
+                          <HStack spacing={2}>
+                            <Button flex={1} size="sm" h="36px" borderRadius="xl" fontWeight="800" bg="red.500" color="white" _hover={{ bg: 'red.600' }} isLoading={transferLoading} onClick={handleTransferOwnership}>Yes, Transfer</Button>
+                            <Button flex={1} size="sm" h="36px" borderRadius="xl" fontWeight="700" bg="white" color="gray.600" borderWidth="1px" borderColor="gray.200" onClick={() => { setTransferConfirm(false); setTransferTarget(null) }}>Cancel</Button>
+                          </HStack>
+                        </Box>
+                      )}
+                    </VStack>
+                  )}
+                </Box>
+
                 {/* Mobile Stack Layout */}
                 <VStack align="stretch" spacing={{ base: 5, md: 5 }} display={{ base: 'flex', md: 'none' }}>
                 <Box>
@@ -715,6 +763,37 @@ const OrganizationProfile: React.FC = () => {
                       </HStack>
                     ))}
                   </VStack>
+                </Box>
+
+                <Divider borderColor="red.100" />
+
+                {/* Transfer Ownership — mobile */}
+                <Box>
+                  <Text fontSize="xs" fontWeight="800" mb={1} color="red.500" textTransform="uppercase" letterSpacing="wider">Transfer Ownership</Text>
+                  <Text fontSize="xs" color="gray.500" mb={3}>Hand control to an approved member. You will lose owner privileges immediately.</Text>
+                  {members.filter(m => m.user_id !== user?.id).length === 0 ? (
+                    <Text fontSize="xs" color="gray.400" fontWeight="500">No other members to transfer to.</Text>
+                  ) : (
+                    <VStack align="stretch" spacing={3}>
+                      <Select placeholder="Select new owner…" value={transferTarget ?? ''} onChange={e => { setTransferTarget(Number(e.target.value) || null); setTransferConfirm(false) }} borderRadius="xl" size="sm" borderColor="red.200" _focus={{ borderColor: 'red.400' }}>
+                        {members.filter(m => m.user_id !== user?.id).map(m => (
+                          <option key={m.user_id} value={m.user_id}>{m.name}</option>
+                        ))}
+                      </Select>
+                      {transferTarget && !transferConfirm && (
+                        <Button size="sm" h="36px" borderRadius="xl" fontWeight="800" bg="red.50" color="red.600" borderWidth="1px" borderColor="red.200" _hover={{ bg: 'red.100' }} onClick={() => setTransferConfirm(true)}>Transfer Ownership</Button>
+                      )}
+                      {transferTarget && transferConfirm && (
+                        <Box bg="red.50" borderRadius="xl" p={4} borderWidth="1px" borderColor="red.200">
+                          <Text fontSize="xs" fontWeight="700" color="red.700" mb={3}>Are you sure? You will lose all owner privileges for "{communityOrg?.name}" immediately. This cannot be undone.</Text>
+                          <HStack spacing={2}>
+                            <Button flex={1} size="sm" h="36px" borderRadius="xl" fontWeight="800" bg="red.500" color="white" _hover={{ bg: 'red.600' }} isLoading={transferLoading} onClick={handleTransferOwnership}>Yes, Transfer</Button>
+                            <Button flex={1} size="sm" h="36px" borderRadius="xl" fontWeight="700" bg="white" color="gray.600" borderWidth="1px" borderColor="gray.200" onClick={() => { setTransferConfirm(false); setTransferTarget(null) }}>Cancel</Button>
+                          </HStack>
+                        </Box>
+                      )}
+                    </VStack>
+                  )}
                 </Box>
                 </VStack>
               </VStack>

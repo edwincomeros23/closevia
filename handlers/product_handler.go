@@ -128,14 +128,18 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Fetch user tier, strikes and enforce data-driven listing limits
 	var tier string
 	var strikes int
-	h.db.QueryRow("SELECT COALESCE(premium_tier, 'free'), strikes FROM users WHERE id = ?", userID).Scan(&tier, &strikes)
+	var role string
+	h.db.QueryRow("SELECT COALESCE(premium_tier, 'free'), strikes, role FROM users WHERE id = ?", userID).Scan(&tier, &strikes, &role)
 
 	// Strike Ladder Enforcement: 2 strikes = Restricted (cannot post new offers/listings)
-	if strikes >= 2 {
+	// Admin bypass: Admins are never restricted by strikes
+	if strikes >= 2 && role != "admin" {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Account Restricted: You cannot post new listings because you have 2 or more strikes. You can still finish your ongoing trades.",
 		})
+	} else if strikes >= 2 && role == "admin" {
+		log.Printf("⚠️  [CreateProduct] Admin user %d has %d strikes but is allowed to post due to bypass", userID, strikes)
 	}
 
 	var activeCount int

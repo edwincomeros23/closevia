@@ -491,6 +491,7 @@ func main() {
 	organizations.Post("/:slug/trade-posts", middleware.AuthMiddleware(), organizationHandler.PostProductForTrade)
 	organizations.Get("/:slug/trade-feed", middleware.AuthMiddleware(), organizationHandler.GetTradeFeed)
 	organizations.Get("/:slug/debug-trade-feed", organizationHandler.DebugGetTradeFeed) // Debug endpoint - no auth
+	organizations.Post("/:slug/transfer-ownership", middleware.AuthMiddleware(), organizationHandler.TransferOwnership)
 	organizations.Delete("/:slug", middleware.AuthMiddleware(), organizationHandler.DeleteOrganization)
 
 	// Generic :slug route LAST

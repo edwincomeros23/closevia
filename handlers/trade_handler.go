@@ -183,6 +183,14 @@ func (h *TradeHandler) applyCancellationPenalty(userID int, wasActive bool) {
 		return
 	}
 
+	// Admin bypass: Admins do not receive strikes for cancellations
+	var role string
+	_ = h.db.QueryRow("SELECT role FROM users WHERE id = ?", userID).Scan(&role)
+	if role == "admin" {
+		log.Printf("ℹ️  [TradeHandler] Admin user %d cancelled an active trade, but strike was bypassed", userID)
+		return
+	}
+
 	// Increment strike counter
 	if _, err := h.db.Exec("UPDATE users SET strikes = COALESCE(strikes, 0) + 1 WHERE id = ?", userID); err != nil {
 		log.Printf("applyCancellationPenalty: failed to increment strikes for user %d: %v", userID, err)
@@ -784,14 +792,18 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	// Enforce plan-configured active trade limits.
 	var strikes int
-	_ = h.db.QueryRow("SELECT strikes FROM users WHERE id = ?", userID).Scan(&strikes)
+	var role string
+	_ = h.db.QueryRow("SELECT strikes, role FROM users WHERE id = ?", userID).Scan(&strikes, &role)
 
 	// Strike Ladder Enforcement: 2 strikes = Restricted (cannot post/send new offers)
-	if strikes >= 2 {
+	// Admin bypass: Admins are never restricted by strikes
+	if strikes >= 2 && role != "admin" {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Account Restricted: You cannot send new trade offers because you have 2 or more strikes. You can still finish your ongoing trades.",
 		})
+	} else if strikes >= 2 && role == "admin" {
+		log.Printf("⚠️  [CreateTrade] Admin user %d has %d strikes but is allowed to send trade due to bypass", userID, strikes)
 	}
 
 	plan, _ := getUserPlanCapabilities(h.db, userID)
@@ -4842,14 +4854,6 @@ func (h *TradeHandler) getTradeProductIDsTx(tx *sql.Tx, tradeID int) ([]int, err
 	return productIDs, nil
 }
 
-func (h *TradeHandler) getTradeProductIDs(tradeID int) ([]int, error) {
-	tx, err := h.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	return h.getTradeProductIDsTx(tx, tradeID)
-}
 
 func (h *TradeHandler) ensureProductsTradeableTx(tx *sql.Tx, productIDs []int) error {
 	for _, pid := range productIDs {
@@ -5862,9 +5866,10 @@ func (h *TradeHandler) getMultiwayChainSummariesForUser(userID int, statusFilter
 		user3Title, user3Image := productInfo(user3ProductID)
 
 		acceptedCount := 0
-		if status == "confirmed" || status == "active" || status == "multiway_active" || status == "ongoing" || status == "completed" || status == "history" {
+		switch status {
+		case "confirmed", "active", "multiway_active", "ongoing", "completed", "history":
 			acceptedCount = 3
-		} else if status == "user3_accepted" || status == "accepted" {
+		case "user3_accepted", "accepted":
 			acceptedCount = 1
 		}
 
@@ -6441,178 +6446,6 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 	}
 
 	return h.acceptTradeLoopTransactional(c, loopID, loopNumericID, userID)
-
-	var loopStatus string
-	if err := h.db.QueryRow("SELECT status FROM trade_like_loops WHERE id = ?", loopNumericID).Scan(&loopStatus); err != nil {
-		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade loop not found"})
-	}
-	if loopStatus != "pending" {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Trade loop is not pending"})
-	}
-
-	res, err := h.db.Exec(`
-		UPDATE trade_like_loop_participants
-		SET status = 'confirmed', confirmed_at = CURRENT_TIMESTAMP
-		WHERE loop_id = ? AND user_id = ?
-	`, loopNumericID, userID)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm trade loop"})
-	}
-	ra, _ := res.RowsAffected()
-	if ra == 0 {
-		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this trade loop"})
-	}
-
-	var totalCount, confirmedCount int
-	_ = h.db.QueryRow("SELECT COUNT(*) FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID).Scan(&totalCount)
-	_ = h.db.QueryRow("SELECT COUNT(*) FROM trade_like_loop_participants WHERE loop_id = ? AND status = 'confirmed'", loopNumericID).Scan(&confirmedCount)
-
-	if totalCount > 0 && confirmedCount == totalCount {
-		_, _ = h.db.Exec("UPDATE trade_like_loops SET status = 'confirmed', confirmed_at = CURRENT_TIMESTAMP WHERE id = ?", loopNumericID)
-		// Products are not marked 'traded' here — that happens only after every participant
-		// confirms the meet-up is done (see UpdateTradeLoopMeetup → confirm_meetup_done).
-
-		participantRows, _ := h.db.Query("SELECT user_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
-		userIDs := []int{}
-		for participantRows.Next() {
-			var uid int
-			if err := participantRows.Scan(&uid); err == nil {
-				userIDs = append(userIDs, uid)
-			}
-		}
-		participantRows.Close()
-		if len(userIDs) > 0 {
-			// Collect the product IDs used in this confirmed loop so we only
-			// cancel other pending loops that conflict on product ownership —
-			// not every loop involving the same users.
-			prodRows, _ := h.db.Query("SELECT offered_product_id, wanted_product_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
-			productIDs := map[int]bool{}
-			if prodRows != nil {
-				for prodRows.Next() {
-					var oid, wid int
-					if err := prodRows.Scan(&oid, &wid); err == nil {
-						productIDs[oid] = true
-						productIDs[wid] = true
-					}
-				}
-				prodRows.Close()
-			}
-
-			if len(productIDs) > 0 {
-				pids := make([]int, 0, len(productIDs))
-				for pid := range productIDs {
-					pids = append(pids, pid)
-				}
-				pidPlaceholders := make([]string, len(pids))
-				for i := range pids {
-					pidPlaceholders[i] = "?"
-				}
-				pidPH := strings.Join(pidPlaceholders, ",")
-
-				// First, collect the loops that are about to be auto-cancelled so we
-				// can notify the OTHER participants (e.g. user C when A+B just
-				// confirmed their AB match). Without this, C's card silently
-				// disappears from their dashboard with no signal.
-				cancelledLoopIDs := []int{}
-				findArgs := make([]interface{}, 0, 1+len(pids)*2)
-				findArgs = append(findArgs, loopNumericID)
-				for _, pid := range pids {
-					findArgs = append(findArgs, pid)
-				}
-				for _, pid := range pids {
-					findArgs = append(findArgs, pid)
-				}
-				findQ := fmt.Sprintf(`
-					SELECT DISTINCT l.id FROM trade_like_loops l
-					JOIN trade_like_loop_participants p ON p.loop_id = l.id
-					WHERE l.id <> ? AND l.status = 'pending'
-					  AND (p.offered_product_id IN (%s) OR p.wanted_product_id IN (%s))
-				`, pidPH, pidPH)
-				if findRows, err := h.db.Query(findQ, findArgs...); err == nil {
-					for findRows.Next() {
-						var lid int
-						if err := findRows.Scan(&lid); err == nil {
-							cancelledLoopIDs = append(cancelledLoopIDs, lid)
-						}
-					}
-					findRows.Close()
-				}
-
-				// Now cancel those loops
-				cancelArgs := make([]interface{}, 0, 1+len(pids)*2)
-				cancelArgs = append(cancelArgs, loopNumericID)
-				for _, pid := range pids {
-					cancelArgs = append(cancelArgs, pid)
-				}
-				for _, pid := range pids {
-					cancelArgs = append(cancelArgs, pid)
-				}
-				q := fmt.Sprintf(`
-					UPDATE trade_like_loops l
-					JOIN trade_like_loop_participants p ON p.loop_id = l.id
-					SET l.status = 'cancelled'
-					WHERE l.id <> ? AND l.status = 'pending'
-					  AND (p.offered_product_id IN (%s) OR p.wanted_product_id IN (%s))
-				`, pidPH, pidPH)
-				_, _ = h.db.Exec(q, cancelArgs...)
-
-				// Notify participants of the cancelled loops who are NOT already in
-				// the confirmed loop (they just lost their match; they deserve to know).
-				if len(cancelledLoopIDs) > 0 {
-					confirmedSet := map[int]bool{}
-					for _, uid := range userIDs {
-						confirmedSet[uid] = true
-					}
-					for _, cid := range cancelledLoopIDs {
-						affectedRows, err := h.db.Query("SELECT DISTINCT user_id FROM trade_like_loop_participants WHERE loop_id = ?", cid)
-						if err != nil {
-							continue
-						}
-						affectedUserIDs := []int{}
-						for affectedRows.Next() {
-							var auid int
-							if err := affectedRows.Scan(&auid); err == nil && !confirmedSet[auid] {
-								affectedUserIDs = append(affectedUserIDs, auid)
-							}
-						}
-						affectedRows.Close()
-						msg := "A trade match was cancelled because the other trader committed to a different match."
-						for _, auid := range affectedUserIDs {
-							_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", auid, msg)
-							publishNotification(auid, msg)
-							publishToUser(auid, sseEvent{Type: "trade_loop_cancelled", Data: fiber.Map{"loop_id": loopIDFromLikeLoopID(cid), "reason": "other_match_confirmed"}})
-						}
-					}
-				}
-			}
-		}
-
-		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'Trade loop confirmed! Coordinate the meet-up in the group chat.', FALSE FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
-		// Rebuild loop suggestions for all participants (mirrors multiway accept flow).
-		go h.rebuildTradeLoopCacheForUsers(userIDs)
-		return c.JSON(models.APIResponse{Success: true, Message: "Trade loop confirmed"})
-	}
-
-	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'A participant confirmed the trade. Waiting for everyone to confirm.', FALSE FROM trade_like_loop_participants WHERE loop_id = ? AND user_id <> ?", loopNumericID, userID)
-
-	// Cancel all other pending loops/chains involving the same products immediately
-	// when a user confirms their participation, locking in their product intent.
-	prodRows, prodErr := h.db.Query("SELECT offered_product_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
-	if prodErr == nil {
-		var productIDs []int
-		for prodRows.Next() {
-			var pid int
-			if prodRows.Scan(&pid) == nil && pid > 0 {
-				productIDs = append(productIDs, pid)
-			}
-		}
-		prodRows.Close()
-		if len(productIDs) > 0 {
-			go h.cancelOtherLoopsForProducts(productIDs, fmt.Sprintf("like_loop_%d", loopNumericID))
-		}
-	}
-
-	return c.JSON(models.APIResponse{Success: true, Message: "Confirmation saved. Waiting for others."})
 }
 
 func (h *TradeHandler) acceptTradeLoopTransactional(c *fiber.Ctx, loopID string, loopNumericID int, userID int) error {
