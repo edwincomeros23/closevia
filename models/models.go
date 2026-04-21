@@ -141,6 +141,7 @@ type User struct {
 	VerificationRejectionReason string     `json:"verification_rejection_reason,omitempty"`
 	EmailNotificationsEnabled   bool       `json:"email_notifications_enabled"`
 	PushNotificationsEnabled    bool       `json:"push_notifications_enabled"`
+	NotificationPreferences     string     `json:"notification_preferences,omitempty"`
 	PasswordChangedAt           *time.Time `json:"password_changed_at,omitempty"`
 	LastLogin                   *time.Time `json:"last_login,omitempty"`
 	ActivityStatus              string     `json:"activity_status,omitempty"`

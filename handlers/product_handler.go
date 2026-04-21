@@ -125,7 +125,7 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	title := c.FormValue("title")
 	description := c.FormValue("description")
 	priceStr := c.FormValue("price")
-	// Fetch user tier, strikes and enforce listing limits
+	// Fetch user tier, strikes and enforce data-driven listing limits
 	var tier string
 	var strikes int
 	h.db.QueryRow("SELECT COALESCE(premium_tier, 'free'), strikes FROM users WHERE id = ?", userID).Scan(&tier, &strikes)
@@ -141,18 +141,13 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	var activeCount int
 	h.db.QueryRow("SELECT COUNT(*) FROM products WHERE seller_id = ? AND status = 'available'", userID).Scan(&activeCount)
 
-	limit := 10
-	switch tier {
-	case "plus":
-		limit = 30
-	case "pro":
-		limit = 999999
-	}
+	plan, _ := getUserPlanCapabilities(h.db, userID)
+	limit := getCapInt(plan.Capabilities, "listing_limit", 10)
 
 	if activeCount >= limit {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
-			Error:   fmt.Sprintf("Your current plan (%s) allows up to %d active listings. Please upgrade to post more.", tier, limit),
+			Error:   fmt.Sprintf("Your current plan (%s) allows up to %d active listings. Please upgrade to post more.", plan.Name, limit),
 		})
 	}
 
@@ -1264,33 +1259,30 @@ func (h *ProductHandler) BoostProduct(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You can only boost your own products"})
 	}
 
-	// Fetch user tier and premium status
-	var tier string
-	var isPremium bool
-	err = h.db.QueryRow("SELECT COALESCE(premium_tier, 'free'), is_premium FROM users WHERE id = ?", userID).Scan(&tier, &isPremium)
+	plan, err := getUserPlanCapabilities(h.db, userID)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch user premium status"})
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch user plan capabilities"})
 	}
-
-	// Check if user is premium - restrict boost to premium users only
-	if tier == "free" || !isPremium {
+	monthlyBoostLimit := getCapInt(plan.Capabilities, "monthly_boost_limit", 0)
+	freeBoostEnabled := getCapBool(plan.Capabilities, "free_boost_enabled", false)
+	if monthlyBoostLimit <= 0 || !freeBoostEnabled {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Boost feature is only available for Premium members. Upgrade to Premium to boost your listings.",
+			Error:   "Boosting is not included in your current plan.",
 		})
+	}
+	usageMonth := time.Now().Format("2006-01")
+	var boostUsage int
+	_ = h.db.QueryRow("SELECT COALESCE(usage_count, 0) FROM premium_feature_usage WHERE user_id = ? AND feature_key = 'boosted_listings' AND usage_month = ?", userID, usageMonth).Scan(&boostUsage)
+	if boostUsage >= monthlyBoostLimit {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Your current plan includes %d boost(s) per month.", monthlyBoostLimit)})
 	}
 
 	// Determine if this should be a "Premium pin" boost based on tier limits
-	limit := 0
-	switch tier {
-	case "plus":
-		limit = 3
-	case "pro":
-		limit = 10
-	}
+	limit := monthlyBoostLimit
 
 	canPin := false
-	if limit > 0 {
+	if getCapBool(plan.Capabilities, "featured_listing_enabled", false) && limit > 0 {
 		var currentPremiumCount int
 		h.db.QueryRow("SELECT COUNT(*) FROM products WHERE seller_id = ? AND premium = true AND status = 'available'", userID).Scan(&currentPremiumCount)
 		if currentPremiumCount < limit {
@@ -1320,6 +1312,11 @@ func (h *ProductHandler) BoostProduct(c *fiber.Ctx) error {
 		log.Printf("Error boosting product %d: %v", productID, err)
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to boost product"})
 	}
+	_, _ = h.db.Exec(`
+		INSERT INTO premium_feature_usage (user_id, feature_key, usage_month, usage_count)
+		VALUES (?, 'boosted_listings', ?, 1)
+		ON DUPLICATE KEY UPDATE usage_count = usage_count + 1
+	`, userID, usageMonth)
 
 	// Prepare response with boost details
 	responseData := map[string]interface{}{

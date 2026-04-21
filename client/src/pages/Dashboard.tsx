@@ -88,6 +88,7 @@ import {
   useSentOffers,
   useReceivedOffers,
   useOngoingTrades,
+  useMultiWayLoops,
   useArchivedTrades,
   useTradeHistory,
   usePrefetchDashboard,
@@ -106,16 +107,23 @@ const Dashboard: React.FC = () => {
   const actualUserProducts = Array.isArray(userProducts) ? userProducts : []
   const { data: orders = [], isFetched: ordersFetched } = useDashboardOrders()
   const { data: counts = { unread_notifications: 0, pending_offers: 0 }, isFetched: countsFetched } = useDashboardCounts()
-  const { data: sentOffersData = [], isFetched: sentFetched } = useSentOffers()
-  const { data: receivedOffersData = [], isFetched: receivedFetched } = useReceivedOffers()
-  const { data: ongoingTradesData = [], isFetched: ongoingFetched } = useOngoingTrades()
+  const { data: sentOffersData = [], isFetched: sentFetched, isLoading: sentOffersLoading } = useSentOffers()
+  const { data: receivedOffersData = [], isFetched: receivedFetched, isLoading: receivedOffersLoading } = useReceivedOffers()
+  const { data: ongoingTradesData = [], isFetched: ongoingFetched, isLoading: ongoingTradesLoading } = useOngoingTrades()
+  const {
+    data: multiWayLoopsData = [],
+    isLoading: multiWayLoopsInitialLoading,
+    isFetched: multiWayLoopsFetched,
+    isFetching: multiWayLoopsFetching,
+    refetch: refetchMultiWayLoops,
+  } = useMultiWayLoops(user?.id)
   const { data: archivedTradesData = [] } = useArchivedTrades()
   const { data: tradeHistoryData = [], isFetched: historyFetched } = useTradeHistory()
 
   // Unified initial loading: true until all critical queries have fetched at least once
   // Once set to false, stays false (via ref) so background refetches never re-trigger loading
   const hasInitiallyLoaded = useRef(false)
-  const allFetched = productsFetched && countsFetched && sentFetched && receivedFetched && ongoingFetched
+  const allFetched = productsFetched && countsFetched && sentFetched && receivedFetched && ongoingFetched && multiWayLoopsFetched
   if (allFetched) hasInitiallyLoaded.current = true
   const initialLoading = !hasInitiallyLoaded.current && !allFetched
 
@@ -139,7 +147,7 @@ const Dashboard: React.FC = () => {
   }, [receivedOffersData])
 
   // Combined loading states
-  const offersLoading = !sentOffersData && !receivedOffersData && !ongoingTradesData
+  const offersLoading = sentOffersLoading && receivedOffersLoading && ongoingTradesLoading
 
   // Initialize from URL ?tab= param immediately so the correct tab is active on first render
   const [activeTab, setActiveTab] = useState(() => {
@@ -181,9 +189,9 @@ const Dashboard: React.FC = () => {
   const tradeHistory = tradeHistoryData
 
   // Loading states from React Query
-  const sentLoading = false // React Query handles this internally
-  const receivedLoading = false
-  const ongoingLoading = false
+  const sentLoading = sentOffersLoading
+  const receivedLoading = receivedOffersLoading
+  const ongoingLoading = ongoingTradesLoading || multiWayLoopsInitialLoading
   const tradeHistoryLoading = false
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
   const [offersSubTab, setOffersSubTab] = useState(2) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing, 4: Archive
@@ -219,7 +227,6 @@ const Dashboard: React.FC = () => {
 
   // Multi-way trade state
   const [multiWayTrades, setMultiWayTrades] = useState<any[]>([])
-  const [multiWayTradesLoading, setMultiWayTradesLoading] = useState(false)
   const [discoverableLoops, setDiscoverableLoops] = useState<any[]>([])
   const [discoverableLoading, setDiscoverableLoading] = useState(false)
   const [hoppingInto, setHoppingInto] = useState<string | null>(null)
@@ -311,15 +318,18 @@ const Dashboard: React.FC = () => {
     navigate('/login', { replace: true })
   }, [isAuthenticated, loading, navigate, restoreAuthentication])
 
-  // Fetch multi-way trades when tab is selected
+  // Keep legacy multiway local state synchronized with the dashboard query.
   useEffect(() => {
-    if (user && (activeTab === 1 || activeTab === 2 || activeTab === 3)) {
-      fetchMultiWayTrades()
-      if (activeTab === 3) fetchDiscoverableLoops()
-      const interval = window.setInterval(() => {
-        fetchMultiWayTrades(false)
-      }, 5000)
-      return () => window.clearInterval(interval)
+    setMultiWayTrades(Array.isArray(multiWayLoopsData) ? multiWayLoopsData : [])
+  }, [multiWayLoopsData])
+
+  const multiWayTradesLoading = multiWayLoopsInitialLoading || (multiWayLoopsFetching && multiWayTrades.length === 0)
+
+  // Load tab-specific discoverable loops only when needed. Multiway loops used
+  // by Ongoing Trades are fetched immediately by useMultiWayLoops above.
+  useEffect(() => {
+    if (user && activeTab === 3) {
+      fetchDiscoverableLoops()
     }
   }, [user, activeTab])
 
@@ -1035,13 +1045,10 @@ const Dashboard: React.FC = () => {
     }
   }, [getOrFetchMultiWayLoopDetails])
 
-  const fetchMultiWayTrades = async (showLoading = true) => {
+  const fetchMultiWayTrades = async (_showLoading = true) => {
     try {
-      if (showLoading) setMultiWayTradesLoading(true)
-      const response = await api.get('/api/trades/loops', {
-        params: { user_id: user?.id }
-      })
-      const newTrades = response.data?.data || []
+      const result = await refetchMultiWayLoops()
+      const newTrades = Array.isArray(result.data) ? result.data : []
       setMultiWayTrades(newTrades)
       void refreshOpenMultiWayTradeDetails()
       
@@ -1063,8 +1070,6 @@ const Dashboard: React.FC = () => {
       const msg = error?.response?.data?.error || 'Failed to load multi-way trades'
       toast({ id: 'error-load-multi-way-trades', title: 'Error', description: msg, status: 'error' })
       setMultiWayTrades([])
-    } finally {
-      if (showLoading) setMultiWayTradesLoading(false)
     }
   }
 
@@ -2000,25 +2005,6 @@ const Dashboard: React.FC = () => {
   }
 
   const handleBoostProductClick = async (product: Product) => {
-    // Check if user is premium
-    if (!user?.is_premium || user?.premium_tier === 'free') {
-      showPopup({
-        type: 'warning',
-        title: '⭐ Premium Feature',
-        message: 'Boost Listing is a Premium-only feature. Upgrade now to boost your listings to the top of the feed for 3 hours!',
-        confirmText: 'Upgrade to Premium',
-        cancelText: 'Cancel',
-        onConfirm: () => {
-          closePopup()
-          navigate('/premium')
-        },
-        onCancel: () => closePopup(),
-        icon: FaCrown,
-        confirmColorScheme: 'brand'
-      })
-      return
-    }
-
     // Show confirmation dialog with details
     showPopup({
       type: 'info',
@@ -4786,7 +4772,7 @@ const Dashboard: React.FC = () => {
 
                         {/* Ongoing Trades */}
                         <TabPanel px={0}>
-                          {offersLoading ? (
+                          {ongoingLoading ? (
                             <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />

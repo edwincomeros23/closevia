@@ -10,6 +10,7 @@ export const DASHBOARD_QUERY_KEYS = {
   sentOffers: ['dashboard', 'offers', 'sent'] as const,
   receivedOffers: ['dashboard', 'offers', 'received'] as const,
   ongoingTrades: ['dashboard', 'offers', 'ongoing'] as const,
+  multiWayLoops: ['dashboard', 'offers', 'multiwayLoops'] as const,
   archivedTrades: ['dashboard', 'offers', 'archived'] as const,
   tradeHistory: ['dashboard', 'tradeHistory'] as const,
 }
@@ -194,6 +195,29 @@ export const useOngoingTrades = () => {
 
       return Array.from(uniqueTrades.values())
     },
+    staleTime: 1000 * 5,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchInterval: OFFER_REFETCH_INTERVAL_MS,
+    placeholderData: keepPreviousData,
+  })
+}
+
+// Custom hook for multiway/trade-loop rows used by Ongoing Trades and Multi-Way tabs.
+// This intentionally loads alongside regular offer data instead of waiting for
+// the user to open a specific dashboard tab.
+export const useMultiWayLoops = (userId: number | undefined) => {
+  return useQuery({
+    queryKey: [...DASHBOARD_QUERY_KEYS.multiWayLoops, userId],
+    queryFn: async (): Promise<any[]> => {
+      const response = await api.get('/api/trades/loops', {
+        params: userId ? { user_id: userId } : undefined,
+      })
+      return Array.isArray(response.data?.data)
+        ? response.data.data
+        : (Array.isArray(response.data) ? response.data : [])
+    },
+    enabled: !!userId,
     staleTime: 1000 * 5,
     refetchOnMount: true,
     refetchOnWindowFocus: true,

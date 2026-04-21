@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useToast } from '@chakra-ui/react'
 import { api } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
+import { isNotificationAllowed } from '../utils/notificationPreferences'
 
 export interface TradeLoopNotification {
   id: string
@@ -19,6 +21,7 @@ export const useTradeLoopNotifications = () => {
   const [notifications, setNotifications] = useState<TradeLoopNotification[]>([])
   const [isListening, setIsListening] = useState(false)
   const toast = useToast()
+  const { user } = useAuth()
 
   // Subscribe to trade loop notifications via SSE or polling
   const notificationsRef = useRef<TradeLoopNotification[]>([])
@@ -46,6 +49,7 @@ export const useTradeLoopNotifications = () => {
           )
           // Show toast for new trade loop notifications
           newNotifications.forEach((notif) => {
+            if (!isNotificationAllowed((user as any)?.notification_preferences, notif)) return
             const isTradeMatch = Number(notif.participant_count) === 2
             toast({
               id: `trade-loop-${notif.id}`,
@@ -73,7 +77,7 @@ export const useTradeLoopNotifications = () => {
       }
       setIsListening(false)
     }
-  }, [toast])
+  }, [toast, user])
 
   const markAsRead = useCallback(async (notificationId: string) => {
     try {

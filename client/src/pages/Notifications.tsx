@@ -33,6 +33,7 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { getFirstImage } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
+import { isNotificationAllowed } from '../utils/notificationPreferences'
 import { api } from '../services/api'
 import FloatingTab from '../components/FloatingTab'
 
@@ -223,6 +224,7 @@ const Notifications: React.FC = () => {
       // Hide all multiway/loop "Trade Loop Found" notifications — users found
       // these noisy (loop-confirmed, participant-confirmed, mutual-like pending).
       if (n.type === 'trade_loop') return false
+      if (!isNotificationAllowed((user as any)?.notification_preferences, n)) return false
 
       if (!query) return true
       const q = query.toLowerCase()
@@ -244,7 +246,7 @@ const Notifications: React.FC = () => {
 
       return false
     })
-  }, [notifications, query, products])
+  }, [notifications, query, products, user])
 
   const unreadCount = useMemo(() => filtered.filter(n => !n.read).length, [filtered])
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage))

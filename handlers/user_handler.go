@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -40,6 +41,7 @@ func NewUserHandler() *UserHandler {
 	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN home_latitude DOUBLE NULL")
 	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN home_longitude DOUBLE NULL")
 	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN home_address VARCHAR(500) NULL")
+	_, _ = h.db.Exec("ALTER TABLE users ADD COLUMN notification_preferences JSON NULL")
 	return h
 }
 
@@ -929,6 +931,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(verification_rejection_reason, '') AS verification_rejection_reason,
 		        COALESCE(email_notifications_enabled, TRUE) AS email_notifications_enabled,
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
+		        COALESCE(notification_preferences, '{}') AS notification_preferences,
 		        COALESCE(language_preference, 'en') AS language_preference,
 		        COALESCE(premium_tier, 'free') AS premium_tier,
 		        premium_expires_at,
@@ -948,6 +951,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &user.AcademicProgram, &user.YearLevel, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
+		&user.NotificationPreferences,
 		&user.LanguagePreference, &user.PremiumTier, &premiumExpiresAt, &user.Strikes, &user.IsSuspended,
 		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &displayNameChangedAt, &nameChangedAt, &phoneChangedAt, &emailChangedAt, &lastLogin,
 		&user.HomeLatitude, &user.HomeLongitude, &user.HomeAddress,
@@ -1085,6 +1089,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		LanguagePreference        *string  `json:"language_preference"`
 		EmailNotificationsEnabled *bool    `json:"email_notifications_enabled"`
 		PushNotificationsEnabled  *bool    `json:"push_notifications_enabled"`
+		NotificationPreferences   *string  `json:"notification_preferences"`
 		HomeLatitude              *float64 `json:"home_latitude"`
 		HomeLongitude             *float64 `json:"home_longitude"`
 		HomeAddress               *string  `json:"home_address"`
@@ -1299,6 +1304,22 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		args = append(args, *updateData.PushNotificationsEnabled)
 	}
 
+	if updateData.NotificationPreferences != nil {
+		preferences := strings.TrimSpace(*updateData.NotificationPreferences)
+		if preferences == "" {
+			preferences = "{}"
+		}
+		var decoded map[string]bool
+		if err := json.Unmarshal([]byte(preferences), &decoded); err != nil {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Invalid notification preferences",
+			})
+		}
+		query += ", notification_preferences = ?"
+		args = append(args, preferences)
+	}
+
 	if updateData.HomeLatitude != nil {
 		query += ", home_latitude = ?"
 		args = append(args, *updateData.HomeLatitude)
@@ -1335,6 +1356,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS language_preference VARCHAR(10) NULL DEFAULT 'en'")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_notifications_enabled BOOLEAN DEFAULT TRUE")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS push_notifications_enabled BOOLEAN DEFAULT TRUE")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_preferences JSON NULL")
 			// retry update
 			_, err = h.db.Exec(query, args...)
 		}

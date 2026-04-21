@@ -782,10 +782,9 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to check existing trades"})
 	}
 
-	// CHECK PREMIUM LIMITS: Non-premium users are limited to 5 pending offers
-	var isPremium bool
+	// Enforce plan-configured active trade limits.
 	var strikes int
-	_ = h.db.QueryRow("SELECT is_premium, strikes FROM users WHERE id = ?", userID).Scan(&isPremium, &strikes)
+	_ = h.db.QueryRow("SELECT strikes FROM users WHERE id = ?", userID).Scan(&strikes)
 
 	// Strike Ladder Enforcement: 2 strikes = Restricted (cannot post/send new offers)
 	if strikes >= 2 {
@@ -795,14 +794,13 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		})
 	}
 
-	if !isPremium {
+	plan, _ := getUserPlanCapabilities(h.db, userID)
+	activeTradeLimit := getCapInt(plan.Capabilities, "active_trade_limit", 5)
+	if activeTradeLimit > 0 && activeTradeLimit < 999999 {
 		var pendingCount int
-		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE buyer_id = ? AND status = 'pending'", userID).Scan(&pendingCount)
-		if pendingCount >= 5 {
-			return c.Status(403).JSON(models.APIResponse{
-				Success: false,
-				Error:   "Standard users are limited to 5 pending trade offers. Upgrade to Premium for 💎 Unlimited Trade Offers!",
-			})
+		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE buyer_id = ? AND status IN ('pending', 'countered', 'accepted', 'active', 'pending_multiway', 'multiway_active')", userID).Scan(&pendingCount)
+		if pendingCount >= activeTradeLimit {
+			return c.Status(403).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Your current plan (%s) allows up to %d active trade offer(s).", plan.Name, activeTradeLimit)})
 		}
 	}
 
@@ -5767,7 +5765,7 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 
-	loops := []map[string]interface{}{}
+	loops := h.getMultiwayChainSummariesForUser(userID, statusFilter)
 	for rows.Next() {
 		var loopID int
 		var status string
@@ -5803,6 +5801,115 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: loops})
+}
+
+func (h *TradeHandler) getMultiwayChainSummariesForUser(userID int, statusFilter string) []map[string]interface{} {
+	statuses := []string{"pending_user3", "user3_accepted", "accepted", "confirmed", "active", "multiway_active", "ongoing"}
+	switch statusFilter {
+	case "completed":
+		statuses = []string{"completed", "history"}
+	case "cancelled":
+		statuses = []string{"cancelled", "cancelled_due_to_conflict", "broken", "expired", "user3_declined"}
+	}
+
+	placeholders := make([]string, len(statuses))
+	args := []interface{}{userID, userID, userID}
+	for i, status := range statuses {
+		placeholders[i] = "?"
+		args = append(args, status)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT DISTINCT chain_id, original_trade_id, user1_id, user2_id,
+		       COALESCE(user3_id, 0), COALESCE(user3_product_id, 0),
+		       status, updated_at, id
+		FROM multiway_trades
+		WHERE (user1_id = ? OR user2_id = ? OR user3_id = ?)
+		  AND status IN (%s)
+		ORDER BY updated_at DESC
+	`, strings.Join(placeholders, ","))
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		return []map[string]interface{}{}
+	}
+	defer rows.Close()
+
+	loops := []map[string]interface{}{}
+	for rows.Next() {
+		var chainID, status string
+		var originalTradeID, user1ID, user2ID, user3ID, user3ProductID, rowID int
+		var updatedAt time.Time
+		if err := rows.Scan(&chainID, &originalTradeID, &user1ID, &user2ID, &user3ID, &user3ProductID, &status, &updatedAt, &rowID); err != nil {
+			continue
+		}
+		if user3ID == 0 {
+			continue
+		}
+
+		var targetProductID, offeredProductID int
+		_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", originalTradeID).Scan(&targetProductID)
+		_ = h.db.QueryRow("SELECT product_id FROM trade_items WHERE trade_id = ? ORDER BY id ASC LIMIT 1", originalTradeID).Scan(&offeredProductID)
+
+		userNames := h.fetchUserNamesByIDs([]int{user1ID, user2ID, user3ID})
+		productInfo := func(productID int) (string, string) {
+			var title, imageURL string
+			_ = h.db.QueryRow("SELECT COALESCE(title, ''), COALESCE(image_url, '') FROM products WHERE id = ?", productID).Scan(&title, &imageURL)
+			return title, imageURL
+		}
+		user1Title, user1Image := productInfo(offeredProductID)
+		user2Title, user2Image := productInfo(targetProductID)
+		user3Title, user3Image := productInfo(user3ProductID)
+
+		acceptedCount := 0
+		if status == "confirmed" || status == "active" || status == "multiway_active" || status == "ongoing" || status == "completed" || status == "history" {
+			acceptedCount = 3
+		} else if status == "user3_accepted" || status == "accepted" {
+			acceptedCount = 1
+		}
+
+		participants := []map[string]interface{}{
+			{
+				"id": user1ID, "user_id": user1ID, "user_name": userNames[user1ID],
+				"product_id": offeredProductID, "product_title": user1Title, "product_image_url": user1Image,
+				"position_in_loop": 0, "trade_id": originalTradeID, "status": status, "trade_status": status,
+			},
+			{
+				"id": user2ID, "user_id": user2ID, "user_name": userNames[user2ID],
+				"product_id": targetProductID, "product_title": user2Title, "product_image_url": user2Image,
+				"position_in_loop": 1, "trade_id": originalTradeID, "status": status, "trade_status": status,
+			},
+			{
+				"id": user3ID, "user_id": user3ID, "user_name": userNames[user3ID],
+				"product_id": user3ProductID, "product_title": user3Title, "product_image_url": user3Image,
+				"position_in_loop": 2, "trade_id": originalTradeID, "status": status, "trade_status": status,
+			},
+		}
+
+		loops = append(loops, map[string]interface{}{
+			"id":                rowID,
+			"loop_id":           chainID,
+			"chain_id":          chainID,
+			"loop_type":         "multiway_chain",
+			"is_chain":          true,
+			"status":            status,
+			"accepted_count":    acceptedCount,
+			"participant_count": 3,
+			"loop_length":       3,
+			"can_join":          false,
+			"can_decline":       status == "pending_user3" || status == "user3_accepted" || status == "accepted",
+			"participants":      participants,
+			"edges": []map[string]interface{}{
+				{"from_user": user1ID, "to_user": user2ID, "from_user_name": userNames[user1ID], "to_user_name": userNames[user2ID], "product_title": user2Title, "status": status},
+				{"from_user": user2ID, "to_user": user3ID, "from_user_name": userNames[user2ID], "to_user_name": userNames[user3ID], "product_title": user3Title, "status": status},
+				{"from_user": user3ID, "to_user": user1ID, "from_user_name": userNames[user3ID], "to_user_name": userNames[user1ID], "product_title": user1Title, "status": status},
+			},
+			"updated_at":   updatedAt,
+			"completed_at": updatedAt,
+		})
+	}
+
+	return loops
 }
 
 func (h *TradeHandler) getLikeLoopParticipants(loopID int, userID int) ([]map[string]interface{}, []map[string]interface{}, bool, bool) {

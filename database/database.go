@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -338,6 +339,59 @@ func CreateTables() error {
 			setting_value VARCHAR(255) NOT NULL,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 		)`,
+		`CREATE TABLE IF NOT EXISTS premium_plans (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			plan_key VARCHAR(50) NOT NULL UNIQUE,
+			name VARCHAR(120) NOT NULL,
+			description TEXT NULL,
+			tier VARCHAR(20) NOT NULL DEFAULT 'plus',
+			billing_type VARCHAR(20) NOT NULL DEFAULT 'monthly',
+			duration_days INT NOT NULL DEFAULT 30,
+			price DECIMAL(10,2) NOT NULL DEFAULT 0,
+			badge_label VARCHAR(80) NULL,
+			access_scope VARCHAR(40) NOT NULL DEFAULT 'basic',
+			capabilities JSON NULL,
+			is_active BOOLEAN NOT NULL DEFAULT TRUE,
+			sort_order INT NOT NULL DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS premium_features (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			feature_key VARCHAR(80) NOT NULL UNIQUE,
+			label VARCHAR(255) NOT NULL,
+			description TEXT NULL,
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			sort_order INT NOT NULL DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS premium_promotions (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			title VARCHAR(160) NOT NULL,
+			plan_key VARCHAR(50) NULL,
+			discounted_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+			capabilities JSON NULL,
+			overrides_capabilities BOOLEAN NOT NULL DEFAULT FALSE,
+			start_at TIMESTAMP NULL,
+			end_at TIMESTAMP NULL,
+			is_active BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_premium_promos_dates (start_at, end_at),
+			INDEX idx_premium_promos_plan (plan_key)
+		)`,
+		`CREATE TABLE IF NOT EXISTS premium_feature_usage (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			feature_key VARCHAR(80) NOT NULL,
+			usage_month CHAR(7) NOT NULL,
+			usage_count INT NOT NULL DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_premium_feature_usage (user_id, feature_key, usage_month),
+			INDEX idx_premium_usage_user_feature (user_id, feature_key),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS users (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			slug VARCHAR(255) NULL UNIQUE,
@@ -373,6 +427,7 @@ func CreateTables() error {
 			language_preference VARCHAR(10) NULL DEFAULT 'en',
 			email_notifications_enabled BOOLEAN DEFAULT TRUE,
 			push_notifications_enabled BOOLEAN DEFAULT TRUE,
+			notification_preferences JSON NULL,
 			verification_status VARCHAR(50) DEFAULT 'not_verified',
 			school_name VARCHAR(255) NULL,
 			school_email VARCHAR(255) NULL,
@@ -1366,9 +1421,51 @@ func ensureDisputeColumns() {
 
 func ensureAppSettingsDefaults() {
 	// Ensure rider free slots default is present. This powers Task 19/20.
-	_, err := DB.Exec(`INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES ('rider_free_slots_default', '3')`)
+	_, err := DB.Exec(`INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES
+		('rider_free_slots_default', '3'),
+		('premium_enabled', 'true'),
+		('premium_monthly_price', '79'),
+		('premium_yearly_price', '699'),
+		('premium_promo_price', '')`)
 	if err != nil {
 		log.Printf("Warning: failed to seed app_settings defaults: %v", err)
+	}
+	_, err = DB.Exec(`
+		ALTER TABLE premium_plans
+			ADD COLUMN description TEXT NULL,
+			ADD COLUMN badge_label VARCHAR(80) NULL,
+			ADD COLUMN access_scope VARCHAR(40) NOT NULL DEFAULT 'basic',
+			ADD COLUMN capabilities JSON NULL
+	`)
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+		log.Printf("Warning: failed to ensure premium plan capability columns: %v", err)
+	}
+	_, err = DB.Exec(`
+		INSERT IGNORE INTO premium_plans (plan_key, name, description, tier, billing_type, duration_days, price, badge_label, access_scope, capabilities, is_active, sort_order) VALUES
+		('free', 'Free Plan', 'Baseline marketplace access for all users.', 'free', 'free', 0, 0, 'Free', 'basic', '{"listing_limit":10,"active_trade_limit":5,"monthly_boost_limit":0,"free_boost_enabled":false,"priority_listing_visibility":false,"featured_listing_enabled":false,"premium_badge_enabled":false,"premium_profile_styling_enabled":false,"advanced_trade_tools_enabled":false,"analytics_enabled":false,"premium_filters_enabled":false,"priority_support_enabled":false,"wider_visibility_enabled":false,"discovery_priority":1}', true, 0),
+		('plus_monthly', 'Premium Monthly', 'Monthly Plus access.', 'plus', 'monthly', 30, 79, 'Plus', 'enhanced', '{"listing_limit":30,"active_trade_limit":25,"monthly_boost_limit":3,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":false,"wider_visibility_enabled":true,"discovery_priority":2}', true, 10),
+		('plus_yearly', 'Premium Yearly', 'Yearly Plus access.', 'plus', 'yearly', 365, 699, 'Plus', 'enhanced', '{"listing_limit":30,"active_trade_limit":25,"monthly_boost_limit":3,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":false,"wider_visibility_enabled":true,"discovery_priority":2}', true, 20),
+		('pro_monthly', 'Pro Monthly', 'Monthly Pro access with broader visibility.', 'pro', 'monthly', 30, 129, 'Pro', 'broad', '{"listing_limit":999999,"active_trade_limit":999999,"monthly_boost_limit":10,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":true,"wider_visibility_enabled":true,"discovery_priority":3}', true, 30),
+		('pro_yearly', 'Pro Yearly', 'Yearly Pro access with broader visibility.', 'pro', 'yearly', 365, 1099, 'Pro', 'broad', '{"listing_limit":999999,"active_trade_limit":999999,"monthly_boost_limit":10,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":true,"wider_visibility_enabled":true,"discovery_priority":3}', true, 40),
+		('student_promo', 'Student Promo Premium', 'Limited student promo access.', 'plus', 'promo', 30, 49, 'Student Promo', 'enhanced', '{"listing_limit":30,"active_trade_limit":25,"monthly_boost_limit":5,"free_boost_enabled":true,"priority_listing_visibility":true,"featured_listing_enabled":true,"premium_badge_enabled":true,"premium_profile_styling_enabled":true,"advanced_trade_tools_enabled":true,"analytics_enabled":true,"premium_filters_enabled":true,"priority_support_enabled":false,"wider_visibility_enabled":true,"discovery_priority":2}', false, 50)
+	`)
+	if err != nil {
+		log.Printf("Warning: failed to seed premium plans: %v", err)
+	}
+	_, err = DB.Exec(`ALTER TABLE premium_promotions ADD COLUMN capabilities JSON NULL, ADD COLUMN overrides_capabilities BOOLEAN NOT NULL DEFAULT FALSE`)
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+		log.Printf("Warning: failed to ensure premium promotion capability columns: %v", err)
+	}
+	_, err = DB.Exec(`
+		INSERT IGNORE INTO premium_features (feature_key, label, description, enabled, sort_order) VALUES
+		('boosted_listings', 'Boosted listings', 'Premium listings can be boosted for higher marketplace placement.', true, 10),
+		('more_uploads', 'More product uploads', 'Premium members can keep more active listings.', true, 20),
+		('priority_trade_visibility', 'Priority trade visibility', 'Premium members receive stronger trade discovery placement.', true, 30),
+		('premium_badge', 'Premium badge', 'Show premium badges on profiles and listings.', true, 40),
+		('featured_placement', 'Featured placement', 'Eligible listings can appear in featured inventory positions.', true, 50)
+	`)
+	if err != nil {
+		log.Printf("Warning: failed to seed premium features: %v", err)
 	}
 }
 
@@ -1395,6 +1492,7 @@ func ensureUserColumns() {
 		{"department", "VARCHAR(255) NULL"},
 		{"bio", "TEXT NULL"},
 		{"badges", "JSON NULL"},
+		{"notification_preferences", "JSON NULL"},
 		{"latitude", "DECIMAL(10,8) NULL"},
 		{"longitude", "DECIMAL(11,8) NULL"},
 		// School ID verification columns

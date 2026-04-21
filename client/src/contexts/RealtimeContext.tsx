@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from './AuthContext'
 import { useNotification } from './NotificationContext'
 import { api, API_BASE_URL } from '../services/api'
+import { isNotificationAllowed } from '../utils/notificationPreferences'
 
 type RealtimeContextValue = {
   offerCount: number
@@ -60,6 +61,11 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   })
   const [offerCount, setOfferCount] = useState(0)
   const [notificationCount, setNotificationCount] = useState(0)
+  const userNotificationPreferences = (user as any)?.notification_preferences
+
+  const shouldNotify = useCallback((notification: { type?: string; notification_type?: string; message?: string; participant_count?: number | string }) => {
+    return isNotificationAllowed(userNotificationPreferences, notification)
+  }, [userNotificationPreferences])
 
   const getSseBaseUrl = useCallback(() => {
     const configured = (API_BASE_URL || '').replace(/\/$/, '')
@@ -88,6 +94,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // "Trade Loop Found" notifications are hidden, so don't count them either.
       const visibleNotifs = notifs.filter((n: any) => {
         if (n.type === 'trade_loop') return false
+        if (!shouldNotify(n)) return false
         return true
       })
 
@@ -112,7 +119,9 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (refreshCallbacksRef.current.multiway) refreshCallbacksRef.current.multiway()
             if (refreshCallbacksRef.current.multiwayAlert) refreshCallbacksRef.current.multiwayAlert()
           } else {
-            showNotification(newest.message || 'New notification', notifType === 'trade_offer' ? 'success' : 'info')
+            if (shouldNotify(newest)) {
+              showNotification(newest.message || 'New notification', notifType === 'trade_offer' ? 'success' : 'info')
+            }
           }
           if (notifType === 'trade_offer' || notifType === 'trade_update') {
             // Refresh offers/trades tabs when trade updates occur
@@ -130,7 +139,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         seenNotifIdsRef.current = new Set(ids)
       }
     } catch { }
-  }, [user, showNotification])
+  }, [user, showNotification, shouldNotify])
 
   useEffect(() => {
     if (!user) {
@@ -199,7 +208,9 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               if (refreshCallbacksRef.current.multiway) refreshCallbacksRef.current.multiway()
               if (refreshCallbacksRef.current.multiwayAlert) refreshCallbacksRef.current.multiwayAlert()
             } else {
-              showNotification(message || `Trade ${data.status || 'updated'}`, 'info')
+              if (shouldNotify({ notification_type: data.notification_type || 'trade_update', message })) {
+                showNotification(message || `Trade ${data.status || 'updated'}`, 'info')
+              }
             }
             // Invalidate offers/trades cache so updated trade appears immediately
             queryClient.invalidateQueries({ queryKey: ['dashboard'] })
@@ -216,7 +227,9 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case 'trade_loop_broken':
           case 'trade_loop_cancelled':
             if (payload.type !== 'trade_loop_message') {
-              showNotification(message || (payload.type === 'trade_completed' ? 'Trade completed!' : 'Trade updated'), 'success')
+              if (shouldNotify({ notification_type: payload.type, message })) {
+                showNotification(message || (payload.type === 'trade_completed' ? 'Trade completed!' : 'Trade updated'), 'success')
+              }
             }
             // Refresh counts and all relevant tabs
             refreshCounts()
@@ -234,24 +247,34 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               if (refreshCallbacksRef.current.multiway) refreshCallbacksRef.current.multiway()
               if (refreshCallbacksRef.current.multiwayAlert) refreshCallbacksRef.current.multiwayAlert()
             } else if (data.notification_type === 'trade_offer') {
-              showNotification(message || 'New notification', 'success')
+              if (shouldNotify({ notification_type: 'trade_offer', message })) {
+                showNotification(message || 'New notification', 'success')
+              }
               queryClient.invalidateQueries({ queryKey: ['dashboard', 'offers'] })
               if (refreshCallbacksRef.current.receivedOffers) refreshCallbacksRef.current.receivedOffers()
             } else if (data.notification_type === 'trade_update') {
-              showNotification(message || 'Trade updated', 'info')
+              if (shouldNotify({ notification_type: 'trade_update', message })) {
+                showNotification(message || 'Trade updated', 'info')
+              }
               queryClient.invalidateQueries({ queryKey: ['dashboard', 'offers'] })
               if (refreshCallbacksRef.current.receivedOffers) refreshCallbacksRef.current.receivedOffers()
               if (refreshCallbacksRef.current.ongoingTrades) refreshCallbacksRef.current.ongoingTrades()
             } else if (data.notification_type === 'product_sold') {
-              showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
+              if (shouldNotify({ notification_type: data.notification_type, message })) {
+                showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
+              }
               if (refreshCallbacksRef.current.products) refreshCallbacksRef.current.products()
             } else {
-              showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
+              if (shouldNotify({ notification_type: data.notification_type, message })) {
+                showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
+              }
             }
             break
           case 'trade_auto_completed':
             // Trade auto-completed after both reviews submitted
-            showNotification('Trade auto-completed!', 'success')
+            if (shouldNotify({ notification_type: 'trade_update', message: 'Trade auto-completed!' })) {
+              showNotification('Trade auto-completed!', 'success')
+            }
             queryClient.invalidateQueries({ queryKey: ['dashboard'] })
             queryClient.invalidateQueries({ queryKey: ['trades'] })
             refreshCounts()
@@ -277,7 +300,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       es.close()
       esRef.current = null
     }
-  }, [user, getSseBaseUrl])
+  }, [user, getSseBaseUrl, shouldNotify, showNotification, queryClient, refreshCounts])
 
   useEffect(() => { if (user) refreshCounts() }, [user, refreshCounts])
 

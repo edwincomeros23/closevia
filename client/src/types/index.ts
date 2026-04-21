@@ -40,6 +40,9 @@ export interface User {
   password_changed_at?: string
   last_login?: string
   activity_status?: 'active_today' | 'active_this_week' | 'inactive'
+  email_notifications_enabled?: boolean
+  push_notifications_enabled?: boolean
+  notification_preferences?: string
 }
 
 export interface Product {

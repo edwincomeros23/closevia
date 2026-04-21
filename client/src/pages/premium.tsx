@@ -33,6 +33,8 @@ import {
   Th,
   Td,
   TableContainer,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react'
 import {
   FaCrown, FaLink, FaArrowRight, FaCheck, FaRocket,
@@ -76,6 +78,7 @@ const Premium: React.FC = () => {
   const [boostingProduct, setBoostingProduct] = useState<number | null>(null)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
   const [subscriptionLoading, setSubscriptionLoading] = useState(true)
+  const [premiumConfig, setPremiumConfig] = useState<any>({ enabled: true, plans: [], features: [] })
 
   const pageBg = useColorModeValue('#FFFDF1', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -100,6 +103,7 @@ const Premium: React.FC = () => {
   useEffect(() => {
     // Always refresh user on page mount to bust stale localStorage cache
     refreshUser()
+    fetchPremiumConfig()
     fetchLoops()
     fetchSubscriptionData()
     const interval = setInterval(fetchLoops, 30000)
@@ -214,6 +218,25 @@ const Premium: React.FC = () => {
     }
   }
 
+  const fetchPremiumConfig = async () => {
+    try {
+      const response = await api.get('/api/payments/premium-config')
+      if (response.data?.data) setPremiumConfig(response.data.data)
+    } catch (_) {
+      // Keep default pricing if the config endpoint is temporarily unavailable.
+    }
+  }
+
+  const getPlan = (tier: 'plus' | 'pro', billingType: 'monthly' | 'yearly') => {
+    return (premiumConfig?.plans || []).find((p: any) => p.tier === tier && p.billing_type === billingType)
+  }
+
+  const formatPlanPrice = (tier: 'plus' | 'pro', billingType: 'monthly' | 'yearly', fallback: number) => {
+    const plan = getPlan(tier, billingType)
+    const price = plan?.promo_price || plan?.price || fallback
+    return `₱${Number(price).toLocaleString('en-PH')}`
+  }
+
   const fetchUserProducts = async () => {
     if (!user?.id) return
     try {
@@ -268,6 +291,10 @@ const Premium: React.FC = () => {
   }
 
   const handleUpgrade = async (tier: 'plus' | 'pro') => {
+    if (!premiumConfig?.enabled) {
+      toast({ id: 'premium-disabled', title: 'Premium unavailable', description: 'Premium subscriptions are temporarily disabled.', status: 'info', duration: 4000, isClosable: true })
+      return
+    }
     try {
       setUpgrading(tier)
       const plan = isYearly ? 'yearly' : 'monthly'
@@ -717,6 +744,32 @@ const Premium: React.FC = () => {
   const renderLockedContent = () => (
     <VStack spacing={10} align="stretch">
       {/* 3-Tier Pricing Cards */}
+      {!premiumConfig?.enabled && (
+        <Alert status="info" borderRadius="xl">
+          <AlertIcon />
+          Premium subscriptions are temporarily unavailable. Existing premium access remains unchanged.
+        </Alert>
+      )}
+      {(premiumConfig?.features || []).filter((feature: any) => feature.enabled).length > 0 && (
+        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} borderRadius="2xl">
+          <CardBody>
+            <VStack align="stretch" spacing={3}>
+              <Heading size="sm">Premium benefits included</Heading>
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={3}>
+                {(premiumConfig.features || []).filter((feature: any) => feature.enabled).map((feature: any) => (
+                  <HStack key={feature.feature_key} align="start" spacing={2}>
+                    <Icon as={FaCheckCircle} color="green.400" mt={1} />
+                    <Box>
+                      <Text fontWeight="700" fontSize="sm">{feature.label}</Text>
+                      {feature.description && <Text fontSize="xs" color={mutedText}>{feature.description}</Text>}
+                    </Box>
+                  </HStack>
+                ))}
+              </SimpleGrid>
+            </VStack>
+          </CardBody>
+        </Card>
+      )}
       <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} alignItems="stretch">
         {/* ── Free Tier ── */}
         <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} borderRadius="3xl" overflow="hidden" opacity={0.8} h="100%" shadow="sm" transition="all 0.3s" _hover={{ opacity: 1, shadow: 'md' }}>
@@ -776,7 +829,7 @@ const Premium: React.FC = () => {
               <VStack align="start" spacing={0}>
                 <HStack align="baseline" spacing={1}>
                   <Text fontSize="5xl" fontWeight="900" color="blue.600" letterSpacing="tighter">
-                    {isYearly ? '₱699' : '₱79'}
+                    {isYearly ? formatPlanPrice('plus', 'yearly', 699) : formatPlanPrice('plus', 'monthly', 79)}
                   </Text>
                   <Text color={mutedText} fontWeight="600">/ {isYearly ? 'year' : 'month'}</Text>
                 </HStack>
@@ -787,7 +840,7 @@ const Premium: React.FC = () => {
                   </HStack>
                 ) : (
                   <Text fontSize="sm" color={mutedText} fontWeight="600" pt={1}>
-                    or ₱699/year{' '}
+                    or {formatPlanPrice('plus', 'yearly', 699)}/year{' '}
                     <Text as="span" color="green.500" fontWeight="800">save 26%</Text>
                   </Text>
                 )}
@@ -802,7 +855,7 @@ const Premium: React.FC = () => {
                 <Button
                   colorScheme="blue" size="lg" leftIcon={<FaStar />}
                   isLoading={upgrading === 'plus'} onClick={() => handleUpgrade('plus')}
-                  isDisabled={currentTier !== 'free'}
+                  isDisabled={currentTier !== 'free' || !premiumConfig?.enabled || !getPlan('plus', isYearly ? 'yearly' : 'monthly')}
                   w="full"
                   borderRadius="2xl"
                   fontWeight="800"
@@ -844,7 +897,7 @@ const Premium: React.FC = () => {
               <VStack align="start" spacing={0}>
                 <HStack align="baseline" spacing={1}>
                   <Text fontSize="5xl" fontWeight="900" color="purple.600" letterSpacing="tighter">
-                    {isYearly ? '₱1,099' : '₱129'}
+                    {isYearly ? formatPlanPrice('pro', 'yearly', 1099) : formatPlanPrice('pro', 'monthly', 129)}
                   </Text>
                   <Text color={mutedText} fontWeight="600">/ {isYearly ? 'year' : 'month'}</Text>
                 </HStack>
@@ -855,7 +908,7 @@ const Premium: React.FC = () => {
                   </HStack>
                 ) : (
                   <Text fontSize="sm" color={mutedText} fontWeight="600" pt={1}>
-                    or ₱1,099/year{' '}
+                    or {formatPlanPrice('pro', 'yearly', 1099)}/year{' '}
                     <Text as="span" color="green.500" fontWeight="800">save 24%</Text>
                   </Text>
                 )}
@@ -870,7 +923,7 @@ const Premium: React.FC = () => {
                 <Button
                   colorScheme="purple" size="lg" leftIcon={<FaCrown />}
                   isLoading={upgrading === 'pro'} onClick={() => handleUpgrade('pro')}
-                  isDisabled={currentTier === 'pro'}
+                  isDisabled={currentTier === 'pro' || !premiumConfig?.enabled || !getPlan('pro', isYearly ? 'yearly' : 'monthly')}
                   w="full"
                   borderRadius="2xl"
                   fontWeight="800"
@@ -1031,3 +1084,4 @@ const Premium: React.FC = () => {
 }
 
 export default Premium
+

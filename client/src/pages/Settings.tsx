@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Box,
   Container,
@@ -47,8 +47,6 @@ import {
   Tooltip,
   Tabs,
   TabList,
-  TabPanels,
-  TabPanel,
   Tab,
   Alert,
   AlertIcon,
@@ -62,6 +60,12 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { getImageUrl } from '../utils/imageUtils'
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  NotificationPreferenceKey,
+  NotificationPreferences,
+  parseNotificationPreferences,
+} from '../utils/notificationPreferences'
 import VerifiedAvatar from '../components/VerifiedAvatar'
 import FloatingTab from '../components/FloatingTab'
 import {
@@ -82,8 +86,61 @@ import {
   FaGraduationCap,
   FaMobile,
   FaHome,
+  FaExchangeAlt,
+  FaUsers,
+  FaHandshake,
+  FaComments,
+  FaShieldAlt,
+  FaBullhorn,
+  FaCalendarCheck,
+  FaStar,
 } from 'react-icons/fa'
 import { FiSettings, FiSave, FiMapPin } from 'react-icons/fi'
+
+const NOTIFICATION_GROUPS: Array<{
+  title: string
+  description: string
+  items: Array<{
+    key: NotificationPreferenceKey
+    label: string
+    helper: string
+    icon: React.ElementType
+    locked?: boolean
+  }>
+}> = [
+  {
+    title: 'Trading',
+    description: 'Choose which trade events should interrupt you.',
+    items: [
+      { key: 'trade_matches', label: 'Trade match notifications', helper: 'Alerts when an item you listed or want has a promising match.', icon: FaExchangeAlt },
+      { key: 'multiway_trades', label: 'Multiway trade notifications', helper: 'Alerts for loop and multi-person trade opportunities.', icon: FaUsers },
+      { key: 'offers_received', label: 'Offer received notifications', helper: 'Alerts when someone sends you a new offer.', icon: FaHandshake },
+      { key: 'offers_accepted', label: 'Offer accepted notifications', helper: 'Alerts when another user accepts one of your offers.', icon: FaCheckCircle },
+      { key: 'offers_rejected', label: 'Offer rejected notifications', helper: 'Alerts when an offer is declined so you can move on quickly.', icon: FaBell },
+      { key: 'trade_updates', label: 'Ongoing trade updates', helper: 'Status changes, delivery movement, and other active trade progress.', icon: FaCalendarCheck },
+    ],
+  },
+  {
+    title: 'Meetups and messages',
+    description: 'Keep coordination updates separate from marketplace discovery.',
+    items: [
+      { key: 'meetup_updates', label: 'Meetup updates', helper: 'Changes to meetup time, place, participants, or confirmation status.', icon: FaCalendarCheck },
+      { key: 'chat_messages', label: 'Chat message notifications', helper: 'New messages from people you are trading or coordinating with.', icon: FaComments },
+      { key: 'review_reminders', label: 'Review reminders', helper: 'Gentle prompts to review a completed trade.', icon: FaStar },
+    ],
+  },
+  {
+    title: 'Account and system',
+    description: 'Important account notices and platform-wide updates.',
+    items: [
+      { key: 'account_security', label: 'Account/security notifications', helper: 'Verification, password, login, and safety alerts. These stay on to protect your account.', icon: FaShieldAlt, locked: true },
+      { key: 'system_announcements', label: 'System announcements', helper: 'Maintenance, feature updates, and other Clovia platform notices.', icon: FaBullhorn },
+    ],
+  },
+]
+
+const USER_SETTINGS_TABS = ['account', 'education', 'notifications', 'danger'] as const
+const ADMIN_SETTINGS_TABS = ['account', 'notifications', 'danger'] as const
 
 // Fix leaflet icon issues (same as AddProduct)
 // @ts-ignore
@@ -119,7 +176,12 @@ const SettingsPage: React.FC = () => {
   const pageBg = useColorModeValue('#FFFDF1', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+  const mutedTextColor = useColorModeValue('gray.500', 'gray.400')
   const schoolOtpBoxBg = useColorModeValue('gray.50', 'gray.700')
+  const notificationEnabledBorder = useColorModeValue('brand.200', 'brand.700')
+  const notificationEnabledBg = useColorModeValue('brand.50', 'whiteAlpha.100')
+  const notificationDisabledBg = useColorModeValue('white', 'gray.800')
+  const notificationIconBg = useColorModeValue('white', 'gray.700')
   const isMobile = useBreakpointValue({ base: true, md: false })
 
   // Account State
@@ -163,6 +225,9 @@ const SettingsPage: React.FC = () => {
   // Notifications State
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(true)
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(() =>
+    parseNotificationPreferences((user as any)?.notification_preferences)
+  )
   // School ID / COR verification state
   const [verificationStatus, setVerificationStatus] = useState<'not_verified' | 'pending' | 'verified' | 'rejected'>('not_verified')
   const [schoolName, setSchoolName] = useState<string>('')
@@ -186,6 +251,18 @@ const SettingsPage: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [changingPassword, setChangingPassword] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const settingsTabs = useMemo(
+    () => user?.role === 'admin' ? [...ADMIN_SETTINGS_TABS] : [...USER_SETTINGS_TABS],
+    [user?.role]
+  )
+  const getTabKeyFromHash = () => {
+    const hashTab = window.location.hash.replace('#', '').toLowerCase()
+    return settingsTabs.includes(hashTab as typeof settingsTabs[number])
+      ? hashTab as typeof settingsTabs[number]
+      : 'account'
+  }
+  const [activeTabKey, setActiveTabKey] = useState<typeof settingsTabs[number]>(getTabKeyFromHash)
+  const activeTabIndex = Math.max(0, settingsTabs.indexOf(activeTabKey))
 
 
 
@@ -235,6 +312,14 @@ const SettingsPage: React.FC = () => {
     setHasUnsavedChanges(true)
   }
 
+  const updateNotificationPreference = (key: NotificationPreferenceKey, enabled: boolean) => {
+    setNotificationPreferences(prev => ({
+      ...prev,
+      [key]: key === 'account_security' ? true : enabled,
+    }))
+    markFieldDirty('notificationPreferences')
+  }
+
   const resetEditableStateFromUser = (nextUser: any, force = false) => {
     if (!nextUser) return
 
@@ -249,6 +334,7 @@ const SettingsPage: React.FC = () => {
     if (shouldResetAll || !dirty.has('profileImage')) setProfileImage(cleanPicture)
     if (shouldResetAll || !dirty.has('emailNotifications')) setEmailNotifications(nextUser?.email_notifications_enabled ?? true)
     if (shouldResetAll || !dirty.has('pushNotifications')) setPushNotifications(nextUser?.push_notifications_enabled ?? true)
+    if (shouldResetAll || !dirty.has('notificationPreferences')) setNotificationPreferences(parseNotificationPreferences(nextUser?.notification_preferences))
     if (shouldResetAll || !dirty.has('academicProgram')) setAcademicProgram(nextUser?.academic_program || '')
     if (shouldResetAll || !dirty.has('yearLevel')) setYearLevel(nextUser?.year_level || '')
     if (shouldResetAll || !dirty.has('academicBio')) setAcademicBio(nextUser?.bio || '')
@@ -293,7 +379,8 @@ const SettingsPage: React.FC = () => {
       yearLevel !== ((user as any)?.year_level || '') ||
       academicBio !== ((user as any)?.bio || '') ||
       emailNotifications !== ((user as any)?.email_notifications_enabled ?? true) ||
-      pushNotifications !== ((user as any)?.push_notifications_enabled ?? true)
+      pushNotifications !== ((user as any)?.push_notifications_enabled ?? true) ||
+      JSON.stringify(notificationPreferences) !== JSON.stringify(parseNotificationPreferences((user as any)?.notification_preferences))
 
     setHasUnsavedChanges(hasChanges)
   }, [
@@ -306,6 +393,7 @@ const SettingsPage: React.FC = () => {
     academicBio,
     emailNotifications,
     pushNotifications,
+    notificationPreferences,
     user
   ])
 
@@ -318,6 +406,28 @@ const SettingsPage: React.FC = () => {
       return () => clearTimeout(timer)
     }
   }, [saveStatus])
+
+  useEffect(() => {
+    const syncTabFromHash = () => {
+      const hashTab = window.location.hash.replace('#', '').toLowerCase()
+      setActiveTabKey(settingsTabs.includes(hashTab as typeof settingsTabs[number])
+        ? hashTab as typeof settingsTabs[number]
+        : 'account'
+      )
+    }
+
+    syncTabFromHash()
+    window.addEventListener('hashchange', syncTabFromHash)
+    return () => window.removeEventListener('hashchange', syncTabFromHash)
+  }, [settingsTabs])
+
+  const handleSettingsTabChange = (index: number) => {
+    const tabKey = settingsTabs[index]
+    if (tabKey) {
+      setActiveTabKey(tabKey)
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${tabKey}`)
+    }
+  }
 
   useEffect(() => {
     if (resendPhoneCooldown <= 0) return
@@ -775,6 +885,7 @@ const SettingsPage: React.FC = () => {
         year_level: yearLevel.trim(),
         email_notifications_enabled: emailNotifications,
         push_notifications_enabled: pushNotifications,
+        notification_preferences: JSON.stringify(notificationPreferences),
       }
       if (normalizedPhone || phoneChanged) {
         profilePayload.phone = normalizedPhone
@@ -797,6 +908,7 @@ const SettingsPage: React.FC = () => {
         academicBio: academicBio.trim(),
         emailNotifications,
         pushNotifications,
+        notificationPreferences,
       }))
 
       dirtyFieldsRef.current.clear()
@@ -1092,7 +1204,7 @@ const SettingsPage: React.FC = () => {
         <VStack spacing={6} align="stretch">
 
           {/* Tabs Container */}
-          <Tabs variant="unstyled" isLazy>
+          <Tabs variant="unstyled" isLazy index={activeTabIndex} onChange={handleSettingsTabChange}>
 
             {/* Sticky Header Pill */}
             <Box
@@ -1250,9 +1362,10 @@ const SettingsPage: React.FC = () => {
               </TabList>
             </Box>
 
-            <TabPanels mt={6}>
+            <Box mt={6}>
               {/* Profile/Account Tab */}
-              <TabPanel p={0} m={0}>
+              {activeTabKey === 'account' && (
+              <Box p={0} m={0}>
                 <Card
                   bg={cardBg}
                   borderRadius="2xl"
@@ -1673,7 +1786,8 @@ const SettingsPage: React.FC = () => {
                     </VStack>
                   </CardBody>
                 </Card>
-              </TabPanel>
+              </Box>
+              )}
 
               {/* ── Home Address Map Modal ── */}
               <Modal isOpen={isHomeMapOpen} onClose={() => { onHomeMapClose(); setSearchResults([]); setAddressSearch('') }} size="xl" isCentered scrollBehavior="inside">
@@ -1835,8 +1949,9 @@ const SettingsPage: React.FC = () => {
               </Modal>
 
               {/* School ID Verification Section - hidden for admins */}
-              {user?.role !== 'admin' && (
-                <TabPanel p={0} m={0}>
+              {activeTabKey === 'education' && user?.role !== 'admin' && (
+                <Box p={0} m={0}>
+                  <VStack spacing={5} align="stretch">
                   <Card
                     bg={cardBg}
                     borderRadius="2xl"
@@ -2038,11 +2153,106 @@ const SettingsPage: React.FC = () => {
                       </VStack>
                     </CardBody>
                   </Card>
-                </TabPanel>
+                  <Card
+                    bg={cardBg}
+                    borderRadius="2xl"
+                    overflow="hidden"
+                    variant="outline"
+                    borderColor={borderColor}
+                    shadow="sm"
+                  >
+                    <CardHeader pb={3}>
+                      <HStack spacing={3} justify="space-between" flexWrap="wrap" gap={2}>
+                        <HStack spacing={3}>
+                          <Icon as={FaBell} color="brand.500" boxSize={5} />
+                          <Heading size={{ base: 'sm', md: 'md' }}>Education Updates</Heading>
+                        </HStack>
+                        <Badge colorScheme="brand" variant="subtle" borderRadius="full" px={3} py={1}>
+                          Communication defaults
+                        </Badge>
+                      </HStack>
+                    </CardHeader>
+                    <CardBody pt={0}>
+                      <VStack spacing={4} align="stretch">
+                        <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.300')}>
+                          Choose how Clovia can reach you about school verification, student trust signals, and education profile changes.
+                        </Text>
+
+                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                          <Flex
+                            justify="space-between"
+                            align="center"
+                            gap={4}
+                            p={4}
+                            borderWidth="1px"
+                            borderColor={borderColor}
+                            borderRadius="xl"
+                            bg={useColorModeValue('gray.50', 'whiteAlpha.50')}
+                          >
+                            <Box minW={0}>
+                              <FormLabel mb={1}>
+                                <HStack spacing={2}>
+                                  <Icon as={FaEnvelope} color="brand.500" />
+                                  <Text>Email Notifications</Text>
+                                </HStack>
+                              </FormLabel>
+                              <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
+                                Receive school verification and education updates by email.
+                              </Text>
+                            </Box>
+                            <Switch
+                              isChecked={emailNotifications}
+                              onChange={(e) => {
+                                setEmailNotifications(e.target.checked)
+                                markFieldDirty('emailNotifications')
+                              }}
+                              colorScheme="brand"
+                              size="lg"
+                            />
+                          </Flex>
+
+                          <Flex
+                            justify="space-between"
+                            align="center"
+                            gap={4}
+                            p={4}
+                            borderWidth="1px"
+                            borderColor={borderColor}
+                            borderRadius="xl"
+                            bg={useColorModeValue('gray.50', 'whiteAlpha.50')}
+                          >
+                            <Box minW={0}>
+                              <FormLabel mb={1}>
+                                <HStack spacing={2}>
+                                  <Icon as={FaMobile} color="brand.500" />
+                                  <Text>Push Notifications</Text>
+                                </HStack>
+                              </FormLabel>
+                              <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
+                                Receive in-app and browser notices for education-related activity.
+                              </Text>
+                            </Box>
+                            <Switch
+                              isChecked={pushNotifications}
+                              onChange={(e) => {
+                                setPushNotifications(e.target.checked)
+                                markFieldDirty('pushNotifications')
+                              }}
+                              colorScheme="brand"
+                              size="lg"
+                            />
+                          </Flex>
+                        </SimpleGrid>
+                      </VStack>
+                    </CardBody>
+                  </Card>
+                  </VStack>
+                </Box>
               )}
 
               {/* Notifications Section */}
-              <TabPanel p={0} m={0}>
+              {activeTabKey === 'notifications' && (
+              <Box p={0} m={0}>
                 <Card
                   bg={cardBg}
                   borderRadius="2xl"
@@ -2052,69 +2262,112 @@ const SettingsPage: React.FC = () => {
                   shadow="sm"
                 >
                   <CardHeader pb={3}>
-                    <HStack spacing={3}>
-                      <Icon as={FaBell} color="brand.500" boxSize={5} />
-                      <Heading size="md">Notifications</Heading>
+                    <HStack spacing={3} justify="space-between" flexWrap="wrap" gap={2}>
+                      <HStack spacing={3}>
+                        <Icon as={FaBell} color="brand.500" boxSize={5} />
+                        <Box>
+                          <Heading size={{ base: 'sm', md: 'md' }}>Notification Preferences</Heading>
+                          <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                            Fine-tune exactly which Clovia updates you want to receive.
+                          </Text>
+                        </Box>
+                      </HStack>
+                      <Badge colorScheme="green" variant="subtle" borderRadius="full" px={3} py={1}>
+                        {Object.values(notificationPreferences).filter(Boolean).length} enabled
+                      </Badge>
                     </HStack>
                   </CardHeader>
                   <CardBody pt={0}>
-                    <VStack spacing={6} align="stretch">
-                      {/* Email Notifications */}
-                      <Flex justify="space-between" align="center">
+                    <VStack spacing={5} align="stretch">
+                      <Alert status="info" borderRadius="xl">
+                        <AlertIcon />
                         <Box>
-                          <FormLabel mb={1}>
-                            <HStack spacing={2}>
-                              <Icon as={FaEnvelope} />
-                              <Text>Email Notifications</Text>
-                            </HStack>
-                          </FormLabel>
-                          <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
-                            Receive updates and offers via email
-                          </Text>
+                          <AlertTitle fontSize="sm">Granular controls</AlertTitle>
+                          <AlertDescription fontSize="sm">
+                            Turn off one category without muting the rest. Delivery channels live in the Education tab.
+                          </AlertDescription>
                         </Box>
-                        <Switch
-                          isChecked={emailNotifications}
-                          onChange={(e) => {
-                            setEmailNotifications(e.target.checked)
-                            markFieldDirty('emailNotifications')
-                          }}
-                          colorScheme="brand"
-                          size="lg"
-                        />
-                      </Flex>
+                      </Alert>
 
-                      {/* Push Notifications */}
-                      <Flex justify="space-between" align="center">
-                        <Box>
-                          <FormLabel mb={1}>
-                            <HStack spacing={2}>
-                              <Icon as={FaMobile} />
-                              <Text>Push Notifications</Text>
-                            </HStack>
-                          </FormLabel>
-                          <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
-                            Receive in-app and browser notifications
-                          </Text>
+                      {NOTIFICATION_GROUPS.map((group, groupIndex) => (
+                        <Box key={group.title}>
+                          {groupIndex > 0 && <Divider mb={5} />}
+                          <VStack spacing={4} align="stretch">
+                            <Box>
+                              <Heading size="sm">{group.title}</Heading>
+                              <Text fontSize="sm" color={mutedTextColor} mt={1}>
+                                {group.description}
+                              </Text>
+                            </Box>
+
+                            <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={3}>
+                              {group.items.map((item) => {
+                                const ItemIcon = item.icon
+                                return (
+                                  <Flex
+                                    key={item.key}
+                                    justify="space-between"
+                                    align="center"
+                                    gap={4}
+                                    p={{ base: 3, md: 4 }}
+                                    borderWidth="1px"
+                                    borderColor={notificationPreferences[item.key] ? notificationEnabledBorder : borderColor}
+                                    borderRadius="xl"
+                                    bg={notificationPreferences[item.key] ? notificationEnabledBg : notificationDisabledBg}
+                                  >
+                                    <HStack align="start" spacing={3} minW={0}>
+                                      <Flex
+                                        w="36px"
+                                        h="36px"
+                                        align="center"
+                                        justify="center"
+                                        borderRadius="lg"
+                                        bg={notificationIconBg}
+                                        borderWidth="1px"
+                                        borderColor={borderColor}
+                                        flexShrink={0}
+                                      >
+                                        <Icon as={ItemIcon} color="brand.500" boxSize={4} />
+                                      </Flex>
+                                      <Box minW={0}>
+                                        <HStack spacing={2} flexWrap="wrap">
+                                          <Text fontWeight="700" fontSize="sm">{item.label}</Text>
+                                          {item.locked && (
+                                            <Badge colorScheme="orange" variant="subtle" borderRadius="full">
+                                              Required
+                                            </Badge>
+                                          )}
+                                        </HStack>
+                                        <Text fontSize="xs" color={mutedTextColor} mt={1}>
+                                          {item.helper}
+                                        </Text>
+                                      </Box>
+                                    </HStack>
+                                    <Switch
+                                      aria-label={item.label}
+                                      isChecked={notificationPreferences[item.key]}
+                                      isDisabled={item.locked}
+                                      onChange={(e) => updateNotificationPreference(item.key, e.target.checked)}
+                                      colorScheme="brand"
+                                      size="lg"
+                                      flexShrink={0}
+                                    />
+                                  </Flex>
+                                )
+                              })}
+                            </SimpleGrid>
+                          </VStack>
                         </Box>
-                        <Switch
-                          isChecked={pushNotifications}
-                          onChange={(e) => {
-                            setPushNotifications(e.target.checked)
-                            markFieldDirty('pushNotifications')
-                          }}
-                          colorScheme="brand"
-                          size="lg"
-                        />
-                      </Flex>
-
-                      <Divider />
+                      ))}
                     </VStack>
                   </CardBody>
                 </Card>
-              </TabPanel>
+              </Box>
+              )}
 
               {/* Delete Account Section - Subtle but Dangerous */}
-              <TabPanel p={0} m={0}>
+              {activeTabKey === 'danger' && (
+              <Box p={0} m={0}>
                 <Card
                   bg={useColorModeValue('red.50', 'rgba(245, 75, 85, 0.1)')}
                   borderRadius="2xl"
@@ -2150,8 +2403,9 @@ const SettingsPage: React.FC = () => {
                     </VStack>
                   </CardBody>
                 </Card>
-              </TabPanel>
-            </TabPanels>
+              </Box>
+              )}
+            </Box>
           </Tabs>
         </VStack>
       </Container>
@@ -2193,6 +2447,7 @@ const SettingsPage: React.FC = () => {
                       setAcademicBio((user as any)?.bio || '')
                       setEmailNotifications((user as any)?.email_notifications_enabled ?? true)
                       setPushNotifications((user as any)?.push_notifications_enabled ?? true)
+                      setNotificationPreferences(parseNotificationPreferences((user as any)?.notification_preferences))
                     }
                     setHasUnsavedChanges(false)
                     toast({
