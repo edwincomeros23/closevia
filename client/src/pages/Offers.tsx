@@ -300,23 +300,12 @@ const Offers: React.FC = () => {
 
       const errorMsg = error?.response?.data?.error || 'Failed to convert to multi-way'
 
-      // Soft upsell for non-premium users creating loops.
-      if (errorMsg.includes('premium') || error?.response?.status === 403) {
-        toast({
-          id: 'error-convert-multiway-premium',
-          title: 'Pro members can initiate',
-          description: "You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.",
-          status: 'warning',
-          duration: 5000
-        })
-      } else {
-        toast({
-          id: 'error-convert-multiway',
-          title: 'Error',
-          description: errorMsg,
-          status: 'error'
-        })
-      }
+      toast({
+        id: 'error-convert-multiway',
+        title: 'Error',
+        description: errorMsg,
+        status: 'error'
+      })
     }
   }
 
