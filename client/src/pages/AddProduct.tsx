@@ -631,13 +631,18 @@ const AddProduct: React.FC = () => {
       // Only increment daily counter on failures if we haven't already
       // (safety rejections already increment above)
       incrementDailyCount()
+      const backendMessage = err?.response?.data?.error || err?.message
+      const fallbackMessage = 'No problem! Just click "Continue" and fill in the product details on the next page.'
+      const description = backendMessage
+        ? `${backendMessage} ${fallbackMessage}`
+        : fallbackMessage
 
       toast({
         id: "addproduct-ai-analysis-failed",
         title: 'AI analysis failed',
-        description: 'No problem! Just click "Continue" and fill in the product details on the next page.',
-        status: 'info',
-        duration: 5000,
+        description,
+        status: backendMessage ? 'warning' : 'info',
+        duration: backendMessage ? 7000 : 5000,
         isClosable: true,
         position: 'top-right',
       })

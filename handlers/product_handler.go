@@ -584,9 +584,6 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 		// Also trigger notifications in the same background operation
 		services.TriggerSmartNotifications(h.db, int(productID), userID, title, category)
-		NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(int(productID))
-		// DISABLED: Proactive multiway detection was generating excessive trade_loop notifications
-		// NewTradeHandler().FindProactiveMultiwayLoops(int(productID))
 	}()
 	// ========================================================================
 
@@ -2041,18 +2038,6 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 			Success: false,
 			Error:   "Failed to update product",
 		})
-	}
-
-	// Re-trigger multiway search if category/wants fields changed and product is available
-	if p.Status == "available" {
-		for _, f := range updateFields {
-			if strings.Contains(f, "category") || strings.Contains(f, "wants") || strings.Contains(f, "desired_product") {
-				go NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(productID)
-				// DISABLED: Proactive multiway detection was generating excessive trade_loop notifications
-				// go NewTradeHandler().FindProactiveMultiwayLoops(productID)
-				break
-			}
-		}
 	}
 
 	return c.JSON(models.APIResponse{
