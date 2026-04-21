@@ -653,6 +653,8 @@ func CreateTables() error {
 			author_user_id INT NOT NULL,
 			content TEXT NOT NULL,
 			category_tag VARCHAR(120) NOT NULL,
+			image_urls JSON NULL,
+			is_looking_for BOOLEAN NULL DEFAULT FALSE,
 			is_visible_in_org_feed BOOLEAN NOT NULL DEFAULT TRUE,
 			hidden_reason ENUM('member_removed','org_deleted','admin_action') NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1958,6 +1960,27 @@ func ensureMultiwayColumns() {
 			log.Printf("Warning: could not add user2_product_id: %v", err)
 		} else {
 			log.Println("Added user2_product_id to multiway_trades")
+		}
+	}
+
+	// Ensure organization_posts has image_urls and is_looking_for (added after initial schema)
+	var orgPostImageURLsExists int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'organization_posts' AND COLUMN_NAME = 'image_urls'").Scan(&orgPostImageURLsExists)
+	if orgPostImageURLsExists == 0 {
+		if _, err := DB.Exec("ALTER TABLE organization_posts ADD COLUMN image_urls JSON NULL"); err != nil {
+			log.Printf("Warning: could not add image_urls to organization_posts: %v", err)
+		} else {
+			log.Println("Added image_urls to organization_posts")
+		}
+	}
+
+	var orgPostLookingForExists int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'organization_posts' AND COLUMN_NAME = 'is_looking_for'").Scan(&orgPostLookingForExists)
+	if orgPostLookingForExists == 0 {
+		if _, err := DB.Exec("ALTER TABLE organization_posts ADD COLUMN is_looking_for BOOLEAN NULL DEFAULT FALSE"); err != nil {
+			log.Printf("Warning: could not add is_looking_for to organization_posts: %v", err)
+		} else {
+			log.Println("Added is_looking_for to organization_posts")
 		}
 	}
 }

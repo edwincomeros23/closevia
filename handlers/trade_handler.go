@@ -183,6 +183,14 @@ func (h *TradeHandler) applyCancellationPenalty(userID int, wasActive bool) {
 		return
 	}
 
+	// Admin bypass: Admins do not receive strikes for cancellations
+	var role string
+	_ = h.db.QueryRow("SELECT role FROM users WHERE id = ?", userID).Scan(&role)
+	if role == "admin" {
+		log.Printf("ℹ️  [TradeHandler] Admin user %d cancelled an active trade, but strike was bypassed", userID)
+		return
+	}
+
 	// Increment strike counter
 	if _, err := h.db.Exec("UPDATE users SET strikes = COALESCE(strikes, 0) + 1 WHERE id = ?", userID); err != nil {
 		log.Printf("applyCancellationPenalty: failed to increment strikes for user %d: %v", userID, err)
@@ -834,14 +842,18 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	// Enforce plan-configured active trade limits.
 	var strikes int
-	_ = h.db.QueryRow("SELECT strikes FROM users WHERE id = ?", userID).Scan(&strikes)
+	var role string
+	_ = h.db.QueryRow("SELECT strikes, role FROM users WHERE id = ?", userID).Scan(&strikes, &role)
 
 	// Strike Ladder Enforcement: 2 strikes = Restricted (cannot post/send new offers)
-	if strikes >= 2 {
+	// Admin bypass: Admins are never restricted by strikes
+	if strikes >= 2 && role != "admin" {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Account Restricted: You cannot send new trade offers because you have 2 or more strikes. You can still finish your ongoing trades.",
 		})
+	} else if strikes >= 2 && role == "admin" {
+		log.Printf("⚠️  [CreateTrade] Admin user %d has %d strikes but is allowed to send trade due to bypass", userID, strikes)
 	}
 
 	plan, _ := getUserPlanCapabilities(h.db, userID)
@@ -4879,14 +4891,6 @@ func (h *TradeHandler) getTradeProductIDsTx(tx *sql.Tx, tradeID int) ([]int, err
 	return productIDs, nil
 }
 
-func (h *TradeHandler) getTradeProductIDs(tradeID int) ([]int, error) {
-	tx, err := h.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	return h.getTradeProductIDsTx(tx, tradeID)
-}
 
 func (h *TradeHandler) ensureProductsTradeableTx(tx *sql.Tx, productIDs []int) error {
 	for _, pid := range productIDs {
@@ -6111,9 +6115,10 @@ func (h *TradeHandler) getMultiwayChainSummariesForUser(userID int, statusFilter
 		user3Title, user3Image := productInfo(user3ProductID)
 
 		acceptedCount := 0
-		if status == "confirmed" || status == "active" || status == "multiway_active" || status == "ongoing" || status == "completed" || status == "history" {
+		switch status {
+		case "confirmed", "active", "multiway_active", "ongoing", "completed", "history":
 			acceptedCount = 3
-		} else if status == "user3_accepted" || status == "accepted" {
+		case "user3_accepted", "accepted":
 			acceptedCount = 1
 		}
 
