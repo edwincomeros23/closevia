@@ -801,32 +801,24 @@
 {
   "fraud_probability": 0,
   "is_fraud": false,
-  "product_id": 543,
+  "product_id": 546,
   "risk_level": "",
-  "seller_id": 3395,
-  "timestamp": "2026-04-23T02:43:07+08:00"
+  "seller_id": 3392,
+  "timestamp": "2026-04-22T15:36:33-04:00"
 }
 {
   "fraud_probability": 0,
   "is_fraud": false,
-  "product_id": 544,
+  "product_id": 547,
   "risk_level": "",
-  "seller_id": 3395,
-  "timestamp": "2026-04-23T03:16:38+08:00"
+  "seller_id": 3392,
+  "timestamp": "2026-04-22T15:38:57-04:00"
 }
 {
   "fraud_probability": 0,
   "is_fraud": false,
-  "product_id": 545,
+  "product_id": 548,
   "risk_level": "",
-  "seller_id": 3395,
-  "timestamp": "2026-04-23T03:21:01+08:00"
-}
-{
-  "fraud_probability": 0,
-  "is_fraud": false,
-  "product_id": 552,
-  "risk_level": "",
-  "seller_id": 3395,
-  "timestamp": "2026-04-23T05:16:51+08:00"
+  "seller_id": 3392,
+  "timestamp": "2026-04-22T16:00:31-04:00"
 }

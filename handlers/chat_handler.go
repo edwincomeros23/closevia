@@ -129,6 +129,7 @@ func (h *ChatHandler) SendMessage(c *fiber.Ctx) error {
 	if err := c.BodyParser(&p); err != nil {
 		return fiber.ErrBadRequest
 	}
+	p.Content = cleanUserText(p.Content, 2000)
 	if p.ConversationID == 0 || p.Content == "" {
 		return fiber.ErrBadRequest
 	}

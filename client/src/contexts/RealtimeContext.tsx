@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from './AuthContext'
 import { useNotification } from './NotificationContext'
 import { api, API_BASE_URL } from '../services/api'
+import { isAuthInvalid, markAuthInvalid } from '../utils/authEvents'
 import { isNotificationAllowed } from '../utils/notificationPreferences'
 
 type RealtimeContextValue = {
@@ -79,7 +80,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [])
 
   const refreshCounts = useCallback(async () => {
-    if (!user || !token) return
+    if (!user || isAuthInvalid()) return
 
     try {
       // Admin only sees report notifications, so only count those for the badge
@@ -144,7 +145,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [user, token, showNotification, shouldNotify])
 
   useEffect(() => {
-    if (!user || !token) {
+    if (!user) {
       if (streamAbortRef.current) {
         streamAbortRef.current.abort()
         streamAbortRef.current = null
@@ -295,9 +296,14 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const readStream = async () => {
       try {
         const response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          credentials: 'include',
           signal: controller.signal,
         })
+        if (response.status === 401) {
+          markAuthInvalid('unauthorized')
+          return
+        }
         if (!response.ok || !response.body) return
 
         const reader = response.body.getReader()
@@ -337,11 +343,11 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [user, token, getSseBaseUrl, shouldNotify, showNotification, queryClient, refreshCounts])
 
-  useEffect(() => { if (user && token) refreshCounts() }, [user, token, refreshCounts])
+  useEffect(() => { if (user) refreshCounts() }, [user, token, refreshCounts])
 
   // Polling fallback when SSE may not deliver (e.g. tab backgrounded, connection issues)
   useEffect(() => {
-    if (!user || !token) return
+    if (!user) return
     const interval = setInterval(refreshCounts, POLL_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [user, token, refreshCounts])

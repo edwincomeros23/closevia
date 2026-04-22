@@ -669,8 +669,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   }
 
   const handleSubmitReview = async () => {
-    const token = localStorage.getItem('clovia_token')
-    if (!currentUser || !token) {
+    if (!currentUser) {
       toast({
         id: "userprofile-login-required",
         title: 'Login required',
@@ -786,8 +785,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   }
 
   const handleOpenReviewModal = (tradeId?: number) => {
-    const token = localStorage.getItem('clovia_token')
-    if (!currentUser || !token) {
+    if (!currentUser) {
       toast({
         id: "userprofile-login-required-3",
         title: 'Login required',
