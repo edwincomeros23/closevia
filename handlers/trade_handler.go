@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -876,6 +877,80 @@ func uniquePositiveInts(values []int) []int {
 	return out
 }
 
+func normalizeOfferProductIDs(values []int) ([]int, error) {
+	normalized := uniquePositiveInts(values)
+	if len(normalized) != len(values) {
+		return nil, fmt.Errorf("Offered items must be valid and cannot contain duplicates")
+	}
+	return normalized, nil
+}
+
+func validateOptionalWholePesoAmount(amount *float64) error {
+	if amount == nil {
+		return nil
+	}
+	if *amount <= 0 {
+		return fmt.Errorf("Offer money must be greater than 0")
+	}
+	if math.Trunc(*amount) != *amount {
+		return fmt.Errorf("Offer money must be a clean whole PHP amount")
+	}
+	return nil
+}
+
+func (h *TradeHandler) ensureOfferedProductsAvailableForUserTx(tx *sql.Tx, userID int, productIDs []int, excludeTradeID int) error {
+	productIDs = uniquePositiveInts(productIDs)
+	if len(productIDs) == 0 {
+		return nil
+	}
+
+	for _, productID := range productIDs {
+		var ownerID int
+		var status string
+		if err := tx.QueryRow("SELECT seller_id, status FROM products WHERE id = ? FOR UPDATE", productID).Scan(&ownerID, &status); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("One of your offered products was not found")
+			}
+			return fmt.Errorf("Failed to validate offered products")
+		}
+		if ownerID != userID {
+			return fmt.Errorf("You can only offer your own products")
+		}
+		if status != "available" {
+			return fmt.Errorf("One of your offered products is no longer available")
+		}
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(productIDs)), ",")
+	args := make([]interface{}, 0, 1+len(productIDs)*2)
+	args = append(args, excludeTradeID)
+	for _, pid := range productIDs {
+		args = append(args, pid)
+	}
+	for _, pid := range productIDs {
+		args = append(args, pid)
+	}
+
+	var conflictingTradeID int
+	err := tx.QueryRow(fmt.Sprintf(`
+		SELECT t.id
+		FROM trades t
+		LEFT JOIN trade_items ti ON ti.trade_id = t.id
+		WHERE t.id <> ?
+		  AND t.status IN ('pending', 'pending_multiway', 'countered', 'accepted', 'accepted_by_one', 'active', 'ongoing', 'awaiting_confirmation', 'multiway_active')
+		  AND (t.target_product_id IN (%s) OR ti.product_id IN (%s))
+		LIMIT 1
+	`, placeholders, placeholders), args...).Scan(&conflictingTradeID)
+	if err == nil {
+		return fmt.Errorf("One of your selected items is already tied to an active or pending offer")
+	}
+	if err != sql.ErrNoRows {
+		return fmt.Errorf("Failed to check offered item conflicts")
+	}
+
+	return nil
+}
+
 func (h *TradeHandler) productsHaveActiveCommitment(productIDs []int, excludeLoopKey string) bool {
 	valid := uniquePositiveInts(productIDs)
 	if len(valid) == 0 {
@@ -971,6 +1046,14 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	}
 
 	log.Printf("Received trade payload: %+v", payload)
+	if err := validateOptionalWholePesoAmount(payload.OfferedCashAmount); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: err.Error()})
+	}
+	normalizedOfferIDs, err := normalizeOfferProductIDs(payload.OfferedProductIDs)
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: err.Error()})
+	}
+	payload.OfferedProductIDs = normalizedOfferIDs
 	if payload.TargetProductID <= 0 {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid target product ID"})
 	}
@@ -998,7 +1081,7 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	// Check if target product is still available and get selection limit
 	var targetStatus string
 	var maxItems int
-	err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus)
+	err = h.db.QueryRow("SELECT status FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
@@ -1045,7 +1128,7 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	err = h.db.QueryRow(`
 		SELECT id FROM trades
 		WHERE buyer_id = ? AND target_product_id = ?
-		  AND status IN ('pending', 'countered', 'accepted', 'active', 'pending_multiway', 'multiway_active')
+		  AND status IN ('pending', 'pending_multiway', 'countered', 'accepted', 'accepted_by_one', 'active', 'ongoing', 'awaiting_confirmation', 'multiway_active')
 		LIMIT 1
 	`, userID, payload.TargetProductID).Scan(&existingTradeID)
 
@@ -1079,7 +1162,7 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	activeTradeLimit := getCapInt(plan.Capabilities, "active_trade_limit", 5)
 	if activeTradeLimit > 0 && activeTradeLimit < 999999 {
 		var pendingCount int
-		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE buyer_id = ? AND status IN ('pending', 'countered', 'accepted', 'active', 'pending_multiway', 'multiway_active')", userID).Scan(&pendingCount)
+		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE buyer_id = ? AND status IN ('pending', 'pending_multiway', 'countered', 'accepted', 'accepted_by_one', 'active', 'ongoing', 'awaiting_confirmation', 'multiway_active')", userID).Scan(&pendingCount)
 		if pendingCount >= activeTradeLimit {
 			return c.Status(403).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Your current plan (%s) allows up to %d active trade offer(s).", plan.Name, activeTradeLimit)})
 		}
@@ -1093,7 +1176,8 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	// Lookup target product to get seller_id inside the transaction
 	var sellerID int
-	if err := tx.QueryRow("SELECT seller_id FROM products WHERE id = ?", payload.TargetProductID).Scan(&sellerID); err != nil {
+	var lockedTargetStatus string
+	if err := tx.QueryRow("SELECT seller_id, status FROM products WHERE id = ? FOR UPDATE", payload.TargetProductID).Scan(&sellerID, &lockedTargetStatus); err != nil {
 		_ = tx.Rollback()
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
@@ -1104,6 +1188,14 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	if sellerID == userID {
 		_ = tx.Rollback()
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Cannot propose a trade on your own product"})
+	}
+	if lockedTargetStatus != "available" {
+		_ = tx.Rollback()
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This product is no longer available for trading"})
+	}
+	if err := h.ensureOfferedProductsAvailableForUserTx(tx, userID, payload.OfferedProductIDs, 0); err != nil {
+		_ = tx.Rollback()
+		return c.Status(409).JSON(models.APIResponse{Success: false, Error: err.Error()})
 	}
 
 	// Insert trade with all fields in a single robust call
@@ -1138,6 +1230,31 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		if _, err := tx.Exec("INSERT INTO trade_items (trade_id, product_id, offered_by) VALUES (?, ?, 'buyer')", tradeID, pid); err != nil {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to attach offered items"})
+		}
+	}
+
+	// Insert additional target products as seller-side trade items (multi-target bundle)
+	for _, pid := range payload.AdditionalTargetProductIDs {
+		if pid == payload.TargetProductID {
+			continue // skip duplicate of primary target
+		}
+		var addStatus string
+		var addSellerID int
+		if err := tx.QueryRow("SELECT status, seller_id FROM products WHERE id = ?", pid).Scan(&addStatus, &addSellerID); err != nil {
+			_ = tx.Rollback()
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Additional target product not found"})
+		}
+		if addSellerID != sellerID {
+			_ = tx.Rollback()
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "All target products must belong to the same seller"})
+		}
+		if addStatus != "available" {
+			_ = tx.Rollback()
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "One of the additional target products is no longer available"})
+		}
+		if _, err := tx.Exec("INSERT INTO trade_items (trade_id, product_id, offered_by) VALUES (?, ?, 'seller')", tradeID, pid); err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to attach additional target items"})
 		}
 	}
 
@@ -2298,6 +2415,15 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Only pending offers can be edited"})
 		}
 
+		if err := validateOptionalWholePesoAmount(payload.OfferedCashAmount); err != nil {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: err.Error()})
+		}
+		normalizedOfferIDs, err := normalizeOfferProductIDs(payload.OfferedProductIDs)
+		if err != nil {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: err.Error()})
+		}
+		payload.OfferedProductIDs = normalizedOfferIDs
+
 		hasItems := len(payload.OfferedProductIDs) > 0
 		hasCash := payload.OfferedCashAmount != nil && *payload.OfferedCashAmount > 0
 		if !hasItems && !hasCash {
@@ -2342,6 +2468,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		if lockedStatus != "pending" {
 			_ = tx.Rollback()
 			return c.Status(409).JSON(models.APIResponse{Success: false, Error: "This offer can no longer be edited"})
+		}
+		if err := h.ensureOfferedProductsAvailableForUserTx(tx, userID, payload.OfferedProductIDs, tradeID); err != nil {
+			_ = tx.Rollback()
+			return c.Status(409).JSON(models.APIResponse{Success: false, Error: err.Error()})
 		}
 
 		oldOfferTitlesByID := map[int]string{}
@@ -2465,6 +2595,15 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Your offer changes were saved: "+productTitle)
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, ?, ?)", tradeID, userID, currentStatus, currentStatus, "Offer edited")
 	case "counter":
+		if err := validateOptionalWholePesoAmount(payload.CounterOfferedCashAmount); err != nil {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: err.Error()})
+		}
+		normalizedCounterOfferIDs, err := normalizeOfferProductIDs(payload.CounterOfferedProductIDs)
+		if err != nil {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: err.Error()})
+		}
+		payload.CounterOfferedProductIDs = normalizedCounterOfferIDs
+
 		tx, err := h.db.Begin()
 		if err != nil {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
