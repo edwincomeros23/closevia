@@ -293,6 +293,10 @@ func CreateTables() error {
 		"tags":                 "JSON NULL",
 		"boosted_at":           "TIMESTAMP NULL",
 		"view_count":           "INT DEFAULT 0",
+		"location_type":        "VARCHAR(20) DEFAULT 'no_location'",
+		"pickup_latitude":      "DECIMAL(10,8) NULL",
+		"pickup_longitude":     "DECIMAL(11,8) NULL",
+		"pickup_address":       "TEXT NULL",
 	}
 
 	for col, def := range productCols {
@@ -462,6 +466,10 @@ func CreateTables() error {
 			barter_only BOOLEAN DEFAULT FALSE,
 			max_items_per_offer INT DEFAULT 0,
 			location VARCHAR(255),
+			location_type VARCHAR(20) DEFAULT 'no_location',
+			pickup_latitude DECIMAL(10,8) NULL,
+			pickup_longitude DECIMAL(11,8) NULL,
+			pickup_address TEXT NULL,
 			` + "`condition`" + ` VARCHAR(50),
 			suggested_value INT,
 			category VARCHAR(100),
