@@ -2076,6 +2076,48 @@ const AddProduct: React.FC = () => {
           
           <FormControl isRequired isInvalid={!!priceError}>
             <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Asking Price</FormLabel>
+            <Box
+              mb={2}
+              p={3}
+              bg="purple.50"
+              borderRadius="lg"
+              borderLeft="3px solid"
+              borderLeftColor="purple.300"
+            >
+              <Text fontSize="xs" fontWeight="bold" color="purple.800" mb={1}>
+                AI Estimated Value
+              </Text>
+              {(() => {
+                const aiEstimate = formData.estimated_value_min && formData.estimated_value_max && formData.estimated_value_min > 0
+                  ? { min: formData.estimated_value_min, max: formData.estimated_value_max }
+                  : null
+
+                const fallbackEstimate = !aiEstimate && formData.category && formData.condition
+                  ? getBackupPriceEstimate(formData.category, formData.condition)
+                  : null
+
+                const estimate = aiEstimate || fallbackEstimate
+
+                if (!estimate && isGenerating && !aiDone) {
+                  return <Skeleton height="24px" borderRadius="md" />
+                }
+
+                return estimate ? (
+                  <>
+                    <Text fontSize="lg" fontWeight="bold" color={aiEstimate ? 'purple.900' : 'orange.700'}>
+                      ₱{Number(estimate.min).toLocaleString()} – ₱{Number(estimate.max).toLocaleString()}
+                    </Text>
+                    <Text fontSize="10px" color="purple.700" mt={1}>
+                      Use this as a guide when setting your asking price.
+                    </Text>
+                  </>
+                ) : (
+                  <Text fontSize="10px" color="gray.600" fontStyle="italic">
+                    Select a category and condition to see the estimated value.
+                  </Text>
+                )
+              })()}
+            </Box>
             <Input
               placeholder="e.g. 500"
               type="text"
@@ -2150,6 +2192,13 @@ const AddProduct: React.FC = () => {
     })()
 
     const listingDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const aiEstimate = formData.estimated_value_min && formData.estimated_value_max && formData.estimated_value_min > 0
+      ? { min: formData.estimated_value_min, max: formData.estimated_value_max }
+      : null
+    const fallbackEstimate = !aiEstimate && formData.category && formData.condition
+      ? getBackupPriceEstimate(formData.category, formData.condition)
+      : null
+    const estimate = aiEstimate || fallbackEstimate
 
     return (
       <VStack spacing={4} align="stretch">
@@ -2225,6 +2274,15 @@ const AddProduct: React.FC = () => {
 
             {/* Details Grid - Compact */}
             <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={3}>
+              <Box>
+                <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                  Asking Price
+                </Text>
+                <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                  {formData.price && formData.price > 0 ? `P${Number(formData.price).toLocaleString()}` : 'Not set'}
+                </Text>
+              </Box>
+
               <Box>
                 <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
                   Condition
@@ -2305,28 +2363,35 @@ const AddProduct: React.FC = () => {
           textAlign="center"
         >
           <Text fontSize="xs" fontWeight="medium" color="gray.600" mb={1}>
-            Estimated Value (Market Range)
+            AI Estimated Value
           </Text>
-          {isGenerating && !aiDone ? (
-            <Skeleton height="32px" borderRadius="md" />
-          ) : (() => {
+          {(() => {
             const aiEstimate = formData.estimated_value_min && formData.estimated_value_max && formData.estimated_value_min > 0
               ? { min: formData.estimated_value_min, max: formData.estimated_value_max }
               : null
-            
+
             const fallbackEstimate = !aiEstimate && formData.category && formData.condition
               ? getBackupPriceEstimate(formData.category, formData.condition)
               : null
-            
+
             const estimate = aiEstimate || fallbackEstimate
 
+            if (!estimate && isGenerating && !aiDone) {
+              return <Skeleton height="32px" borderRadius="md" />
+            }
+
             return estimate ? (
-              <Heading fontSize="2xl" fontWeight="bold" color={aiEstimate ? 'gray.800' : 'amber.700'}>
-                ₱{Number(estimate.min).toLocaleString()} – ₱{Number(estimate.max).toLocaleString()}
-              </Heading>
+              <>
+                <Heading fontSize="2xl" fontWeight="bold" color={aiEstimate ? 'gray.800' : 'orange.700'}>
+                  ₱{Number(estimate.min).toLocaleString()} – ₱{Number(estimate.max).toLocaleString()}
+                </Heading>
+                <Text fontSize="10px" color="gray.500" mt={1}>
+                  Use this as a guide when setting your asking price.
+                </Text>
+              </>
             ) : (
               <Text fontSize="sm" color="gray.600" fontStyle="italic">
-                Add product details to see estimate
+                Select a category and condition to see the estimated value.
               </Text>
             )
           })()}

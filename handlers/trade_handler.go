@@ -1233,6 +1233,71 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		}
 	}
 
+	autoConfirmed := false
+	reverseTradeID := 0
+	reverseMeetingMismatchTradeID := 0
+	reverseMeetingMismatchType := ""
+	if isPeerToPeerTrade && payload.TradeOption == "meetup" {
+		meetingType := strings.TrimSpace(payload.MeetingType)
+		if meetingType == "" {
+			meetingType = "meetup"
+		}
+		reverseTradeID, autoConfirmed, err = h.findExactReciprocalTradeTx(tx, tradeID, userID, sellerID, payload.TargetProductID, payload.OfferedProductIDs, payload.OfferedCashAmount, meetingType)
+		if err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify reciprocal trade match"})
+		}
+		if autoConfirmed {
+			combinedProductIDs := uniquePositiveInts([]int{payload.TargetProductID, payload.OfferedProductIDs[0]})
+			if err := h.ensureProductsTradeableTx(tx, combinedProductIDs); err != nil {
+				_ = tx.Rollback()
+				return c.Status(409).JSON(models.APIResponse{Success: false, Error: err.Error()})
+			}
+
+			if _, err := tx.Exec(`
+				UPDATE trades
+				SET status = 'active',
+				    buyer_accepted = TRUE,
+				    seller_accepted = TRUE,
+				    updated_at = CURRENT_TIMESTAMP
+				WHERE id IN (?, ?)
+			`, tradeID, reverseTradeID); err != nil {
+				_ = tx.Rollback()
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to auto-confirm reciprocal trade"})
+			}
+
+			if err := h.setProductStatusForTrade(tx, tradeID, "in_trade"); err != nil {
+				_ = tx.Rollback()
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to lock products for reciprocal trade"})
+			}
+
+			if _, err := tx.Exec(`
+				UPDATE trades t
+				LEFT JOIN trade_items ti ON ti.trade_id = t.id
+				SET t.status='cancelled_due_to_conflict',
+				    t.cancellation_reason='Product committed to another trade',
+				    t.cancelled_by=?,
+				    t.cancelled_at=NOW(),
+				    t.buyer_accepted=FALSE,
+				    t.seller_accepted=FALSE,
+				    t.updated_at=CURRENT_TIMESTAMP
+				WHERE t.id NOT IN (?, ?)
+				  AND t.status IN ('pending','countered','pending_multiway','accepted','accepted_by_one')
+				  AND (t.target_product_id IN (?, ?) OR ti.product_id IN (?, ?))
+			`, userID, tradeID, reverseTradeID, combinedProductIDs[0], combinedProductIDs[1], combinedProductIDs[0], combinedProductIDs[1]); err != nil {
+				_ = tx.Rollback()
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to clear conflicting trades"})
+			}
+		}
+		if !autoConfirmed {
+			reverseMeetingMismatchTradeID, reverseMeetingMismatchType, _, err = h.findReciprocalTradeWithDifferentMeetingTypeTx(tx, tradeID, userID, sellerID, payload.TargetProductID, payload.OfferedProductIDs, payload.OfferedCashAmount, meetingType)
+			if err != nil {
+				_ = tx.Rollback()
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify reciprocal trade method mismatch"})
+			}
+		}
+	}
+
 	// Insert additional target products as seller-side trade items (multi-target bundle)
 	for _, pid := range payload.AdditionalTargetProductIDs {
 		if pid == payload.TargetProductID {
@@ -1270,15 +1335,59 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	var productTitle string
 	_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", payload.TargetProductID).Scan(&productTitle)
 	notifMsg := "You received a trade offer from " + buyerName + " for " + productTitle
-	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_offer', ?, FALSE)", sellerID, notifMsg)
-	publishNotification(sellerID, notifMsg, "trade_offer")
+	if autoConfirmed {
+		autoMsgBuyer := "Your trade was automatically confirmed because both sides sent matching offers for " + productTitle
+		autoMsgSeller := buyerName + " sent the exact reverse offer for " + productTitle + ", so the trade was automatically confirmed."
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", userID, autoMsgBuyer)
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, autoMsgSeller)
+		publishNotification(userID, autoMsgBuyer, "trade_update")
+		publishNotification(sellerID, autoMsgSeller, "trade_update")
+		publishToUser(userID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "auto_confirmed": true}})
+		publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": reverseTradeID, "status": "active", "auto_confirmed": true}})
+		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, 'pending', 'active', ?)", tradeID, userID, "Auto-confirmed by exact reciprocal offer")
+		if reverseTradeID > 0 {
+			_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, 'pending', 'active', ?)", reverseTradeID, userID, "Auto-confirmed by exact reciprocal offer")
+		}
+	} else if reverseMeetingMismatchTradeID > 0 {
+		currentMeetingType := strings.TrimSpace(payload.MeetingType)
+		if currentMeetingType == "" {
+			currentMeetingType = "meetup"
+		}
+		formatMeetingType := func(v string) string {
+			switch strings.ToLower(strings.TrimSpace(v)) {
+			case "pickup":
+				return "Pickup"
+			default:
+				return "Meetup"
+			}
+		}
+		mismatchMsgToBuyer := fmt.Sprintf("A reverse offer for %s was found, but it stayed pending because the trade methods do not match: your %s vs their %s.", productTitle, formatMeetingType(currentMeetingType), formatMeetingType(reverseMeetingMismatchType))
+		mismatchMsgToSeller := fmt.Sprintf("%s sent a reverse offer for %s, but it stayed pending because the trade methods do not match: your %s vs their %s.", buyerName, productTitle, formatMeetingType(reverseMeetingMismatchType), formatMeetingType(currentMeetingType))
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", userID, mismatchMsgToBuyer)
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, mismatchMsgToSeller)
+		publishNotification(userID, mismatchMsgToBuyer, "trade_update")
+		publishNotification(sellerID, mismatchMsgToSeller, "trade_update")
+	} else {
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_offer', ?, FALSE)", sellerID, notifMsg)
+		publishNotification(sellerID, notifMsg, "trade_offer")
+	}
 
 	// Ensure chat conversation exists and add a system message
 	convID, _ := ensureConversation(payload.TargetProductID, userID, sellerID)
-	_, _, _ = saveMessage(convID, userID, "Trade offer started for "+productTitle+".")
+	if autoConfirmed {
+		_, _, _ = saveMessage(convID, userID, "Matching reverse offers detected. This trade was automatically confirmed for "+productTitle+".")
+	} else if reverseMeetingMismatchTradeID > 0 {
+		_, _, _ = saveMessage(convID, userID, "A reverse offer was detected for "+productTitle+", but it stayed pending because the selected trade methods do not match.")
+	} else {
+		_, _, _ = saveMessage(convID, userID, "Trade offer started for "+productTitle+".")
+	}
 
 	// Return created trade (items will appear when listing/fetching details)
-	trade := models.Trade{ID: tradeID, BuyerID: userID, SellerID: sellerID, TargetProductID: payload.TargetProductID, Status: "pending", Message: payload.Message, OfferedCash: payload.OfferedCashAmount, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	status := "pending"
+	if autoConfirmed {
+		status = "active"
+	}
+	trade := models.Trade{ID: tradeID, BuyerID: userID, SellerID: sellerID, TargetProductID: payload.TargetProductID, Status: status, Message: payload.Message, OfferedCash: payload.OfferedCashAmount, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 
 	// Realtime notify seller via SSE
 	publishToUser(sellerID, sseEvent{Type: "trade_created", Data: fiber.Map{
@@ -1287,6 +1396,8 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		"target_product_id":   payload.TargetProductID,
 		"message":             payload.Message,
 		"offered_cash_amount": payload.OfferedCashAmount,
+		"status":              status,
+		"auto_confirmed":      autoConfirmed,
 	}})
 
 	return c.Status(201).JSON(models.APIResponse{Success: true, Message: "Trade created", Data: trade})
@@ -5034,6 +5145,89 @@ func (h *TradeHandler) ensureProductsTradeableTx(tx *sql.Tx, productIDs []int) e
 		}
 	}
 	return nil
+}
+
+func (h *TradeHandler) findExactReciprocalTradeTx(tx *sql.Tx, tradeID, buyerID, sellerID, targetProductID int, offeredProductIDs []int, offeredCash *float64, meetingType string) (int, bool, error) {
+	if len(offeredProductIDs) != 1 {
+		return 0, false, nil
+	}
+	if strings.TrimSpace(meetingType) == "" {
+		meetingType = "meetup"
+	}
+
+	myCash := 0.0
+	if offeredCash != nil {
+		myCash = *offeredCash
+	}
+
+	var candidateTradeID int
+	err := tx.QueryRow(`
+		SELECT t.id
+		FROM trades t
+		JOIN trade_items ti ON ti.trade_id = t.id
+		WHERE t.id <> ?
+		  AND t.buyer_id = ?
+		  AND t.seller_id = ?
+		  AND t.target_product_id = ?
+		  AND t.status = 'pending'
+		  AND COALESCE(t.offered_cash_amount, 0) = ?
+		  AND COALESCE(t.meeting_type, 'meetup') = ?
+		  AND ti.offered_by = 'buyer'
+		  AND ti.product_id = ?
+		GROUP BY t.id
+		HAVING COUNT(ti.id) = 1
+		LIMIT 1
+		FOR UPDATE
+	`, tradeID, sellerID, buyerID, offeredProductIDs[0], myCash, meetingType, targetProductID).Scan(&candidateTradeID)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return candidateTradeID, true, nil
+}
+
+func (h *TradeHandler) findReciprocalTradeWithDifferentMeetingTypeTx(tx *sql.Tx, tradeID, buyerID, sellerID, targetProductID int, offeredProductIDs []int, offeredCash *float64, meetingType string) (int, string, bool, error) {
+	if len(offeredProductIDs) != 1 {
+		return 0, "", false, nil
+	}
+	if strings.TrimSpace(meetingType) == "" {
+		meetingType = "meetup"
+	}
+
+	myCash := 0.0
+	if offeredCash != nil {
+		myCash = *offeredCash
+	}
+
+	var candidateTradeID int
+	var candidateMeetingType string
+	err := tx.QueryRow(`
+		SELECT t.id, COALESCE(t.meeting_type, 'meetup')
+		FROM trades t
+		JOIN trade_items ti ON ti.trade_id = t.id
+		WHERE t.id <> ?
+		  AND t.buyer_id = ?
+		  AND t.seller_id = ?
+		  AND t.target_product_id = ?
+		  AND t.status = 'pending'
+		  AND COALESCE(t.offered_cash_amount, 0) = ?
+		  AND COALESCE(t.meeting_type, 'meetup') <> ?
+		  AND ti.offered_by = 'buyer'
+		  AND ti.product_id = ?
+		GROUP BY t.id, COALESCE(t.meeting_type, 'meetup')
+		HAVING COUNT(ti.id) = 1
+		LIMIT 1
+		FOR UPDATE
+	`, tradeID, sellerID, buyerID, offeredProductIDs[0], myCash, meetingType, targetProductID).Scan(&candidateTradeID, &candidateMeetingType)
+	if err == sql.ErrNoRows {
+		return 0, "", false, nil
+	}
+	if err != nil {
+		return 0, "", false, err
+	}
+	return candidateTradeID, candidateMeetingType, true, nil
 }
 
 func (h *TradeHandler) cancelConflictingTradesTx(tx *sql.Tx, winningTradeID int, productIDs []int, actorID int) ([]int, error) {
