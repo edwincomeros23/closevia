@@ -178,13 +178,77 @@ func getCapBool(caps map[string]interface{}, key string, def bool) bool {
 	return def
 }
 
+func defaultCapabilitiesForTier(tier string) map[string]interface{} {
+	switch strings.ToLower(strings.TrimSpace(tier)) {
+	case "pro":
+		return map[string]interface{}{
+			"listing_limit":                   999999,
+			"active_trade_limit":              999999,
+			"monthly_boost_limit":             10,
+			"free_boost_enabled":              true,
+			"featured_listing_enabled":        true,
+			"priority_listing_visibility":     true,
+			"premium_badge_enabled":           true,
+			"premium_profile_styling_enabled": true,
+			"advanced_trade_tools_enabled":    true,
+			"analytics_enabled":               true,
+			"premium_filters_enabled":         true,
+			"priority_support_enabled":        true,
+			"wider_visibility_enabled":        true,
+			"discovery_priority":              3,
+		}
+	case "plus", "promo":
+		return map[string]interface{}{
+			"listing_limit":                   30,
+			"active_trade_limit":              25,
+			"monthly_boost_limit":             3,
+			"free_boost_enabled":              true,
+			"featured_listing_enabled":        true,
+			"priority_listing_visibility":     true,
+			"premium_badge_enabled":           true,
+			"premium_profile_styling_enabled": true,
+			"advanced_trade_tools_enabled":    true,
+			"analytics_enabled":               true,
+			"premium_filters_enabled":         true,
+			"priority_support_enabled":        false,
+			"wider_visibility_enabled":        true,
+			"discovery_priority":              2,
+		}
+	default:
+		return map[string]interface{}{
+			"listing_limit":       10,
+			"active_trade_limit":  5,
+			"monthly_boost_limit": 0,
+			"free_boost_enabled":  false,
+			"discovery_priority":  1,
+		}
+	}
+}
+
+func applyDefaultCapabilities(plan *paymentPremiumPlan) {
+	if plan.Capabilities == nil {
+		plan.Capabilities = map[string]interface{}{}
+	}
+	for key, value := range defaultCapabilitiesForTier(plan.Tier) {
+		if _, ok := plan.Capabilities[key]; !ok {
+			plan.Capabilities[key] = value
+		}
+	}
+}
+
 func getUserPlanCapabilities(db *sql.DB, userID int) (paymentPremiumPlan, error) {
 	var tier string
 	var isPremium bool
-	if err := db.QueryRow("SELECT COALESCE(premium_tier, 'free'), COALESCE(is_premium, false) FROM users WHERE id = ?", userID).Scan(&tier, &isPremium); err != nil {
+	var expiresAt sql.NullTime
+	if err := db.QueryRow("SELECT COALESCE(premium_tier, 'free'), COALESCE(is_premium, false), premium_expires_at FROM users WHERE id = ?", userID).Scan(&tier, &isPremium, &expiresAt); err != nil {
 		return paymentPremiumPlan{}, err
 	}
-	if !isPremium || tier == "" {
+	tier = strings.ToLower(strings.TrimSpace(tier))
+	if tier == "" {
+		tier = "free"
+	}
+	hasActiveTier := tier != "free" && (!expiresAt.Valid || expiresAt.Time.After(time.Now()))
+	if !isPremium && !hasActiveTier {
 		tier = "free"
 	}
 	_, plans, _, err := loadPaymentPremiumConfig(db)
@@ -194,6 +258,7 @@ func getUserPlanCapabilities(db *sql.DB, userID int) (paymentPremiumPlan, error)
 	var fallback *paymentPremiumPlan
 	for i := range plans {
 		if plans[i].Tier == tier && plans[i].IsActive {
+			applyDefaultCapabilities(&plans[i])
 			if plans[i].BillingType == "free" || plans[i].BillingType == "monthly" || plans[i].PlanKey == tier {
 				return plans[i], nil
 			}
@@ -203,9 +268,12 @@ func getUserPlanCapabilities(db *sql.DB, userID int) (paymentPremiumPlan, error)
 		}
 	}
 	if fallback != nil {
+		applyDefaultCapabilities(fallback)
 		return *fallback, nil
 	}
-	return paymentPremiumPlan{Tier: "free", Name: "Free", Capabilities: map[string]interface{}{"listing_limit": 10, "active_trade_limit": 5, "monthly_boost_limit": 0}}, nil
+	plan := paymentPremiumPlan{Tier: "free", Name: "Free", Capabilities: map[string]interface{}{}}
+	applyDefaultCapabilities(&plan)
+	return plan, nil
 }
 
 func parseRemittanceExternalID(externalID string) (paymentID int, riderID int, ok bool) {

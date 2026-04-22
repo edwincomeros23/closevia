@@ -450,13 +450,6 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       // Keep currentFiltersRef in sync for re-fetch on home change
       currentFiltersRef.current = filters
 
-      // Return cached data if available and identical filters + location
-      if (cacheRef.current && cacheRef.current.filters === filterKey) {
-        safeSetProducts(cacheRef.current.products)
-        setHasMore(true)
-        return
-      }
-
       // Return pending request if same request is already in flight
       if (pendingRequestRef.current) {
         return pendingRequestRef.current

@@ -798,3 +798,27 @@
   "seller_id": 3392,
   "timestamp": "2026-04-22T07:18:45-04:00"
 }
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 549,
+  "risk_level": "",
+  "seller_id": 3399,
+  "timestamp": "2026-04-23T04:10:43+08:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 550,
+  "risk_level": "",
+  "seller_id": 3399,
+  "timestamp": "2026-04-23T04:13:58+08:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 551,
+  "risk_level": "",
+  "seller_id": 3399,
+  "timestamp": "2026-04-23T04:24:12+08:00"
+}

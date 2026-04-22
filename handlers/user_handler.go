@@ -1511,30 +1511,6 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: finalURL, Message: "Uploaded"})
 }
 
-func buildAbsoluteURL(c *fiber.Ctx, path string) string {
-	if path == "" {
-		return ""
-	}
-	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		return path
-	}
-	scheme := c.Protocol()
-	if scheme == "" {
-		scheme = "http"
-	}
-	host := c.Hostname()
-	if host == "" {
-		host = c.Get("Host")
-	}
-	if host == "" {
-		host = "localhost:4000"
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	return fmt.Sprintf("%s://%s%s", scheme, host, path)
-}
-
 // ChangePassword allows an authenticated user to change their password.
 // Expects JSON: { current_password, new_password, confirm_password }
 func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {

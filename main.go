@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +44,22 @@ func envBool(key string, defaultVal bool) bool {
 	default:
 		return defaultVal
 	}
+}
+
+func isImageUploadPath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".avif":
+		return true
+	default:
+		return false
+	}
+}
+
+func sendMissingUploadPlaceholder(c *fiber.Ctx) error {
+	c.Set("Content-Type", "image/svg+xml")
+	c.Set("Cache-Control", "public, max-age=300")
+	return c.SendString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480"><rect width="640" height="480" fill="#f3f4f6"/><path d="M150 350h340L385 230l-70 82-45-52z" fill="#d1d5db"/><circle cx="235" cy="180" r="42" fill="#d1d5db"/><text x="320" y="410" text-anchor="middle" font-family="Arial,sans-serif" font-size="26" fill="#6b7280">Image unavailable</text></svg>`)
 }
 
 func main() {
@@ -179,6 +196,25 @@ func main() {
 	})
 
 	// Serve static files (uploads directory)
+	app.Use("/uploads/products", func(c *fiber.Ctx) error {
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
+			return c.Next()
+		}
+		path := c.Path()
+		if !isImageUploadPath(path) {
+			return c.Next()
+		}
+		filename := filepath.Base(path)
+		if filename == "." || filename == string(filepath.Separator) || filename == "" {
+			return c.Next()
+		}
+		localPath := filepath.Join("uploads", "products", filename)
+		if info, err := os.Stat(localPath); err == nil && !info.IsDir() {
+			return c.Next()
+		}
+		log.Printf("Missing product upload %s; serving placeholder", path)
+		return sendMissingUploadPlaceholder(c)
+	})
 	app.Static("/uploads", "./uploads")
 	app.Static("/uploads/products", "./uploads/products")
 
@@ -487,12 +523,12 @@ func main() {
 
 	// Product routes
 	products := api.Group("/products")
-	products.Get("/", productHandler.GetProducts)                         // Public route
-	products.Get("", productHandler.GetProducts)                          // Support no trailing slash
-	products.Get("/user/:id", productHandler.GetUserProducts)             // Public route
-	products.Get("/user/:id/listings", productHandler.GetUserProducts)    // alias for listings
-	products.Get("/search-suggestions", productHandler.SearchSuggestions) // Smart search autocomplete
-	products.Get("/smart-search", aiLimiter, productHandler.SmartSearch)  // AI-powered search
+	products.Get("/", middleware.OptionalAuthMiddleware(), productHandler.GetProducts) // Public route with optional viewer context
+	products.Get("", middleware.OptionalAuthMiddleware(), productHandler.GetProducts)  // Support no trailing slash
+	products.Get("/user/:id", productHandler.GetUserProducts)                          // Public route
+	products.Get("/user/:id/listings", productHandler.GetUserProducts)                 // alias for listings
+	products.Get("/search-suggestions", productHandler.SearchSuggestions)              // Smart search autocomplete
+	products.Get("/smart-search", aiLimiter, productHandler.SmartSearch)               // AI-powered search
 	// Specific routes must come before generic :id route
 	products.Post("/generate-details", aiLimiter, productHandler.GenerateProductDetailsWithAI)
 	products.Post("/check-image-quality", aiLimiter, productHandler.CheckImageQuality)                // Fast image quality check
@@ -706,6 +742,8 @@ func main() {
 	admin.Get("/daily-stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetDailyStats)
 	admin.Get("/stats-by-date", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetStatsByDate)
 	admin.Get("/revenue", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminRevenue)
+	admin.Get("/marketplace-settings", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetMarketplaceSettings)
+	admin.Put("/marketplace-settings", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.UpdateMarketplaceSettings)
 	// Admin user management
 	admin.Get("/users", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.GetUsers)
 	admin.Put("/users/:id/suspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.SuspendUser)

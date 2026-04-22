@@ -622,9 +622,7 @@ const Home: React.FC = () => {
 
   // Component to render product grid with git pull --no-edit injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
-    const filteredProducts = products.filter(
-      (p) => p.status === 'available' && p.seller_id !== user?.id // Hide own products — can't trade with yourself
-    )
+    const filteredProducts = products.filter((p) => p.status === 'available')
 
     // Use the ad injection hook
     const { shouldInsertAdAt, getAdForPosition, getAdIndexAt } = useStudentAdInjection(

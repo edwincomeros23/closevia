@@ -1044,7 +1044,8 @@ const ProductDetail: React.FC = () => {
   const hasListedPrice = Number.isFinite(listedPrice) && listedPrice > 0
   const fairMin = Number(product.estimated_value_min)
   const fairMax = Number(product.estimated_value_max)
-  const hasFairRange = Number.isFinite(fairMin) && Number.isFinite(fairMax) && fairMin > 0 && fairMax > fairMin
+  const canShowEstimate = product.show_estimated_value !== false
+  const hasFairRange = canShowEstimate && Number.isFinite(fairMin) && Number.isFinite(fairMax) && fairMin > 0 && fairMax > fairMin
 
   const belowEstimateThreshold = 0.85
   const isSignificantlyBelowEstimate = hasListedPrice && hasFairRange && listedPrice < fairMin * belowEstimateThreshold
@@ -2270,13 +2271,13 @@ const ProductDetail: React.FC = () => {
                       {product.title}
                     </Text>
                     <Text fontWeight="800" fontSize="xl" color="gray.800" mt={1}>
-                      {product.estimated_value_min && product.estimated_value_max
+                      {canShowEstimate && product.estimated_value_min && product.estimated_value_max
                         ? `₱${(product.estimated_value_min).toLocaleString()}–₱${(product.estimated_value_max).toLocaleString()}`
                         : product.price && product.price > 0
                           ? `₱${product.price.toFixed(2)}`
                           : 'Est. Value Unavailable'}
                     </Text>
-                    {product.estimated_value_min && product.estimated_value_max && (
+                    {canShowEstimate && product.estimated_value_min && product.estimated_value_max && (
                       <Text fontSize="xs" color="purple.600" fontWeight="600" mt={0.5}>
                         📊 Market Range Estimate
                       </Text>

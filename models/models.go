@@ -209,6 +209,7 @@ type Product struct {
 	Condition            string            `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	EstimatedValueMin    *float64          `json:"estimated_value_min,omitempty"`
 	EstimatedValueMax    *float64          `json:"estimated_value_max,omitempty"`
+	ShowEstimatedValue   bool              `json:"show_estimated_value"`
 	SuggestedValue       int               `json:"suggested_value,omitempty"`
 	Value                *float64          `json:"value,omitempty"` // User-defined product value
 	Category             string            `json:"category,omitempty"`
@@ -244,38 +245,40 @@ type Product struct {
 
 // ProductCreate represents data for creating a product
 type ProductCreate struct {
-	Title            string      `json:"title" validate:"required,min=2,max=255"`
-	Description      string      `json:"description"`
-	Price            *float64    `json:"price,omitempty"` // Optional for barter-only items
-	ImageURLs        StringArray `json:"image_urls,omitempty"`
-	Premium          bool        `json:"premium"`
-	AllowBuying      bool        `json:"allow_buying"`
-	BarterOnly       bool        `json:"barter_only"`
-	Location         string      `json:"location,omitempty"`
-	LocationType     string      `json:"location_type,omitempty" validate:"omitempty,oneof=current_location pickup_location no_location"` // Type of product location setting
-	Condition        string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	Category         string      `json:"category,omitempty"`
-	Value            *float64    `json:"value,omitempty"` // User-defined product value
-	BiddingType      string      `json:"bidding_type,omitempty"`
-	MaxItemsPerOffer int         `json:"max_items_per_offer,omitempty"`
+	Title              string      `json:"title" validate:"required,min=2,max=255"`
+	Description        string      `json:"description"`
+	Price              *float64    `json:"price,omitempty"` // Optional for barter-only items
+	ImageURLs          StringArray `json:"image_urls,omitempty"`
+	Premium            bool        `json:"premium"`
+	AllowBuying        bool        `json:"allow_buying"`
+	BarterOnly         bool        `json:"barter_only"`
+	Location           string      `json:"location,omitempty"`
+	LocationType       string      `json:"location_type,omitempty" validate:"omitempty,oneof=current_location pickup_location no_location"` // Type of product location setting
+	Condition          string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category           string      `json:"category,omitempty"`
+	ShowEstimatedValue bool        `json:"show_estimated_value"`
+	Value              *float64    `json:"value,omitempty"` // User-defined product value
+	BiddingType        string      `json:"bidding_type,omitempty"`
+	MaxItemsPerOffer   int         `json:"max_items_per_offer,omitempty"`
 }
 
 // ProductUpdate represents data for updating a product
 type ProductUpdate struct {
-	Title            *string      `json:"title,omitempty" validate:"omitempty,min=2,max=255"`
-	Description      *string      `json:"description,omitempty"`
-	Price            *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
-	ImageURLs        *StringArray `json:"image_urls,omitempty"`
-	Premium          *bool        `json:"premium,omitempty"`
-	Status           *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked suspended deleted"`
-	AllowBuying      *bool        `json:"allow_buying,omitempty"`
-	BarterOnly       *bool        `json:"barter_only,omitempty"`
-	Location         *string      `json:"location,omitempty"`
-	Condition        *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	Category         *string      `json:"category,omitempty"`
-	BiddingType      *string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
-	Value            *float64     `json:"value,omitempty"` // User-defined product value
-	MaxItemsPerOffer *int         `json:"max_items_per_offer,omitempty"`
+	Title              *string      `json:"title,omitempty" validate:"omitempty,min=2,max=255"`
+	Description        *string      `json:"description,omitempty"`
+	Price              *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
+	ImageURLs          *StringArray `json:"image_urls,omitempty"`
+	Premium            *bool        `json:"premium,omitempty"`
+	Status             *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked suspended deleted"`
+	AllowBuying        *bool        `json:"allow_buying,omitempty"`
+	BarterOnly         *bool        `json:"barter_only,omitempty"`
+	Location           *string      `json:"location,omitempty"`
+	Condition          *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category           *string      `json:"category,omitempty"`
+	ShowEstimatedValue *bool        `json:"show_estimated_value,omitempty"`
+	BiddingType        *string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+	Value              *float64     `json:"value,omitempty"` // User-defined product value
+	MaxItemsPerOffer   *int         `json:"max_items_per_offer,omitempty"`
 }
 
 // ProductVote represents a user's vote on a product price

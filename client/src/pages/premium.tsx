@@ -263,15 +263,23 @@ const Premium: React.FC = () => {
       const response = await api.post(`/api/products/boost/${productId}`)
       
       if (response.data?.success) {
+        const boostData = response.data?.data || {}
+        const boostedAt = boostData.boosted_at || new Date().toISOString()
+        const alreadyBoosted = !!boostData.already_boosted
         toast({
           id: 'boost-success',
-          title: '🚀 Boost Successful!',
-          description: `"${productName}" is now boosted and will appear at the top of the feed for the next 3 hours!`,
+          title: alreadyBoosted ? 'Already Boosted' : 'Boost Successful!',
+          description: response.data.message || `"${productName}" is now boosted and will appear at the top of the feed for the next 3 hours!`,
           status: 'success',
           duration: 4000,
           isClosable: true,
         })
-        markProductBoosted(productId, new Date().toISOString())
+        if (boostData.active !== false) {
+          markProductBoosted(productId, boostedAt)
+          setUserProducts((current) =>
+            current.map((p) => p.id === productId ? { ...p, boosted_at: boostedAt } : p)
+          )
+        }
         // Refresh products list to show updated boost status
         fetchUserProducts()
       }

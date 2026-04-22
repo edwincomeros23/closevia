@@ -81,6 +81,7 @@ export interface Product {
   want_count?: number;
   estimated_value_min?: number;
   estimated_value_max?: number;
+  show_estimated_value?: boolean;
   desired_price?: number;
   desired_product?: string;
   wanted_categories?: string[];
@@ -119,6 +120,7 @@ export interface ProductCreate {
   location?: string
   condition: string
   category?: string
+  show_estimated_value?: boolean
   bidding_type?: 'none' | 'blind' | 'open'
   wants?: string
   max_items_per_offer?: number
@@ -136,6 +138,7 @@ export interface ProductUpdate {
   location?: string
   condition?: string
   category?: string
+  show_estimated_value?: boolean
   bidding_type?: 'none' | 'blind' | 'open'
   max_items_per_offer?: number
   wants?: string

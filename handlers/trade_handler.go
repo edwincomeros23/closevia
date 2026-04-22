@@ -26,12 +26,6 @@ type TradeHandler struct {
 // Keep legacy trade-match and multiway helpers compiled and available while the
 // current request flow relies on explicit product likes and persisted loop rows.
 var (
-	_ = mapLoopID
-
-	_ = (*TradeHandler).evaluateAndCreateMultiwaySuggestion
-	_ = (*TradeHandler).autoTriggerMultiwayForTrade
-	_ = (*TradeHandler).autoTriggerMultiwayForNewAvailableProduct
-	_ = (*TradeHandler).fetchTradeTargets
 	_ = (*TradeHandler).findProductBasedMultiwayLoops
 )
 
@@ -529,15 +523,6 @@ func (h *TradeHandler) evaluateLikeLoops(userID int) []string {
 	loopsCreated = append(loopsCreated, h.createLikeCycles(byUser, userID, 5)...)
 
 	return loopsCreated
-}
-
-func mapLoopID(loop map[string]interface{}) string {
-	for _, key := range []string{"loop_id", "chain_id", "id"} {
-		if value, ok := loop[key]; ok {
-			return fmt.Sprintf("%v", value)
-		}
-	}
-	return ""
 }
 
 func (h *TradeHandler) reprocessEligibleLoopsForUser(userID int) []string {
@@ -1200,139 +1185,6 @@ func (h *TradeHandler) CheckForTradeLoops() {
 	}
 }
 
-func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiatorUserID int, triggerSource string) (bool, string, string, services.MultiwayDebugInfo, error) {
-	debug := services.MultiwayDebugInfo{}
-
-	var buyerID, sellerID int
-	var tradeStatus string
-	err := h.db.QueryRow("SELECT buyer_id, seller_id, status FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID, &tradeStatus)
-	if err != nil {
-		return false, "", "Trade not found", debug, err
-	}
-	if tradeStatus != "pending" && tradeStatus != "pending_multiway" {
-		return false, "", "Trade is not eligible for multi-way matching", debug, nil
-	}
-
-	// CHECK FOR MUTUAL 1-ON-1 TRADE (both users invited each other):
-	// If sellerID has already created a trade targeting one of buyerID's products,
-	// this is a completed 1-on-1 match, NOT a multiway opportunity.
-	// Check if sellerID has a trade where they're the buyer and targeting one of buyerID's products
-	var counterTradeID int
-	err = h.db.QueryRow(`
-		SELECT id FROM trades
-		WHERE buyer_id = ? AND seller_id = ? AND status IN ('pending', 'accepted')
-		LIMIT 1
-	`, sellerID, buyerID).Scan(&counterTradeID)
-
-	if err == nil && counterTradeID > 0 {
-		// Found a mutual trade! This is a 1-on-1 match, not multiway
-		log.Printf("[1-on-1 MUTUAL MATCH] Trade %d (User %d -> User %d) matched with reverse trade %d (User %d -> User %d)",
-			tradeID, buyerID, sellerID, counterTradeID, sellerID, buyerID)
-
-		// Clean up any multiway entries that were created for the first trade (if they exist)
-		// This prevents orphaned multiway suggestions from appearing in the tab
-		_, _ = h.db.Exec(`
-			UPDATE multiway_trades
-			SET status = 'broken', cancelled_at = NOW(), updated_at = NOW()
-			WHERE original_trade_id IN (?, ?)
-			AND status IN ('pending_user3', 'pending_initiator_upgrade', 'waiting_acceptance')
-		`, tradeID, counterTradeID)
-
-		// Do NOT search for multiway - mark both trades as matched 1-on-1
-		return false, "accepted", "Mutual 1-on-1 trade detected - not multiway", debug, nil
-	}
-
-	matches, dbg, err := services.FindMultiwayMatchDetailed(h.db, buyerID, sellerID, tradeID, []int{})
-	debug = dbg
-	if err != nil {
-		return false, "", "Failed to run multi-way matcher", debug, err
-	}
-	if len(matches) == 0 {
-		if debug.NoMatchReason != "" {
-			return false, "", debug.NoMatchReason, debug, nil
-		}
-		return false, "", "No available User 3 found in the same category within your price range", debug, nil
-	}
-
-	best := matches[0]
-	chainID := fmt.Sprintf("chain_%d_%d_%d_%d", tradeID, buyerID, sellerID, best.User3ID)
-
-	var existingStatus string
-	err = h.db.QueryRow("SELECT status FROM multiway_trades WHERE chain_id = ?", chainID).Scan(&existingStatus)
-	if err == nil {
-		return false, existingStatus, "Loop suggestion already exists", debug, nil
-	}
-	if err != sql.ErrNoRows {
-		return false, "", "Failed to verify existing loop suggestion", debug, err
-	}
-
-	loopStatus := "pending_user3"
-
-	// Calculate expires_at: 3 days from now for all chains (acceptance window).
-	// All parties must accept within this window or the chain dissolves.
-	expiresTime := time.Now().Add(72 * time.Hour)
-	expiresAt := &expiresTime
-
-	_, err = h.db.Exec(`
-		INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, user3_product_id, status, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, chainID, tradeID, initiatorUserID, buyerID, sellerID, best.User3ID, best.User3ProductID /* user3_trade_id is a product ID alias */, best.User3ProductID, loopStatus, expiresAt)
-	if err != nil {
-		return false, "", "Failed to create loop suggestion", debug, err
-	}
-
-	log.Printf("[MultiWayLoop] Ã¢Å“â€¦ LOOP CREATED: chainID=%s, trade=%d | User1=%d wants-from User2=%d who wants-from User3=%d (%s) | Status=%s",
-		chainID, tradeID, buyerID, sellerID, best.User3ID, best.User3Name, loopStatus)
-
-	// FIX BUG 1: Do NOT lock user3's product here
-	// Product locking should only happen when User3 explicitly accepts the multiway suggestion
-	// This makes multiway detection passive - just a notification/suggestion, not a commitment
-
-	_, _ = h.db.Exec("UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
-
-	// Get details for notification
-	var initiatorName, targetProductTitle, user3ProductTitle string
-	_ = h.db.QueryRow(`
-			SELECT u.name, tp.title, u3p.title
-			FROM users u
-			JOIN products tp ON tp.id = ?
-			JOIN products u3p ON u3p.id = ?
-			WHERE u.id = ?
-		`, best.User3ProductID, best.User1ProductID, initiatorUserID).Scan(&initiatorName, &targetProductTitle, &user3ProductTitle)
-
-	// Notify User 3 with specific details
-	user3Msg := fmt.Sprintf("%s invited you to a loop to trade your %s for their %s", initiatorName, targetProductTitle, best.User1ProductTitle)
-	if user3ProductTitle != "" {
-		user3Msg = fmt.Sprintf("%s invited you to a 3-way loop: %s wants your %s, and you want their %s", initiatorName, targetProductTitle, user3ProductTitle, best.User1ProductTitle)
-	}
-	h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", best.User3ID, user3Msg)
-	publishNotification(best.User3ID, user3Msg)
-
-	// Notify User 1 and User 2
-	msgToOthers := "A multiway loop was found for your trade. Open Multi-way tab to review it."
-	for _, uid := range []int{buyerID, sellerID} {
-		if uid != best.User3ID {
-			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", uid, msgToOthers)
-			publishNotification(uid, msgToOthers)
-		}
-	}
-
-	publishToUser(best.User3ID, sseEvent{Type: "multiway_opportunity", Data: fiber.Map{"chain_id": chainID, "source": triggerSource}})
-	// Clear stale loop cache so the next GetTradeLoops call runs a full query and returns the new invited_chain.
-	// Do NOT rebuild the cache here Ã¢â‚¬â€ rebuildTradeLoopCacheForUsers only knows about graph/auto_multiway loops
-	// and would write an incomplete cache that hides the invited_chain from all parties.
-	_, _ = h.db.Exec("DELETE FROM trade_loop_cache WHERE user_id IN (?, ?, ?)", buyerID, sellerID, best.User3ID)
-	return true, loopStatus, "Multi-way loop found and invites sent", debug, nil
-
-}
-
-func (h *TradeHandler) autoTriggerMultiwayForTrade(tradeID int, _ int, source string) {
-	log.Printf("autoTriggerMultiwayForTrade disabled: trade=%d source=%s. Multiway loops are created only from explicit product likes.", tradeID, source)
-}
-
-func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) {
-	log.Printf("autoTriggerMultiwayForNewAvailableProduct disabled: product=%d. Product creation never creates Multiway loops.", productID)
-}
 func (h *TradeHandler) recordTradeRejectionSignal(tradeID, rejectorUserID, rejectedUserID int, reason string) {
 	var targetProductID int
 	if err := h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID); err != nil {
@@ -1488,44 +1340,6 @@ func (h *TradeHandler) fetchUserNamesByIDs(ids []int) map[int]string {
 }
 
 // tradeTargetInfo holds the target product ID and title for a given trade ID.
-type tradeTargetInfo struct {
-	ProductID    int
-	ProductTitle string
-}
-
-// fetchTradeTargets batches target-product lookups for a set of trade IDs.
-func (h *TradeHandler) fetchTradeTargets(tradeIDs []int) map[int]tradeTargetInfo {
-	result := map[int]tradeTargetInfo{}
-	if len(tradeIDs) == 0 {
-		return result
-	}
-	placeholders := make([]string, len(tradeIDs))
-	args := make([]interface{}, len(tradeIDs))
-	for i, id := range tradeIDs {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	q := fmt.Sprintf(`
-		SELECT t.id, t.target_product_id, COALESCE(p.title, '')
-		FROM trades t
-		LEFT JOIN products p ON p.id = t.target_product_id
-		WHERE t.id IN (%s)
-	`, strings.Join(placeholders, ","))
-	rows, err := h.db.Query(q, args...)
-	if err != nil {
-		return result
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id, pid int
-		var title string
-		if err := rows.Scan(&id, &pid, &title); err == nil {
-			result[id] = tradeTargetInfo{ProductID: pid, ProductTitle: title}
-		}
-	}
-	return result
-}
-
 // buildLoopSuggestionsForUser intentionally returns no inferred loops.
 // Multiway/Trade Match rows are created only from explicit product likes.
 func (h *TradeHandler) buildLoopSuggestionsForUser(_ int) ([]map[string]interface{}, error) {
@@ -5508,6 +5322,8 @@ func (h *TradeHandler) buildCandidateSet(desires string, byCat map[string][]int,
 	}
 	return out
 }
+
+var _ = (*TradeHandler).findProductBasedMultiwayLoops
 
 func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]interface{} {
 	type productInfo struct {
