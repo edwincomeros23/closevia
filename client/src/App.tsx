@@ -140,7 +140,7 @@ const AppContent: React.FC = () => {
         {/* Landing page route - no sidebar or app layout */}
         <Route path="/" element={
           <PageTransition>
-            {localStorage.getItem('has_visited') === 'true' ? <Navigate to="/home" replace /> : <LandingPage />}
+            {localStorage.getItem('has_visited') === 'true' ? <Navigate to="/home" replace /> : <Home />}
           </PageTransition>
         } />
         {/* Always-accessible landing page route (for logo clicks) */}
@@ -346,7 +346,7 @@ function App() {
             <MobileNavProvider>
               <NotificationProvider>
                 <RealtimeProvider>
-                  <Router>
+                  <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                     <ErrorBoundary>
                       <AppContent />
                     </ErrorBoundary>

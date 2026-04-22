@@ -25,6 +25,8 @@ type PaymentHandler struct {
 	db *sql.DB
 }
 
+const paymentProviderUnavailableMessage = "Online payments are temporarily unavailable. Please try again later."
+
 func NewPaymentHandler(db *sql.DB) *PaymentHandler {
 	return &PaymentHandler{db: db}
 }
@@ -335,7 +337,8 @@ func (h *PaymentHandler) CreateRemittanceInvoice(c *fiber.Ctx) error {
 
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	if apiKey == "" {
-		return c.Status(503).JSON(models.APIResponse{Success: false, Error: "Xendit is not configured (missing XENDIT_SECRET_KEY)."})
+		log.Println("Payment provider unavailable: missing XENDIT_SECRET_KEY")
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
 	}
 	xenditClient := xendit.NewClient(apiKey)
 
@@ -396,7 +399,8 @@ func (h *PaymentHandler) CreateRemittanceInvoice(c *fiber.Ctx) error {
 
 	resp, _, execErr := req.Execute()
 	if execErr != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate payment link: " + execErr.Error()})
+		log.Printf("Failed to generate remittance payment link: %v", execErr)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
 	}
 
 	checkoutURL := strings.TrimSpace(resp.InvoiceUrl)
@@ -534,10 +538,10 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 	// Initialize Xendit Client
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	if apiKey == "" {
-		// Avoid a generic 500 here; this is a configuration problem in local/dev.
+		log.Println("Payment provider unavailable: missing XENDIT_SECRET_KEY")
 		return c.Status(503).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Xendit is not configured (missing XENDIT_SECRET_KEY). Use Cash on Delivery or set the key.",
+			Error:   paymentProviderUnavailableMessage,
 		})
 	}
 	xenditClient := xendit.NewClient(apiKey)
@@ -603,10 +607,10 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 	// Execute Request
 	resp, _, execErr := req.Execute()
 	if execErr != nil {
-		fmt.Printf("❌ Xendit Execute Error: %v\n", execErr)
+		log.Printf("Failed to generate trade payment link: %v", execErr)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to generate payment link: " + execErr.Error(),
+			Error:   paymentProviderUnavailableMessage,
 		})
 	}
 
@@ -657,6 +661,10 @@ func (h *PaymentHandler) CreatePremiumInvoice(c *fiber.Ctx) error {
 	h.db.QueryRow("SELECT name, email FROM users WHERE id = ?", userID).Scan(&buyerName, &buyerEmail)
 
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	if apiKey == "" {
+		log.Println("Payment provider unavailable: missing XENDIT_SECRET_KEY")
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
+	}
 	xenditClient := xendit.NewClient(apiKey)
 
 	externalID := fmt.Sprintf("premium_%s_%d", productID, userID)
@@ -698,7 +706,8 @@ func (h *PaymentHandler) CreatePremiumInvoice(c *fiber.Ctx) error {
 
 	resp, _, execErr := req.Execute()
 	if execErr != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: execErr.Error()})
+		log.Printf("Failed to generate premium payment link: %v", execErr)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
 	}
 
 	return c.JSON(fiber.Map{
@@ -730,6 +739,10 @@ func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
 	h.db.QueryRow("SELECT name, email FROM users WHERE id = ?", userID).Scan(&buyerName, &buyerEmail)
 
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	if apiKey == "" {
+		log.Println("Payment provider unavailable: missing XENDIT_SECRET_KEY")
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
+	}
 	xenditClient := xendit.NewClient(apiKey)
 
 	externalID := fmt.Sprintf("boost_%s_%d", productID, userID)
@@ -771,7 +784,8 @@ func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
 
 	resp, _, execErr := req.Execute()
 	if execErr != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: execErr.Error()})
+		log.Printf("Failed to generate boost payment link: %v", execErr)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
 	}
 
 	return c.JSON(fiber.Map{
@@ -842,6 +856,10 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 	description := fmt.Sprintf("Clovia %s Subscription", selected.Name)
 
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	if apiKey == "" {
+		log.Println("Payment provider unavailable: missing XENDIT_SECRET_KEY")
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
+	}
 	xenditClient := xendit.NewClient(apiKey)
 
 	externalID := fmt.Sprintf("user_premium_%s_%s_%d", payload.Tier, payload.Plan, userID)
@@ -882,7 +900,8 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 
 	resp, _, execErr := req.Execute()
 	if execErr != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: execErr.Error()})
+		log.Printf("Failed to generate subscription payment link: %v", execErr)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
 	}
 
 	return c.JSON(fiber.Map{
@@ -1025,9 +1044,14 @@ func (h *PaymentHandler) SyncUserPremiumPayment(c *fiber.Ctx) error {
 	}
 
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	if apiKey == "" {
+		log.Println("Payment provider unavailable: missing XENDIT_SECRET_KEY")
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
+	}
 	status, amount, resolvedExternalID, err := fetchXenditInvoiceByExternalID(apiKey, payload.ExternalID)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to sync payment: " + err.Error()})
+		log.Printf("Failed to sync subscription payment: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to sync payment"})
 	}
 	if resolvedExternalID == "" {
 		resolvedExternalID = payload.ExternalID
@@ -1140,7 +1164,8 @@ func (h *PaymentHandler) SyncTradePayment(c *fiber.Ctx) error {
 
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	if apiKey == "" {
-		return c.Status(503).JSON(models.APIResponse{Success: false, Error: "Xendit is not configured (missing XENDIT_SECRET_KEY)."})
+		log.Println("Payment provider unavailable: missing XENDIT_SECRET_KEY")
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
 	}
 
 	// If we have neither invoice ID (stored) nor external ID (from redirect), we can't sync.
@@ -1172,7 +1197,8 @@ func (h *PaymentHandler) SyncTradePayment(c *fiber.Ctx) error {
 		status, amount, xExternalID, err = fetchXenditInvoiceByID(apiKey, invoiceID.String)
 	}
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to sync payment: " + err.Error()})
+		log.Printf("Failed to sync trade payment: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to sync payment"})
 	}
 	if xExternalID == "" {
 		xExternalID = payload.ExternalID
@@ -1220,7 +1246,8 @@ func (h *PaymentHandler) SyncRemittancePayment(c *fiber.Ctx) error {
 
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	if apiKey == "" {
-		return c.Status(503).JSON(models.APIResponse{Success: false, Error: "Xendit is not configured (missing XENDIT_SECRET_KEY)."})
+		log.Println("Payment provider unavailable: missing XENDIT_SECRET_KEY")
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: paymentProviderUnavailableMessage})
 	}
 
 	var payload struct {
@@ -1244,7 +1271,8 @@ func (h *PaymentHandler) SyncRemittancePayment(c *fiber.Ctx) error {
 
 	status, amount, _, err := fetchXenditInvoiceByExternalID(apiKey, payload.ExternalID)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to sync payment: " + err.Error()})
+		log.Printf("Failed to sync remittance payment: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to sync payment"})
 	}
 
 	paid := status == "PAID" || status == "SETTLED" || status == "COMPLETED" || status == "SUCCEEDED"
@@ -1253,7 +1281,8 @@ func (h *PaymentHandler) SyncRemittancePayment(c *fiber.Ctx) error {
 	}
 
 	if err := h.handleRemittancePaid(payload.ExternalID, amount); err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to apply remittance payment: " + err.Error()})
+		log.Printf("Failed to apply remittance payment: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to apply remittance payment"})
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"paid": true, "status": status, "external_id": payload.ExternalID}})

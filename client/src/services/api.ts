@@ -24,7 +24,7 @@ export const API_BASE_URL = (ENV_API_URL ? normalizeLoopbackBaseUrl(ENV_API_URL)
     : ''
 )
 
-const DEBUG_API = localStorage.getItem('debug_api') === 'true'
+const DEBUG_API = import.meta.env.DEV && localStorage.getItem('debug_api') === 'true'
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -56,18 +56,17 @@ api.interceptors.request.use(
       try {
         const method = (config.method || 'get').toUpperCase()
         const url = `${config.baseURL || ''}${config.url || ''}`
-        // Only log header presence, not full token
         const authHeader = (config.headers['Authorization'] || config.headers['authorization']) as string | undefined
         // eslint-disable-next-line no-console
         console.groupCollapsed(`[API REQUEST] ${method} ${url}`)
         // eslint-disable-next-line no-console
         console.log('Token present:', !!token)
         // eslint-disable-next-line no-console
-        console.log('Authorization header set:', !!authHeader, authHeader ? `${authHeader.slice(0, 20)}…` : '')
+        console.log('Authorization header set:', !!authHeader)
         // eslint-disable-next-line no-console
-        console.log('Params:', config.params)
+        console.log('Has params:', !!config.params)
         // eslint-disable-next-line no-console
-        console.log('Data:', config.data)
+        console.log('Has body:', !!config.data)
         // eslint-disable-next-line no-console
         console.groupEnd()
       } catch { }
@@ -89,8 +88,6 @@ api.interceptors.response.use(
         // eslint-disable-next-line no-console
         console.groupCollapsed(`[API RESPONSE] ${method} ${url} -> ${response.status}`)
         // eslint-disable-next-line no-console
-        console.log('Data:', response.data)
-        // eslint-disable-next-line no-console
         console.groupEnd()
       } catch { }
     }
@@ -110,10 +107,6 @@ api.interceptors.response.use(
         const url = `${cfg?.baseURL || ''}${cfg?.url || ''}`
         // eslint-disable-next-line no-console
         console.groupCollapsed(`[API ERROR] ${method} ${url} -> ${status}`)
-        // eslint-disable-next-line no-console
-        console.log('Response data:', error.response?.data)
-        // eslint-disable-next-line no-console
-        console.log('Headers on request:', cfg?.headers)
         // eslint-disable-next-line no-console
         console.groupEnd()
       } catch { }

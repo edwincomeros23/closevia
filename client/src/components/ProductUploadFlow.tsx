@@ -80,11 +80,9 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
       })
 
       if (response.data.success) {
-        console.log(`🤖 AI Analysis: ${response.data.provider} (${response.data.time_ms}ms)`)
         return response.data
       }
     } catch (error) {
-      console.error('AI analysis failed:', error)
     }
     return null
   }
@@ -112,7 +110,6 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
 
       toast({
         id: "productuploadflow-ai-analysis-complete",
-        title: '✨ AI Analysis Complete',
         description: `Results from ${aiAnalysis.provider} (${aiAnalysis.time_ms}ms)${aiAnalysis.retried ? ' - Used backup AI' : ''}`,
         status: 'success',
         duration: 3,

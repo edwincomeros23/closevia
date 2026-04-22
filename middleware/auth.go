@@ -59,9 +59,6 @@ func AuthMiddleware() fiber.Handler {
 			})
 		}
 
-		// DEBUG LOG: Track which user_id is being extracted from the JWT token
-		log.Printf("✅ [AuthMiddleware] User authenticated - user_id=%d, email=%s", int(userID), email)
-
 		// Store user information in context for later use
 		c.Locals("user_id", int(userID))
 		c.Locals("user_email", email)

@@ -1755,10 +1755,7 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
 	)
 
-	fmt.Printf("🔍 GetUserByID(%d) query result - error: %v\n", userID, err)
 	if err != nil {
-		fmt.Printf("❌ Database error for user %d: %v\n", userID, err)
-		// Return proper error response so we can debug the actual database issue
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(models.APIResponse{
 				Success: false,
@@ -1767,7 +1764,7 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 		}
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Database error: " + err.Error(),
+			Error:   "Failed to load user",
 		})
 	}
 
@@ -1787,9 +1784,6 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	// Convert sql.NullString to regular strings AFTER error check
 	if profilePicture.Valid {
 		user.ProfilePicture = profilePicture.String
-		fmt.Printf("✅ Setting profile_picture for user %d: '%s'\n", userID, profilePicture.String)
-	} else {
-		fmt.Printf("⚠️ profile_picture for user %d is NULL/invalid\n", userID)
 	}
 	if backgroundImage.Valid {
 		user.BackgroundImage = backgroundImage.String
@@ -1824,12 +1818,38 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	}
 	user.ActivityStatus = computeActivityStatus(user.LastLogin)
 
-	// SECURITY: Strip sensitive fields from public profile payload
-	user.Email = ""
+	publicUser := fiber.Map{
+		"id":                  user.ID,
+		"slug":                user.Slug,
+		"name":                user.Name,
+		"verified":            user.Verified,
+		"is_organization":     user.IsOrganization,
+		"org_verified":        user.OrgVerified,
+		"org_name":            user.OrgName,
+		"org_handle":          user.OrgHandle,
+		"org_logo_url":        user.OrgLogoURL,
+		"org_cover_url":       user.OrgCoverURL,
+		"org_category":        user.OrgCategory,
+		"org_website":         user.OrgWebsite,
+		"org_location":        user.OrgLocation,
+		"profile_picture":     user.ProfilePicture,
+		"background_image":    user.BackgroundImage,
+		"background_position": user.BackgroundPosition,
+		"department":          user.Department,
+		"bio":                 user.Bio,
+		"badges":              user.Badges,
+		"verification_status": user.VerificationStatus,
+		"school_name":         user.SchoolName,
+		"created_at":          user.CreatedAt,
+		"updated_at":          user.UpdatedAt,
+		"activity_status":     user.ActivityStatus,
+		"is_premium":          user.IsPremium,
+		"premium_tier":        user.PremiumTier,
+	}
 
 	return c.JSON(models.APIResponse{
 		Success: true,
-		Data:    user,
+		Data:    publicUser,
 	})
 }
 

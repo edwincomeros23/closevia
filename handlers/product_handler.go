@@ -772,7 +772,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		fmt.Println("Error:", err.Error())
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to get product count: " + err.Error(),
+			Error:   "Failed to get product count",
 		})
 	}
 
@@ -860,7 +860,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		fmt.Println("Error:", err.Error())
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to get products: " + err.Error(),
+			Error:   "Failed to get products",
 		})
 	}
 	fmt.Println("✅ [DEBUG] Main products query succeeded, iterating rows")

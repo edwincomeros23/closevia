@@ -53,13 +53,14 @@ export const BatchClaimModal: React.FC<BatchClaimModalProps> = ({
 
   const fetchNearbyAddons = async () => {
     if (!anchorDelivery?.id) return
+    const token = localStorage.getItem('clovia_token') || localStorage.getItem('token')
     
     try {
       setIsLoadingAddons(true)
       const response = await fetch(
         `/api/batches/nearby-addons?anchor_delivery_id=${anchorDelivery.id}`,
         {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         }
       )
       if (!response.ok) throw new Error('Failed to fetch nearby add-ons')
@@ -78,9 +79,11 @@ export const BatchClaimModal: React.FC<BatchClaimModalProps> = ({
   }
 
   const fetchSlotStatus = async () => {
+    const token = localStorage.getItem('clovia_token') || localStorage.getItem('token')
+
     try {
       const response = await fetch('/api/batches/rider-slots', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       if (!response.ok) throw new Error('Failed to fetch slot status')
       const { data } = await response.json()

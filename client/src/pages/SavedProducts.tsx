@@ -85,7 +85,6 @@ const SavedProducts: React.FC = () => {
     if (!token) {
       setLoading(false)
       setError('No authentication token found')
-      console.warn('❌ Saved products fetch failed:\nMessage: No authentication token found')
       return
     }
 
@@ -107,19 +106,11 @@ const SavedProducts: React.FC = () => {
       const axErr = (error as AxiosError) || ({} as AxiosError)
       const msg = (axErr?.message as string) || 'Unknown error'
       const status = axErr?.response?.status
-      const statusText = axErr?.response?.statusText
       const resp = axErr?.response?.data
-      const stack = (error as any)?.stack
 
-      // Structured console output
-      console.error(
-        `❌ Saved products fetch failed:\n` +
-        `Message: ${msg}\n` +
-        `Status: ${status ?? 'N/A'}\n` +
-        `StatusText: ${statusText ?? 'N/A'}\n` +
-        `Response: ${typeof resp === 'string' ? resp : JSON.stringify(resp)}\n` +
-        `Stack: ${stack ?? 'N/A'}`
-      )
+      if (import.meta.env.DEV) {
+        console.warn('Saved products fetch failed', { status, message: msg })
+      }
 
       if (status === 401) {
         setError('Your session has expired. Please log in again.')
@@ -166,8 +157,7 @@ const SavedProducts: React.FC = () => {
         duration: 2000,
         isClosable: true,
       })
-    } catch (error: any) {
-      console.error('Failed to remove saved product:', error)
+    } catch {
       toast({
         id: "savedproducts-error",
         title: 'Error',

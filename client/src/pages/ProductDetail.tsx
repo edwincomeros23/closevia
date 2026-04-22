@@ -122,6 +122,11 @@ const ProductDetail: React.FC = () => {
   const navigate = useNavigate()
   const toast = useToast()
   const { isOpen: isShareOpen, onOpen: onShareOpen, onClose: onShareClose } = useDisclosure()
+  const detailBg = useColorModeValue('white', 'gray.900')
+  const detailText = useColorModeValue('gray.800', 'gray.100')
+  const detailMuted = useColorModeValue('gray.600', 'gray.400')
+  const detailBorder = useColorModeValue('gray.200', 'gray.700')
+  const detailSurface = useColorModeValue('gray.50', 'gray.800')
 
   const handleSetCover = async (imageIndex: number) => {
     if (!product) return
@@ -200,8 +205,10 @@ const ProductDetail: React.FC = () => {
         // Treat 404 (endpoint missing) as non-fatal and use safe defaults
         if (axios.isAxiosError(err)) {
           const status = err.response?.status
-          // eslint-disable-next-line no-console
-          console.debug('Seller stats request failed', { status, url: err.config?.url })
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.debug('Seller stats request failed', { status, url: err.config?.url })
+          }
           if (status === 404) {
             // Provide sensible defaults so UI shows N/A instead of failing
             setSellerStats({ avg_rating: null, positive_percent: null, total_trades: 0, avg_response_time: null })
@@ -232,12 +239,7 @@ const ProductDetail: React.FC = () => {
       if (!product) return
       try {
         const resp = await api.get(`/api/users/${product.seller_id}`)
-        // Debug: log the raw response for troubleshooting missing profile_picture
-        console.log('🔍 Seller profile response:', resp?.data)
         const userData = resp.data?.data as User | undefined
-        console.log('🔍 User data extracted:', userData)
-        console.log('🔍 Profile picture value:', userData?.profile_picture)
-        console.log('🔍 Profile picture type:', typeof userData?.profile_picture)
 
         if (userData) {
           // Normalize profile picture URL if it exists and is not empty
@@ -245,18 +247,15 @@ const ProductDetail: React.FC = () => {
           if (profilePic && typeof profilePic === 'string' && profilePic.trim() !== '' && profilePic !== 'undefined') {
             try {
               const normalizedUrl = getImageUrl(profilePic)
-              console.log('✅ Profile picture URL:', profilePic, '-> Normalized:', normalizedUrl)
               userData.profile_picture = normalizedUrl
             } catch (e) {
               console.error('❌ Failed to normalize profile picture URL:', e)
               userData.profile_picture = undefined
             }
           } else {
-            console.log('⚠️ No valid profile picture found for user:', product.seller_id, '- Value:', profilePic, '- Type:', typeof profilePic)
             userData.profile_picture = undefined
           }
         }
-        console.log('🔍 Final seller profile state:', userData)
         setSellerProfile(userData || null)
       } catch (err) {
         console.error('❌ Failed to load seller profile', err)
@@ -614,7 +613,6 @@ const ProductDetail: React.FC = () => {
       const response = await api.get(`/api/users/saved-products/${product.id}`)
       setIsSaved(response.data.data.isSaved)
     } catch (error) {
-      console.log('API check failed, using localStorage fallback:', error)
       // If API fails, check localStorage as fallback
       const savedProducts = JSON.parse(localStorage.getItem('savedProducts') || '[]')
       setIsSaved(savedProducts.includes(product.id))
@@ -1082,12 +1080,6 @@ const ProductDetail: React.FC = () => {
       estimateGapNote = `Listed at ₱${formatPrice(listedPrice)} - within the estimated fair range.`
     }
   }
-
-  const detailBg = useColorModeValue('white', 'gray.900')
-  const detailText = useColorModeValue('gray.800', 'gray.100')
-  const detailMuted = useColorModeValue('gray.600', 'gray.400')
-  const detailBorder = useColorModeValue('gray.200', 'gray.700')
-  const detailSurface = useColorModeValue('gray.50', 'gray.800')
 
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%" pb={{ base: 20, lg: 6 }}>

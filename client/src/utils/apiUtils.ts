@@ -59,7 +59,9 @@ export const apiCallWithRetry = async <T>(
 
       // Wait before retrying
       const delay = calculateDelay(attempt, retryConfig);
-      console.log(`API call failed, retrying in ${delay}ms (attempt ${attempt + 1}/${retryConfig.maxRetries + 1})`);
+      if (import.meta.env.DEV) {
+        console.log(`API call failed, retrying in ${delay}ms (attempt ${attempt + 1}/${retryConfig.maxRetries + 1})`);
+      }
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }

@@ -448,9 +448,7 @@ const AddProduct: React.FC = () => {
     const fetchApprovedOrganizations = async () => {
       try {
         setIsLoadingOrganizations(true)
-        console.log('📦 [AddProduct] Fetching approved organizations...')
         const response = await api.get('/api/organizations/my-approved')
-        console.log('✅ [AddProduct] Approved organizations loaded:', response.data.data)
         if (response.data.success && response.data.data) {
           setApprovedOrganizations(response.data.data)
         }
@@ -920,13 +918,11 @@ const AddProduct: React.FC = () => {
       // Add organization IDs for tagging
       if (selectedOrganizationIds.length > 0) {
         fd.append('organization_ids', JSON.stringify(selectedOrganizationIds))
-        console.log('📦 [AddProduct] Tagging organizations:', selectedOrganizationIds)
       }
 
       uploadedImages.forEach(f => fd.append('images', f))
       if (uploadedVideo) fd.append('video', uploadedVideo)
 
-      console.log('📤 [AddProduct] Submitting product with organizations:', selectedOrganizationIds.length > 0 ? selectedOrganizationIds : 'none')
       await createProduct(fd)
 
       // Ensure the dashboard shows the new listing immediately after redirect.
@@ -950,9 +946,6 @@ const AddProduct: React.FC = () => {
         id: "addproduct-product-posted", title: 'All set! 🎉', description: 'Your item is now live and visible to others.', status: 'success', position: 'top', duration: 3000, isClosable: true })
       navigate('/dashboard')
     } catch (err: any) {
-      console.error('❌ [AddProduct] Error creating product:', err)
-      console.error('❌ [AddProduct] Response data:', err.response?.data)
-      console.error('❌ [AddProduct] Response status:', err.response?.status)
       let friendlyMsg = 'Something went wrong while saving your item. Please try again.'
       if (err.response?.status === 413) {
         friendlyMsg = 'One or more of your files are too large. Try uploading a smaller image.'

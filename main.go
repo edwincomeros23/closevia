@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/joho/godotenv"
@@ -93,13 +93,17 @@ func main() {
 		WriteBufferSize: 8192,             // 8 KB write buffer
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
+			message := "Internal server error"
 			if e, ok := err.(*fiber.Error); ok {
 				code = e.Code
+				if code < fiber.StatusInternalServerError {
+					message = e.Message
+				}
 			}
-			fmt.Printf("❌ Fiber error handler: %v (path: %s)\n", err, c.Path())
+			log.Printf("Fiber error handler: %v (path: %s)", err, c.Path())
 			return c.Status(code).JSON(fiber.Map{
 				"success": false,
-				"error":   err.Error(),
+				"error":   message,
 			})
 		},
 	})
@@ -136,6 +140,18 @@ func main() {
 	app.Use(func(c *fiber.Ctx) error {
 		if c.Method() == fiber.MethodOptions {
 			return c.SendStatus(fiber.StatusNoContent)
+		}
+		return c.Next()
+	})
+
+	app.Use(func(c *fiber.Ctx) error {
+		path := c.Path()
+		isDebugPath := path == "/test-db" ||
+			path == "/test-trades-db" ||
+			path == "/api/fix-profile-picture" ||
+			strings.HasPrefix(path, "/api/diagnostic/")
+		if isDebugPath && !debugEndpointsEnabled() {
+			return c.SendStatus(fiber.StatusNotFound)
 		}
 		return c.Next()
 	})
@@ -387,15 +403,28 @@ func main() {
 	// Public Activity route
 	api.Get("/activities", activityHandler.GetRecentActivity)
 
+	authLimiter := limiter.New(limiter.Config{
+		Max:        30,
+		Expiration: time.Minute,
+	})
+	aiLimiter := limiter.New(limiter.Config{
+		Max:        30,
+		Expiration: time.Minute,
+	})
+	paymentLimiter := limiter.New(limiter.Config{
+		Max:        60,
+		Expiration: time.Minute,
+	})
+
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
-	auth.Post("/register", userHandler.Register)
-	auth.Post("/login", userHandler.Login)
-	auth.Post("/google", userHandler.GoogleLogin)
-	auth.Post("/verify-email", userHandler.VerifyEmail)
-	auth.Post("/resend-verification", userHandler.ResendVerification)
-	auth.Post("/forgot-password", userHandler.ForgotPassword)
-	auth.Post("/reset-password", userHandler.ResetPassword)
+	auth.Post("/register", authLimiter, userHandler.Register)
+	auth.Post("/login", authLimiter, userHandler.Login)
+	auth.Post("/google", authLimiter, userHandler.GoogleLogin)
+	auth.Post("/verify-email", authLimiter, userHandler.VerifyEmail)
+	auth.Post("/resend-verification", authLimiter, userHandler.ResendVerification)
+	auth.Post("/forgot-password", authLimiter, userHandler.ForgotPassword)
+	auth.Post("/reset-password", authLimiter, userHandler.ResetPassword)
 
 	// User routes (authentication required)
 	users := api.Group("/users")
@@ -441,7 +470,7 @@ func main() {
 
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route
-	users.Get("/", userHandler.GetUsers)       // Admin route (no auth for demo)
+	users.Get("/", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.GetUsers)
 
 	// Product routes
 	products := api.Group("/products")
@@ -450,10 +479,10 @@ func main() {
 	products.Get("/user/:id", productHandler.GetUserProducts)             // Public route
 	products.Get("/user/:id/listings", productHandler.GetUserProducts)    // alias for listings
 	products.Get("/search-suggestions", productHandler.SearchSuggestions) // Smart search autocomplete
-	products.Get("/smart-search", productHandler.SmartSearch)             // AI-powered search
+	products.Get("/smart-search", aiLimiter, productHandler.SmartSearch)  // AI-powered search
 	// Specific routes must come before generic :id route
-	products.Post("/generate-details", productHandler.GenerateProductDetailsWithAI)
-	products.Post("/check-image-quality", productHandler.CheckImageQuality)                           // Fast image quality check
+	products.Post("/generate-details", aiLimiter, productHandler.GenerateProductDetailsWithAI)
+	products.Post("/check-image-quality", aiLimiter, productHandler.CheckImageQuality)                // Fast image quality check
 	products.Post("/report", middleware.AuthMiddleware(), productHandler.ReportListing)               // Report a listing
 	products.Get("/boost-candidates", middleware.AuthMiddleware(), productHandler.GetBoostCandidates) // Listings eligible for boost
 	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
@@ -511,8 +540,7 @@ func main() {
 	chat.Post("/conversations", middleware.AuthMiddleware(), chatHandler.EnsureConversation)
 	chat.Post("/messages", middleware.AuthMiddleware(), chatHandler.SendMessage)
 	chat.Post("/typing", middleware.AuthMiddleware(), chatHandler.Typing)
-	// Allow optional auth for SSE stream: clients may pass token via query param
-	chat.Get("/stream", middleware.OptionalAuthMiddleware(), chatHandler.Stream)
+	chat.Get("/stream", middleware.AuthMiddleware(), chatHandler.Stream)
 
 	// Trade routes (order matters: specific paths before :id)
 	trades := api.Group("/trades")
@@ -583,7 +611,8 @@ func main() {
 		}
 		results, err := services.SearchPlaces(q, biasLat, biasLng)
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+			log.Printf("Place search failed: %v", err)
+			return c.Status(500).JSON(fiber.Map{"error": "Place search is temporarily unavailable"})
 		}
 		return c.JSON(fiber.Map{"results": results})
 	})
@@ -635,17 +664,17 @@ func main() {
 	disputes.Post("/escalate/expired", disputeHandler.CheckAndEscalateDisputesHandler)             // Auto-escalate expired disputes (cron job)
 
 	payments := api.Group("/payments")
-	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
+	payments.Post("/trade/:id", paymentLimiter, middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
 	// Accept any method for sync to avoid 405 issues in dev/proxies.
 	payments.All("/trade/:id/sync", middleware.AuthMiddleware(), paymentHandler.SyncTradePayment)
-	payments.Post("/remittance-invoice", middleware.AuthMiddleware(), paymentHandler.CreateRemittanceInvoice)
+	payments.Post("/remittance-invoice", paymentLimiter, middleware.AuthMiddleware(), paymentHandler.CreateRemittanceInvoice)
 	payments.All("/remittance/sync", middleware.AuthMiddleware(), paymentHandler.SyncRemittancePayment)
-	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
-	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
+	payments.Post("/premium/:id", paymentLimiter, middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
+	payments.Post("/subscription", paymentLimiter, middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
 	payments.Get("/subscription", middleware.AuthMiddleware(), paymentHandler.GetUserSubscription)
 	payments.Get("/premium-config", middleware.AuthMiddleware(), paymentHandler.GetPremiumConfig)
 	payments.All("/subscription/sync", middleware.AuthMiddleware(), paymentHandler.SyncUserPremiumPayment)
-	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
+	payments.Post("/boost/:id", paymentLimiter, middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
 	payments.Post("/webhook/xendit", paymentHandler.XenditWebhook) // Public webhook endpoint
 
 	// Notifications routes
@@ -776,7 +805,7 @@ func main() {
 
 	// Reports route (user-facing: submit a report)
 	api.Post("/reports", middleware.AuthMiddleware(), reportHandler.CreateReport)
-	api.Get("/users/:id/reports", reportHandler.GetUserReports)
+	api.Get("/users/:id/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetUserReports)
 
 	// AI Features routes
 	ai := api.Group("/ai")
@@ -787,7 +816,7 @@ func main() {
 	ai.Get("/counterfeit/:id", aiFeaturesHandler.GetCounterfeitReport)
 
 	// Product analysis route (uses Gemini + Groq fallback)
-	ai.Post("/analyze-product", middleware.AuthMiddleware(), uploadHandler.AnalyzeProductImages)
+	ai.Post("/analyze-product", aiLimiter, middleware.AuthMiddleware(), uploadHandler.AnalyzeProductImages)
 
 	// Campaigns route (public-facing for fetching active campaigns)
 	campaigns := api.Group("/campaigns")

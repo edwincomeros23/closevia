@@ -309,11 +309,9 @@ const Premium: React.FC = () => {
         // Fallback if response structure is different
         window.location.href = responsePayload.checkout_url
       } else {
-        console.error('Response:', responsePayload)
         throw new Error('Invalid response: No checkout URL found')
       }
     } catch (error: any) {
-      console.error('Upgrade error:', error)
       const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Something went wrong'
       toast({
         id: 'premium-upgrade-error',

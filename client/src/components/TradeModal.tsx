@@ -43,6 +43,9 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [manualAddress, setManualAddress] = useState('')
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+  const targetCardBg = useColorModeValue('blue.50', 'blue.900')
+  const targetCardBorderColor = useColorModeValue('blue.200', 'blue.700')
+  const targetLabelColor = useColorModeValue('blue.700', 'blue.200')
   const selectedBg = '#E1F5EE'
   const selectedBorder = '#1D9E75'
   const selectedTextColor = '#1D9E75'
@@ -134,12 +137,6 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       cancelled = true
     }
   }, [isOpen, user?.latitude, user?.longitude])
-
-  useEffect(() => {
-    if (!isOpen) return
-    console.log('Selected offer IDs:', selectedOfferIds)
-    console.log('Selected products:', selectedProducts)
-  }, [isOpen, selectedOfferIds, selectedProducts])
 
   // Reset the pickup acknowledgement whenever the user switches away from pickup
   // so they re-confirm the commitment if they come back to it.
@@ -264,7 +261,6 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
         trade_option: 'meetup',
         meeting_type: tradeOption === 'pickup' ? 'pickup' : 'meetup',
       }
-      console.log('Submitting trade payload:', payload)
       await api.post('/api/trades', payload)
 
       // Invalidate dashboard cache so sent offers show immediately
@@ -310,10 +306,10 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                   </CardBody>
                 </Card>
               ) : targetProduct ? (
-                <Card variant="outline" bg={useColorModeValue('blue.50', 'blue.900')} borderColor={useColorModeValue('blue.200', 'blue.700')}>
+                <Card variant="outline" bg={targetCardBg} borderColor={targetCardBorderColor}>
                   <CardBody p={3}>
                     <VStack spacing={2} align="stretch">
-                      <Text fontSize="10px" fontWeight="bold" color={useColorModeValue('blue.700', 'blue.200')} textTransform="uppercase" letterSpacing="0.5px">
+                      <Text fontSize="10px" fontWeight="bold" color={targetLabelColor} textTransform="uppercase" letterSpacing="0.5px">
                         Trading For
                       </Text>
                       <HStack spacing={2} align="start">

@@ -111,7 +111,7 @@ const Dashboard: React.FC = () => {
   const { data: receivedOffersData = [], isFetched: receivedFetched, isLoading: receivedOffersLoading } = useReceivedOffers()
   const { data: ongoingTradesData = [], isFetched: ongoingFetched, isLoading: ongoingTradesLoading } = useOngoingTrades()
   const {
-    data: multiWayLoopsData = [],
+    data: multiWayLoopsData,
     isLoading: multiWayLoopsInitialLoading,
     isFetched: multiWayLoopsFetched,
     isFetching: multiWayLoopsFetching,
@@ -313,13 +313,13 @@ const Dashboard: React.FC = () => {
       return
     }
 
-    console.log('Dashboard: Not authenticated, redirecting to login')
     navigate('/login', { replace: true })
   }, [isAuthenticated, loading, navigate, restoreAuthentication])
 
   // Keep legacy multiway local state synchronized with the dashboard query.
   useEffect(() => {
-    setMultiWayTrades(Array.isArray(multiWayLoopsData) ? multiWayLoopsData : [])
+    const nextMultiWayTrades = Array.isArray(multiWayLoopsData) ? multiWayLoopsData : []
+    setMultiWayTrades(prev => (prev === nextMultiWayTrades ? prev : nextMultiWayTrades))
   }, [multiWayLoopsData])
 
   const multiWayTradesLoading = multiWayLoopsInitialLoading || (multiWayLoopsFetching && multiWayTrades.length === 0)
@@ -1230,14 +1230,7 @@ const Dashboard: React.FC = () => {
     try {
       setMultiWayTradeJoining(true)
       const tradeIdString = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-      console.log('[Dashboard] Hop In clicked', {
-        tradeIdString,
-        tradeChainId: trade?.chain_id,
-        tradeLoopId: trade?.loop_id,
-        tradeId: trade?.id,
-        userId: user?.id,
-      })
-      
+
       if (!tradeIdString) {
         throw new Error('Invalid loop ID. Please refresh and try again.')
       }
@@ -1295,14 +1288,6 @@ const Dashboard: React.FC = () => {
   const handleDeclineMultiWayTrade = async (trade: any, searchAgain: boolean = false) => {
     try {
       const tradeIdString = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-      console.log('[Dashboard] Decline clicked', {
-        tradeIdString,
-        tradeChainId: trade?.chain_id,
-        tradeLoopId: trade?.loop_id,
-        tradeId: trade?.id,
-        searchAgain,
-        userId: user?.id,
-      })
 
       if (!tradeIdString) {
         throw new Error('Invalid loop ID. Please refresh and try again.')

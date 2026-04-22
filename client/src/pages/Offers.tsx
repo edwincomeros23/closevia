@@ -123,25 +123,6 @@ const Offers: React.FC = () => {
     return () => clearInterval(interval)
   }, [])
 
-  // Debug: inspect API structure for /api/trades
-  useEffect(() => {
-    if (!loading) {
-      try {
-        // eslint-disable-next-line no-console
-        console.log('🔍 [TRADE STRUCTURE DEBUG] Incoming trades:', JSON.stringify(incoming.slice(0, 2), null, 2))
-        // eslint-disable-next-line no-console
-        console.log('🔍 [TRADE STRUCTURE DEBUG] Outgoing trades:', JSON.stringify(outgoing.slice(0, 2), null, 2))
-        const sample = incoming[0] || outgoing[0]
-        if (sample?.items && sample.items.length > 0) {
-          // eslint-disable-next-line no-console
-          console.log('🔍 [ITEMS DEBUG] Trade items type:', typeof (sample.items[0] as any))
-          // eslint-disable-next-line no-console
-          console.log('🔍 [ITEMS DEBUG] First item structure:', sample.items[0])
-        }
-      } catch {}
-    }
-  }, [loading, incoming, outgoing])
-
   const updateTrade = async (id: number, action: TradeAction) => {
     // Prevent multiple concurrent requests
     if (isProcessing) {
@@ -1804,3 +1785,4 @@ const Offers: React.FC = () => {
 }
 
 export default Offers
+

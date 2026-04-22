@@ -89,8 +89,7 @@ func (h *ReviewHandler) CreateReview(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("❌ Failed to create review: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error":   "Failed to create review",
-			"details": err.Error(),
+			"error": "Failed to create review",
 		})
 	}
 
@@ -172,8 +171,7 @@ func (h *ReviewHandler) GetUserReviews(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("❌ Failed to fetch reviews for user %d: %v", userID, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error":   "Failed to fetch reviews",
-			"details": err.Error(),
+			"error": "Failed to fetch reviews",
 		})
 	}
 	defer rows.Close()
