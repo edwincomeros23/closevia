@@ -81,28 +81,39 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     (effectiveTrade?.status === 'countered' && effectiveTrade?.countered_by !== user?.id)
   )
 
-  // Resilient extraction of buyer-offered items and their product IDs
-  const buyerItems = useMemo(() => {
+  const activeOfferRole = useMemo(() => {
+    if (!effectiveTrade) return 'buyer'
+    if (effectiveTrade.status === 'countered') {
+      return effectiveTrade.countered_by === effectiveTrade.seller_id ? 'seller' : 'buyer'
+    }
+    return 'buyer'
+  }, [effectiveTrade])
+
+  // Resilient extraction of the items that belong to the currently active offer.
+  const activeOfferItems = useMemo(() => {
     const items = (effectiveTrade?.items || []) as Array<any>
     const filtered = items.filter((i: any) => {
       const offeredBy = (i?.offered_by ?? i?.offeredBy ?? i?.sender ?? i?.from_user_role)
       if (typeof offeredBy === 'string') {
         const v = offeredBy.toLowerCase().trim()
+        if (activeOfferRole === 'seller') {
+          return v === 'seller' || v === 'from_seller'
+        }
         return v === 'buyer' || v === 'from_buyer' || v === 'sender'
       }
       return false
     })
     return filtered
-  }, [effectiveTrade])
+  }, [effectiveTrade, activeOfferRole])
   const offeredItemIds = useMemo(() => {
-    const ids = buyerItems.map((i: any) => {
+    const ids = activeOfferItems.map((i: any) => {
       const pid = (i?.product_id ?? i?.productId)
       return typeof pid === 'string' ? Number(pid) : pid
     })
     const filtered = ids
       .filter((x: any) => typeof x === 'number' && !Number.isNaN(x)) as number[]
     return filtered
-  }, [buyerItems])
+  }, [activeOfferItems])
 
   // Immediately set placeholder data from trade object (no API call needed)
   useEffect(() => {
@@ -119,8 +130,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     }
 
     // Instant placeholders for offered items
-    if (buyerItems.length > 0) {
-      const placeholders = buyerItems.map((item: any) => {
+    if (activeOfferItems.length > 0) {
+      const placeholders = activeOfferItems.map((item: any) => {
         const pid = item.product_id ?? item.productId
         const pTitle = item.product_title ?? item.productTitle ?? ''
         const pImg = item.product_image_url ?? item.productImageUrl ?? ''
@@ -130,7 +141,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         setOffered(placeholders)
       }
     }
-  }, [isOpen, effectiveTrade, buyerItems])
+  }, [isOpen, effectiveTrade, activeOfferItems])
 
   // Then fetch full product details in background (upgrades placeholder data)
   useEffect(() => {
@@ -617,9 +628,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 
                 {/* Their Offered Items */}
                 <Box>
-                  {buyerItems.length > 0 ? (
+                  {activeOfferItems.length > 0 ? (
                     <VStack spacing={1.5} align="stretch" h="100%">
-                      {buyerItems.map((item: any, idx: number) => {
+                      {activeOfferItems.map((item: any, idx: number) => {
                         const product = offered.find(p => p.id === (item.product_id ?? item.productId));
                         const itemId = item.product_id ?? item.productId
                         

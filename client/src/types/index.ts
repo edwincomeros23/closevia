@@ -329,15 +329,20 @@ export interface TradeCreate {
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'confirm_meetup' | 'confirm_meetup_done' | 'reset_meetup_selection' | 'update_delivery_state' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
+  action: 'accept' | 'decline' | 'counter' | 'edit_offer' | 'complete' | 'cancel' | 'confirm_meetup' | 'confirm_meetup_done' | 'reset_meetup_selection' | 'update_delivery_state' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
+  offered_product_ids?: number[]
+  offered_cash_amount?: number
   message?: string
   counter_offered_product_ids?: number[]
   counter_offered_cash_amount?: number
+  trade_option?: TradeOption
+  meeting_type?: 'meetup' | 'pickup'
   meetup_location?: string
   meetup_time?: string
   meetup_date?: string
   requested_option?: TradeOption // For option change requests
   delivery_address?: string // For delivery option
+  payment_method?: 'gcash' | 'cod' | 'wallet' | 'online'
 }
 
 export interface APIResponse<T = any> {

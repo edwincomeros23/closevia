@@ -1735,14 +1735,14 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 
 	var user models.User
 	var slugNull, profilePicture, backgroundImage, backgroundPosition, department, bio sql.NullString
-	var verificationStatus, schoolName, schoolEmail, rejectionReason sql.NullString
-	var emailVerifiedAt sql.NullTime
+	var verificationStatus, schoolName sql.NullString
 	var lastLogin sql.NullTime
 	err = h.db.QueryRow(
 		`SELECT id, slug, name, email, role, verified, COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') as org_name, COALESCE(org_handle, '') as org_handle, COALESCE(org_logo_url, '') as org_logo_url,
 		        COALESCE(org_cover_url, '') as org_cover_url, COALESCE(org_category, '') as org_category, COALESCE(org_website, '') as org_website, COALESCE(org_location, '') as org_location, COALESCE(org_contact_email, '') as org_contact_email,
 		        COALESCE(profile_picture, '') as profile_picture, COALESCE(background_image, '') as background_image, COALESCE(background_position, '') as background_position, COALESCE(department, '') as department, COALESCE(bio, '') as bio, COALESCE(badges, '[]') as badges,
-		        COALESCE(verification_status, 'not_verified') as verification_status, COALESCE(school_name, '') as school_name, COALESCE(school_email, '') as school_email, COALESCE(school_email_verified_at, NULL) as school_email_verified_at, COALESCE(verification_rejection_reason, '') as verification_rejection_reason,
+		        COALESCE(is_premium, FALSE) as is_premium, COALESCE(premium_tier, 'free') as premium_tier,
+		        COALESCE(verification_status, 'not_verified') as verification_status, COALESCE(school_name, '') as school_name,
 		        COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at, COALESCE(last_login, NULL) as last_login
 		   FROM users WHERE id = ?`,
 		userID,
@@ -1751,7 +1751,7 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 		&user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgHandle, &user.OrgLogoURL,
 		&user.OrgCoverURL, &user.OrgCategory, &user.OrgWebsite, &user.OrgLocation, &user.OrgContactEmail,
 		&profilePicture, &backgroundImage, &backgroundPosition, &department, &bio, &user.Badges,
-		&verificationStatus, &schoolName, &schoolEmail, &emailVerifiedAt, &rejectionReason,
+		&user.IsPremium, &user.PremiumTier, &verificationStatus, &schoolName,
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
 	)
 
@@ -1768,6 +1768,9 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 		})
 	}
 
+	if slugNull.Valid {
+		user.Slug = slugNull.String
+	}
 	// Log profile view (with timeout to prevent hanging)
 	viewerID, _ := middleware.GetUserIDFromContext(c)
 	if viewerID > 0 && viewerID != userID { // Don't log self-views or anonymous views without ID
@@ -1803,20 +1806,15 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	if schoolName.Valid {
 		user.SchoolName = schoolName.String
 	}
-	if schoolEmail.Valid {
-		user.SchoolEmail = schoolEmail.String
-	}
-	if emailVerifiedAt.Valid {
-		t := emailVerifiedAt.Time
-		user.SchoolEmailVerifiedAt = &t
-	}
-	if rejectionReason.Valid {
-		user.VerificationRejectionReason = rejectionReason.String
+	if user.IsPremium && (user.PremiumTier == "" || user.PremiumTier == "free") {
+		user.PremiumTier = "plus"
 	}
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
 	}
 	user.ActivityStatus = computeActivityStatus(user.LastLogin)
+	h.applyPremiumExpiry(&user)
+	h.ensureWmsuPlus(&user)
 
 	publicUser := fiber.Map{
 		"id":                  user.ID,

@@ -40,7 +40,6 @@ func InitDatabase() error {
 	if dbName == "" {
 		return fmt.Errorf("DB_NAME environment variable is not set")
 	}
-
 	// Determine if using hosted database (Aiven/AWS) or local (XAMPP)
 	isHostedDatabase := caCertPath != ""
 

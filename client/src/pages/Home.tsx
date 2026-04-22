@@ -693,7 +693,7 @@ const Home: React.FC = () => {
               })()}
             </Box>
           ) : (
-            <Box key={`ad-${item.data.id}`} w="full" h="full">
+            <Box key={`ad-${item.data.id}-${item.index}-${displayIndex}`} w="full" h="full">
               <StudentAdCard ad={item.data} />
             </Box>
           )

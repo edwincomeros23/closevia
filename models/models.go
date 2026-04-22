@@ -465,15 +465,20 @@ type TradeCreate struct {
 
 // TradeAction represents accept/decline/counter actions
 type TradeAction struct {
-	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup confirm_meetup_done reset_meetup_selection update_delivery_state request_option_change approve_option_change reject_option_change convert_to_multiway"`
+	Action                   string   `json:"action" validate:"required,oneof=accept decline counter edit_offer complete cancel confirm_meetup confirm_meetup_done reset_meetup_selection update_delivery_state request_option_change approve_option_change reject_option_change convert_to_multiway"`
+	OfferedProductIDs        []int    `json:"offered_product_ids,omitempty"`
+	OfferedCashAmount        *float64 `json:"offered_cash_amount,omitempty"`
 	Message                  string   `json:"message,omitempty"`
 	CounterOfferedProductIDs []int    `json:"counter_offered_product_ids,omitempty"`
 	CounterOfferedCashAmount *float64 `json:"counter_offered_cash_amount,omitempty"`
+	TradeOption              string   `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
+	MeetingType              string   `json:"meeting_type,omitempty" validate:"omitempty,oneof=meetup pickup"`
 	MeetupLocation           string   `json:"meetup_location,omitempty"`
 	MeetupTime               string   `json:"meetup_time,omitempty"`
 	MeetupDate               string   `json:"meetup_date,omitempty"`
 	RequestedOption          string   `json:"requested_option,omitempty"`
 	DeliveryAddress          string   `json:"delivery_address,omitempty"`
+	PaymentMethod            string   `json:"payment_method,omitempty"`
 	CancellationReason       string   `json:"cancellation_reason,omitempty"`
 }
 

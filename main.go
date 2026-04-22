@@ -549,6 +549,7 @@ func main() {
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
 	trades.Get("", middleware.AuthMiddleware(), tradeHandler.GetTrades) // Support no trailing slash
 	trades.Post("/likes", middleware.AuthMiddleware(), tradeHandler.AddTradeLike)
+	trades.Delete("/likes", middleware.AuthMiddleware(), tradeHandler.RemoveTradeLike)
 	// Loops endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
 	trades.Get("/loops/debug/match", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.DebugMultiwayMatch)
