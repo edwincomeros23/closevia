@@ -1917,11 +1917,19 @@ const Dashboard: React.FC = () => {
 
   const [isTradeModalOpen, setTradeModalOpen] = useState(false)
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
+  const [tradeToEdit, setTradeToEdit] = useState<Trade | null>(null)
 
   const handleTradeClick = (targetProduct: Product) => {
+    setTradeToEdit(null)
     setTradeTargetProductId(targetProduct.id)
     setTradeModalOpen(true)
   }
+
+  const handleEditTradeClick = useCallback((trade: Trade) => {
+    setTradeToEdit(trade)
+    setTradeTargetProductId(trade.target_product_id)
+    setTradeModalOpen(true)
+  }, [])
 
   const handleBoostProductClick = async (product: Product) => {
     // Show confirmation dialog with details
@@ -2678,6 +2686,7 @@ const Dashboard: React.FC = () => {
     onAccept,
     onDecline,
     onCancel,
+    onEdit,
   }: {
     trade: Trade
     isIncoming: boolean
@@ -2685,6 +2694,7 @@ const Dashboard: React.FC = () => {
     onAccept?: (t: Trade) => void
     onDecline?: (t: Trade) => void
     onCancel?: (t: Trade) => void
+    onEdit?: (t: Trade) => void
   }) => {
     const statusColor = badgeColor(trade.status).color
     const userName = isIncoming ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous')
@@ -2767,6 +2777,18 @@ const Dashboard: React.FC = () => {
                 </Button>
               </>
             )}
+            {!isIncoming && trade.status === 'pending' && onEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                colorScheme="blue"
+                fontSize="sm"
+                px={3}
+                onClick={() => onEdit(trade)}
+              >
+                Edit
+              </Button>
+            )}
             {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway' || trade.status === 'accepted_by_one') && onCancel && (
               <Button
                 size="sm"
@@ -2813,6 +2835,17 @@ const Dashboard: React.FC = () => {
                 Decline
               </Button>
             </>
+          )}
+          {!isIncoming && trade.status === 'pending' && onEdit && (
+            <Button
+              size="xs"
+              variant="outline"
+              colorScheme="blue"
+              fontSize="xs"
+              onClick={() => onEdit(trade)}
+            >
+              Edit
+            </Button>
           )}
           {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway' || trade.status === 'accepted_by_one') && onCancel && (
             <Button
@@ -3039,14 +3072,16 @@ const Dashboard: React.FC = () => {
     onAccept?: (t: Trade) => void
     onDecline?: (t: Trade) => void
     onCancel?: (t: Trade) => void
+    onEdit?: (t: Trade) => void
     onComplete?: (t: Trade) => void
-  }> = React.memo(({ trade, isIncoming, onView, onAccept, onDecline, onCancel, onComplete }) => {
+  }> = React.memo(({ trade, isIncoming, onView, onAccept, onDecline, onCancel, onEdit, onComplete }) => {
     const userName = isIncoming ? (trade.buyer_name || 'Anonymous User') : (trade.seller_name || 'Anonymous User')
 
     const handleViewClick = useCallback(() => onView(trade), [onView, trade])
     const handleAcceptClick = useCallback(() => onAccept?.(trade), [onAccept, trade])
     const handleDeclineClick = useCallback(() => onDecline?.(trade), [onDecline, trade])
     const handleCancelClick = useCallback(() => onCancel?.(trade), [onCancel, trade])
+    const handleEditClick = useCallback(() => onEdit?.(trade), [onEdit, trade])
     const handleCompleteClick = useCallback(() => onComplete?.(trade), [onComplete, trade])
 
     return (
@@ -3164,6 +3199,21 @@ const Dashboard: React.FC = () => {
                     Decline
                   </Button>
                 </>
+              )}
+              {!isIncoming && trade.status === 'pending' && onEdit && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  colorScheme="blue"
+                  flex={1}
+                  minW="50px"
+                  fontSize="xs"
+                  onClick={handleEditClick}
+                  _hover={{ transform: 'scale(1.02)' }}
+                  transition="all 0.2s"
+                >
+                  Edit
+                </Button>
               )}
               {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway' || trade.status === 'accepted_by_one') && onCancel && (
                 <Button
@@ -4504,6 +4554,7 @@ const Dashboard: React.FC = () => {
                                     trade={trade}
                                     isIncoming={false}
                                     onView={handleViewDetails}
+                                    onEdit={handleEditTradeClick}
                                     onCancel={handleCancelTradeClick}
                                   />
                                 ))}
@@ -4544,6 +4595,7 @@ const Dashboard: React.FC = () => {
                                       trade={trade}
                                       isIncoming={isIncoming}
                                       onView={handleViewDetails}
+                                      onEdit={handleEditTradeClick}
                                       onCancel={handleCancelTradeClick}
                                     />
                                   )
@@ -6186,8 +6238,13 @@ const Dashboard: React.FC = () => {
 
       <TradeModal
         isOpen={isTradeModalOpen}
-        onClose={() => setTradeModalOpen(false)}
+        onClose={() => {
+          setTradeModalOpen(false)
+          setTradeToEdit(null)
+          setTradeTargetProductId(null)
+        }}
         targetProductId={tradeTargetProductId}
+        editTrade={tradeToEdit}
       />
 
       <ImageZoomModal
