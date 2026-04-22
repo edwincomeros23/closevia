@@ -4789,7 +4789,7 @@ const Dashboard: React.FC = () => {
                                   Product � Partner � Status � Action
                                 </Box>
                                 {paginatedTrades.map((trade) => {
-                                  const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
+                                  const isIncoming = user?.id === trade.seller_id
                                   const userName = isIncoming ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous')
                                   return (
                                     <Flex
@@ -4904,7 +4904,7 @@ const Dashboard: React.FC = () => {
                             <>
                               <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }} mb={6}>
                                 {paginatedTrades.map((trade) => {
-                                  const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
+                                  const isIncoming = user?.id === trade.seller_id
                                   return (
                                     <OngoingTradeCard
                                       key={trade.id}
