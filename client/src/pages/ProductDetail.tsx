@@ -135,9 +135,7 @@ const ProductDetail: React.FC = () => {
       const reordered = [...product.image_urls]
       const [selected] = reordered.splice(imageIndex, 1)
       reordered.unshift(selected)
-      await api.put(`/api/products/${product.id}/reorder-images`, { image_urls: reordered }, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('clovia_token')}` }
-      })
+      await api.put(`/api/products/${product.id}/reorder-images`, { image_urls: reordered })
       setProduct({ ...product, image_urls: reordered })
       toast({ id: 'cover-image-updated', title: 'Cover image updated', status: 'success', duration: 2000 })
     } catch {

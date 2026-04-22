@@ -30,6 +30,7 @@ import { FaGoogle } from 'react-icons/fa'
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
 import { useAuth } from '../contexts/AuthContext'
 import { auth } from '../config/firebase'
+import { clearStoredAuth, getStoredUser } from '../utils/authStorage'
 
 const Register: React.FC = () => {
   const [firstName, setFirstName] = useState('')
@@ -168,8 +169,7 @@ const Register: React.FC = () => {
       setGoogleLoading(true)
       setError('')
 
-      localStorage.removeItem('clovia_token')
-      localStorage.removeItem('clovia_user')
+      clearStoredAuth()
 
       if (!auth) {
         setError('Google registration is not available in this environment.')
@@ -203,7 +203,7 @@ const Register: React.FC = () => {
         isClosable: true,
       })
 
-      const storedUser = localStorage.getItem('clovia_user')
+      const storedUser = getStoredUser()
       const parsedUser = storedUser ? JSON.parse(storedUser) : null
       navigate(parsedUser?.role === 'admin' ? '/admin' : '/dashboard', { replace: true })
     } catch (error: any) {

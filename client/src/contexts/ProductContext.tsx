@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Product, ProductCreate, ProductUpdate, SearchFilters, PaginatedResponse } from '../types'
 import { api } from '../services/api'
 import { apiCallWithRetry } from '../utils/apiUtils'
+import { getStoredToken } from '../utils/authStorage'
 
 interface ProductContextType {
   products: Product[]
@@ -54,9 +55,8 @@ interface ProductProviderProps {
 export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) => {
   const queryClient = useQueryClient()
   // Avoid calling `useAuth()` here to prevent errors when provider ordering
-  // is incorrect during initialization. Read token from localStorage instead
-  // which is safe even if `AuthProvider` isn't present yet.
-  const [token] = useState<string | null>(() => localStorage.getItem('clovia_token'))
+  // is incorrect during initialization. Read token from the shared auth helper.
+  const [token] = useState<string | null>(() => getStoredToken())
   const [products, setProducts] = useState<Product[]>(() => {
     // Try to restore from localStorage on mount
     try {

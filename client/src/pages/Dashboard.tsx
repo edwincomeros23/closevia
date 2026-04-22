@@ -63,6 +63,7 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
+import { getStoredToken } from '../utils/authStorage'
 import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb, FaRocket } from 'react-icons/fa'
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiGrid, FiList, FiSend, FiInbox, FiArchive, FiSliders, FiHeart } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
@@ -305,7 +306,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     if (loading || isAuthenticated) return
 
-    const storedToken = localStorage.getItem('clovia_token')
+    const storedToken = getStoredToken()
     if (storedToken) {
       // Token exists but AuthContext may still be restoring user/profile.
       // Avoid bouncing back to /login; attempt restore once and wait.

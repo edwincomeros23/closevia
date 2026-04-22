@@ -332,7 +332,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		fmt.Printf("❌ Error creating user: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to create user: " + err.Error(),
+			Error:   "Failed to create user",
 		})
 	}
 
@@ -462,6 +462,7 @@ func (h *UserHandler) VerifyEmail(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate token"})
 	}
+	utils.SetAuthCookie(c, token)
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -734,6 +735,7 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 			Error:   "Failed to generate token",
 		})
 	}
+	utils.SetAuthCookie(c, token)
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -741,6 +743,46 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		Data: fiber.Map{
 			"user":  user,
 			"token": token,
+		},
+	})
+}
+
+func (h *UserHandler) Logout(c *fiber.Ctx) error {
+	utils.ClearAuthCookie(c)
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Logged out",
+	})
+}
+
+func (h *UserHandler) RefreshSession(c *fiber.Ctx) error {
+	token := ""
+	authHeader := c.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		token = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	}
+	if token == "" {
+		token = strings.TrimSpace(c.Cookies(utils.AuthCookieName))
+	}
+	if token == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Authentication required",
+		})
+	}
+	if _, err := utils.ValidateJWT(token); err != nil {
+		utils.ClearAuthCookie(c)
+		return c.Status(fiber.StatusUnauthorized).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid or expired token",
+		})
+	}
+	utils.SetAuthCookie(c, token)
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Session refreshed",
+		Data: fiber.Map{
+			"idle_timeout_seconds": int(utils.SessionIdleTimeout().Seconds()),
 		},
 	})
 }
@@ -871,6 +913,7 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 			Error:   "Failed to generate token",
 		})
 	}
+	utils.SetAuthCookie(c, token)
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -1006,7 +1049,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		}
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to fetch user profile: " + err.Error(),
+			Error:   "Failed to fetch user profile",
 		})
 	}
 
@@ -1445,7 +1488,7 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to save file"})
 		}
 
-		finalURL = buildAbsoluteURL(c, publicPath)
+		finalURL = publicPath
 		fmt.Printf("🖼️  [UploadProfilePicture] Local storage URL: %s\n", finalURL)
 	}
 

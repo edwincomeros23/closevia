@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -847,7 +848,8 @@ func (h *AdminHandler) GetDataExplorer(c *fiber.Ctx) error {
 	}
 	result, err := h.buildDataExplorerResult(filters)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: err.Error()})
+		log.Printf("Admin data explorer failed: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load admin data"})
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: result})
 }
@@ -859,7 +861,8 @@ func (h *AdminHandler) ExportDataExplorer(c *fiber.Ctx) error {
 	}
 	result, err := h.buildDataExplorerResult(filters)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: err.Error()})
+		log.Printf("Admin data export failed: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to export admin data"})
 	}
 
 	format := strings.ToLower(strings.TrimSpace(c.Query("format", "csv")))

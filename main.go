@@ -110,6 +110,7 @@ func main() {
 
 	// Middleware
 	app.Use(recover.New())
+	app.Use(middleware.SecurityHeaders())
 	app.Use(logger.New())
 
 	corsOrigins := os.Getenv("CORS_ORIGINS")
@@ -122,6 +123,7 @@ func main() {
 			"https://cloviaph.site",
 			"https://closevia.onrender.com",
 		}, ",")
+		os.Setenv("CORS_ORIGINS", corsOrigins)
 	}
 
 	log.Printf("CORS Origins configured: %s", corsOrigins)
@@ -207,11 +209,11 @@ func main() {
 
 		if dbErr != nil {
 			// DB is down, return 503 Service Unavailable (k6 recognizes this as infrastructure failure)
+			log.Printf("Health check DB ping failed: %v", dbErr)
 			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 				"status":  "unhealthy",
 				"uptime":  uptime.String(),
 				"db":      "down",
-				"error":   dbErr.Error(),
 				"version": "xendit-sync-all-405-fix",
 			})
 		}
@@ -407,6 +409,14 @@ func main() {
 		Max:        30,
 		Expiration: time.Minute,
 	})
+	accountLimiter := limiter.New(limiter.Config{
+		Max:        12,
+		Expiration: time.Minute,
+	})
+	adminSensitiveLimiter := limiter.New(limiter.Config{
+		Max:        20,
+		Expiration: time.Minute,
+	})
 	aiLimiter := limiter.New(limiter.Config{
 		Max:        30,
 		Expiration: time.Minute,
@@ -421,6 +431,8 @@ func main() {
 	auth.Post("/register", authLimiter, userHandler.Register)
 	auth.Post("/login", authLimiter, userHandler.Login)
 	auth.Post("/google", authLimiter, userHandler.GoogleLogin)
+	auth.Post("/logout", userHandler.Logout)
+	auth.Post("/refresh-session", authLimiter, middleware.AuthMiddleware(), userHandler.RefreshSession)
 	auth.Post("/verify-email", authLimiter, userHandler.VerifyEmail)
 	auth.Post("/resend-verification", authLimiter, userHandler.ResendVerification)
 	auth.Post("/forgot-password", authLimiter, userHandler.ForgotPassword)
@@ -429,7 +441,8 @@ func main() {
 	// User routes (authentication required)
 	users := api.Group("/users")
 	users.Get("/profile", middleware.AuthMiddleware(), userHandler.GetProfile)
-	users.Put("/profile", middleware.AuthMiddleware(), userHandler.UpdateProfile)
+	users.Put("/profile", accountLimiter, middleware.AuthMiddleware(), userHandler.UpdateProfile)
+	users.Post("/change-password", accountLimiter, middleware.AuthMiddleware(), userHandler.ChangePassword)
 	users.Put("/location", middleware.AuthMiddleware(), userHandler.UpdateLocation)
 	users.Post("/profile-picture", middleware.AuthMiddleware(), userHandler.UploadProfilePicture)
 	// School ID verification (optional)
@@ -438,9 +451,9 @@ func main() {
 	users.Post("/verification/resend-school-email-code", middleware.AuthMiddleware(), verificationHandler.ResendSchoolEmailCode)
 	users.Post("/verification/upload-id", middleware.AuthMiddleware(), verificationHandler.UploadSchoolID)
 	users.Get("/verification/status", middleware.AuthMiddleware(), verificationHandler.GetVerificationStatus)
-	users.Post("/verification/phone/start", middleware.AuthMiddleware(), verificationHandler.StartPhoneVerification)
-	users.Post("/verification/phone/verify", middleware.AuthMiddleware(), verificationHandler.VerifyPhoneCode)
-	users.Post("/verification/phone/resend", middleware.AuthMiddleware(), verificationHandler.ResendPhoneCode)
+	users.Post("/verification/phone/start", accountLimiter, middleware.AuthMiddleware(), verificationHandler.StartPhoneVerification)
+	users.Post("/verification/phone/verify", accountLimiter, middleware.AuthMiddleware(), verificationHandler.VerifyPhoneCode)
+	users.Post("/verification/phone/resend", accountLimiter, middleware.AuthMiddleware(), verificationHandler.ResendPhoneCode)
 	users.Get("/verification/phone/status", middleware.AuthMiddleware(), verificationHandler.GetPhoneVerificationStatus)
 
 	// Saved products routes (must be BEFORE dynamic ":id" route)
@@ -715,10 +728,10 @@ func main() {
 	// Admin category aggregates
 	admin.Get("/categories", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminCategories)
 	admin.Get("/data-explorer", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetDataExplorer)
-	admin.Get("/data-explorer/export", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.ExportDataExplorer)
+	admin.Get("/data-explorer/export", adminSensitiveLimiter, middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.ExportDataExplorer)
 	admin.Get("/premium", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetPremiumManagement)
-	admin.Put("/premium", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.UpdatePremiumManagement)
-	admin.Post("/premium/users/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.UpdatePremiumUser)
+	admin.Put("/premium", adminSensitiveLimiter, middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.UpdatePremiumManagement)
+	admin.Post("/premium/users/:id", adminSensitiveLimiter, middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.UpdatePremiumUser)
 	// Admin reports management
 	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
 	admin.Get("/reports/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReportByID)

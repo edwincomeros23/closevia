@@ -3600,7 +3600,11 @@ func (h *TradeHandler) SendTradeMessage(c *fiber.Ctx) error {
 	var payload struct {
 		Content string `json:"content"`
 	}
-	if err := c.BodyParser(&payload); err != nil || payload.Content == "" {
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid content"})
+	}
+	payload.Content = cleanUserText(payload.Content, 2000)
+	if payload.Content == "" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid content"})
 	}
 	// authorize
@@ -3686,7 +3690,11 @@ func (h *TradeHandler) SendTradeLoopMessage(c *fiber.Ctx) error {
 	var payload struct {
 		Content string `json:"content"`
 	}
-	if err := c.BodyParser(&payload); err != nil || payload.Content == "" {
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid content"})
+	}
+	payload.Content = cleanUserText(payload.Content, 2000)
+	if payload.Content == "" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid content"})
 	}
 	// Check if user is a participant in this loop

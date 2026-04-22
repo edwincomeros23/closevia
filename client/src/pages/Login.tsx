@@ -27,6 +27,7 @@ import { ViewIcon, ViewOffIcon, ArrowBackIcon } from '@chakra-ui/icons'
 import { FaGoogle } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { auth } from '../config/firebase'
+import { clearStoredAuth, getStoredUser } from '../utils/authStorage'
 import { signInWithPopup, GoogleAuthProvider, User as FirebaseUser } from 'firebase/auth'
 
 const Login: React.FC = () => {
@@ -108,7 +109,7 @@ const Login: React.FC = () => {
       })
 
       // Check user role from localStorage since state may not be updated yet
-      const storedUser = localStorage.getItem('clovia_user')
+      const storedUser = getStoredUser()
       const parsedUser = storedUser ? JSON.parse(storedUser) : null
       const redirectPath = parsedUser?.role === 'admin' ? '/admin' : '/dashboard'
 
@@ -130,8 +131,7 @@ const Login: React.FC = () => {
       setError('')
       
       // Clear any existing auth state before new login
-      localStorage.removeItem('clovia_token')
-      localStorage.removeItem('clovia_user')
+      clearStoredAuth()
 
       // Check if Firebase is initialized
       if (!auth) {

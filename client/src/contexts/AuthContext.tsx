@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react'
 import { User } from '../types'
 import { api, API_BASE_URL } from '../services/api'
+import { normalizeImageUrl } from '../utils/imageUtils'
+import { clearStoredAuth, getStoredToken, getStoredUser, setStoredToken, setStoredUser } from '../utils/authStorage'
 
 interface AuthContextType {
   user: User | null
@@ -31,11 +33,17 @@ interface AuthProviderProps {
   children: ReactNode
 }
 
-// Helper to safely read cached user from localStorage
+// Helper to safely read cached user from storage
 const getCachedUser = (): User | null => {
   try {
-    const raw = localStorage.getItem('clovia_user')
-    if (raw) return JSON.parse(raw)
+    const raw = getStoredUser()
+    if (raw) {
+      const cached = JSON.parse(raw)
+      if (typeof cached?.profile_picture === 'string') {
+        cached.profile_picture = normalizeImageUrl(cached.profile_picture)
+      }
+      return cached
+    }
   } catch (e) { /* corrupted data */ }
   return null
 }
@@ -71,7 +79,7 @@ const getPersistableUser = (user: User): Record<string, unknown> => {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Synchronously initialize from localStorage so auth survives refresh
   const [user, setUserState] = useState<User | null>(() => getCachedUser())
-  const [token, setTokenState] = useState<string | null>(() => localStorage.getItem('clovia_token'))
+  const [token, setTokenState] = useState<string | null>(() => getStoredToken())
   const [loading, setLoading] = useState(true)
   const [authInitialized, setAuthInitialized] = useState(false)
   const initOnceRef = useRef(false)
@@ -81,20 +89,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Wrappers that keep localStorage in sync with React state
   const setToken = (newToken: string | null) => {
     setTokenState(newToken)
-    if (newToken) {
-      localStorage.setItem('clovia_token', newToken)
-    } else {
-      localStorage.removeItem('clovia_token')
-    }
+    setStoredToken(newToken)
   }
 
   const setUser = (newUser: User | null | ((prev: User | null) => User | null)) => {
     setUserState(prev => {
       const resolved = typeof newUser === 'function' ? newUser(prev) : newUser
       if (resolved) {
-        localStorage.setItem('clovia_user', JSON.stringify(getPersistableUser(resolved)))
+        setStoredUser(JSON.stringify(getPersistableUser(resolved)))
       } else {
-        localStorage.removeItem('clovia_user')
+        setStoredUser(null)
       }
       return resolved
     })
@@ -108,7 +112,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const normalizeProfilePicture = (pic?: string) => {
     if (!pic || typeof pic !== 'string') return pic
     const cleaned = pic.replace(/[?&]t=\d+/g, '')
-    return cleaned.startsWith('/') ? `${API_BASE_URL}${cleaned}` : cleaned
+    const normalized = normalizeImageUrl(cleaned)
+    return normalized.startsWith('/') ? `${API_BASE_URL}${normalized}` : normalized
   }
 
   const normalizeUser = (data: any) => {
@@ -121,7 +126,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }
 
   // Computed authentication state
-  const isAuthenticated = !!(user && token)
+  const isAuthenticated = !!user
 
   useEffect(() => {
     // Prevent double execution in React StrictMode (dev)
@@ -140,14 +145,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
 
         // Check if user is logged in on app start
-        const storedToken = localStorage.getItem('clovia_token')
+        const storedToken = getStoredToken()
 
         if (storedToken) {
-          // Token and user are already set from sync initialization.
-          // Just refresh the profile in the background to get latest data.
           api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
-          await fetchUserProfile(storedToken)
         }
+        await fetchUserProfile(storedToken || undefined)
       } catch {
       } finally {
         setAuthInitialized(true)
@@ -222,18 +225,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (restoringRef.current) return
     restoringRef.current = true
     try {
-      const storedToken = localStorage.getItem('clovia_token')
-      if (!storedToken) return
-
-      // Ensure axios is using the stored token
-      if (storedToken !== token) {
-        setToken(storedToken)
+      const storedToken = getStoredToken()
+      if (storedToken) {
+        // Ensure axios is using the stored token
+        if (storedToken !== token) {
+          setToken(storedToken)
+        }
+        api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
       }
-      api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
 
       // If user is missing, fetch profile to populate it
       if (!user) {
-        await fetchUserProfile(storedToken)
+        await fetchUserProfile(storedToken || undefined)
       }
     } finally {
       restoringRef.current = false
@@ -320,9 +323,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (payload.phone_verified !== undefined) (updated as any).phone_verified = payload.phone_verified as boolean
         if (payload.profile_picture !== undefined) {
           // Normalize stored profile picture URL if backend returned a relative path
-          let pic = payload.profile_picture as string
-          if (pic.startsWith('/')) pic = `${API_BASE_URL}${pic}`
-          updated.profile_picture = pic
+          updated.profile_picture = normalizeProfilePicture(payload.profile_picture as string) as string
         }
         // If there was no previous user, and we have at least one field, return it
         if (!prev) {
@@ -360,9 +361,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }
 
   const logout = () => {
+    void api.post('/api/auth/logout').catch(() => undefined)
     delete api.defaults.headers.common['Authorization']
-    setToken(null)
-    setUser(null)
+    clearStoredAuth()
+    setTokenState(null)
+    setUserState(null)
   }
 
   const value: AuthContextType = {

@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios'
+import { clearStoredAuth, getStoredToken } from '../utils/authStorage'
 
 function normalizeLoopbackBaseUrl(raw: string): string {
   try {
@@ -29,12 +30,13 @@ const DEBUG_API = import.meta.env.DEV && localStorage.getItem('debug_api') === '
 export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000, // Increased from 30s to 60s for slower networks
+  withCredentials: true,
 })
 
 // Request interceptor to add auth token and log
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('clovia_token')
+    const token = getStoredToken()
     // Ensure headers object exists
     config.headers = config.headers || {}
     if (token) {
@@ -114,7 +116,7 @@ api.interceptors.response.use(
 
     // Simple one-time retry on 401 if token exists but header was missing/not set
     if (status === 401 && cfg && !cfg._retry) {
-      const token = localStorage.getItem('clovia_token')
+      const token = getStoredToken()
       if (token) {
         cfg._retry = true
         cfg.headers = cfg.headers || {}
@@ -126,6 +128,10 @@ api.interceptors.response.use(
     // On 401 after retry failed, let route guards and component-level handlers decide UX.
     // Do NOT hard-redirect here, because some pages are intentionally browsable by guests.
     if (status === 401) {
+      if (typeof url === 'string' && url.includes('/api/auth/refresh-session')) {
+        clearStoredAuth()
+        delete api.defaults.headers.common['Authorization']
+      }
       if (isReviewEndpoint) {
         return Promise.reject(error)
       }

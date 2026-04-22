@@ -122,8 +122,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	log.Printf("✅ [CreateProduct] User ID %d attempting to create product", userID)
 
 	// Parse fields
-	title := c.FormValue("title")
-	description := c.FormValue("description")
+	title := cleanUserText(c.FormValue("title"), 160)
+	description := cleanUserText(c.FormValue("description"), 5000)
 	priceStr := c.FormValue("price")
 	// Fetch user tier, strikes and enforce data-driven listing limits
 	var tier string
@@ -1866,13 +1866,13 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	var updateFields []string
 	var args []interface{}
 
-	title := c.FormValue("title")
+	title := cleanUserText(c.FormValue("title"), 160)
 	if title != "" {
 		updateFields = append(updateFields, "title = ?")
 		args = append(args, title)
 	}
 
-	description := c.FormValue("description")
+	description := cleanUserText(c.FormValue("description"), 5000)
 	if description != "" {
 		updateFields = append(updateFields, "description = ?")
 		args = append(args, description)
